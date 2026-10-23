@@ -108,6 +108,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var editingAmount by remember { mutableStateOf("") }
     var editingDescription by remember { mutableStateOf("") }
     var editingCategory by remember { mutableStateOf("Other") }
+    var editingCategoryExpanded by remember { mutableStateOf(false) }
     var deletingId by remember { mutableStateOf<Long?>(null) }
     var selectedTransactionId by remember { mutableStateOf<Long?>(null) }
     var showTransactionTools by remember { mutableStateOf(false) }
@@ -838,7 +839,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 OutlinedTextField(value=editingDescription,onValueChange={editingDescription=it},label={Text("Description")})
                                 Text("Category")
                                 categories.forEach { cat -> if(cat==editingCategory) Text(cat) }
-                                OutlinedButton(onClick={editingCategory=if(editingCategory=="Other") "Food" else "Other"}) { Text("Toggle Food / Other") }
+                                Box {
+                                    OutlinedButton(onClick={editingCategoryExpanded=true}) { Text("Category: ${editingCategory}") }
+                                    DropdownMenu(expanded=editingCategoryExpanded,onDismissRequest={editingCategoryExpanded=false}) {
+                                        categories.forEach { cat ->
+                                            DropdownMenuItem(text={Text(cat)},onClick={editingCategory=cat;editingCategoryExpanded=false})
+                                        }
+                                    }
+                                }
                             }
                         },confirmButton={TextButton(onClick={
                             val original=transactions.firstOrNull { it.id==editingId }
