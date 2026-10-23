@@ -175,6 +175,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }
     var revision by remember { mutableIntStateOf(0) }
     val transactions = remember(revision) { store.all() }
+    val csvBaselineReady = remember(revision) { transactions.any { it.fingerprint.startsWith("csv-") } }
     val accountLabels = remember(revision) { store.accounts() }
     val declinedTransactions = remember(revision) { store.declined() }
     val foreignTransactions = remember(revision) { store.foreign() }
@@ -401,6 +402,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                 }
+                Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                    Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("Recommended setup: CSV first, SMS second",style=MaterialTheme.typography.titleMedium)
+                        Text("1. Upload your bank CSV and review the matches. 2. Import missing statement rows. 3. Enable SMS or import previous SMS to fill gaps. Same-amount transactions within one day of a CSV entry are skipped to avoid duplicates.",style=MaterialTheme.typography.bodySmall)
+                        Text(if(csvBaselineReady) "CSV baseline: ready" else "CSV baseline: not yet imported",color=if(csvBaselineReady) Color(0xFF15966C) else MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick={tab=2;csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Step 1 · Upload CSV statement") }
+                    }
+                }
                 Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
@@ -411,6 +420,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         if (!enabled) {
                             monitoring=false
                             prefs.edit().putBoolean("enabled", false).apply()
+                        } else if (!csvBaselineReady) {
+                            tab=2
+                            notice="Upload and import your CSV statement first. Then enable SMS to fill missing transactions."
                         } else if (context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
                             monitoring=true
                             prefs.edit().putBoolean("enabled", true).apply()
@@ -427,7 +439,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 Button(enabled=!importingHistory,onClick={
-                    if (context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) historyRequested=true
+                    if (!csvBaselineReady) { tab=2; notice="Import CSV statement records first; SMS will then fill gaps." }
+                    else if (context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) historyRequested=true
                     else historyLauncher.launch(Manifest.permission.READ_SMS)
                 }) { Text(if(importingHistory) "Importing…" else "Import previous SMS") }
                 Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
