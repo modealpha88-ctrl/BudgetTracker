@@ -113,6 +113,28 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
+    var receiptPreview by remember { mutableStateOf("") }
+    var receiptPending by remember { mutableStateOf(false) }
+    val receiptLauncher=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if(uri!=null) try {
+            val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            recognizer.process(InputImage.fromFilePath(context,uri)).addOnSuccessListener { result ->
+                receiptPreview=result.text.take(1200)
+                val lines=result.text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                val totals=lines.filter { it.contains(Regex("(?i)total|amount due|grand total")) }
+                val pattern=Regex("""(?:MVR|RF)?\\s*([0-9][0-9,]*\\.[0-9]{2})""")
+                val detected=totals.firstNotNullOfOrNull { pattern.find(it)?.groupValues?.get(1) }
+                amount=detected?.replace(",","") ?: ""
+                input=lines.firstOrNull { !it.contains(Regex("(?i)receipt|invoice|total")) }?.take(80) ?: ""
+                income=false
+                receiptPending=true
+                showTransactionForm=true
+                tab=1
+                notice="Receipt scanned. Check amount, merchant and category before adding; nothing imported automatically."
+            }.addOnFailureListener { notice="Receipt OCR failed: ${it.message?.take(80)}" }
+                .addOnCompleteListener { recognizer.close() }
+        } catch(e:Exception) { notice="Cannot open receipt: ${e.message?.take(70)}" }
+    }
     val screenshotLauncher=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if(uri!=null) {
             try {
@@ -548,6 +570,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     if(deletingId!=null) {
                         AlertDialog(onDismissRequest={deletingId=null},title={Text("Delete transaction?")},text={Text("This permanently deletes the selected record. Export a backup first if needed.")},confirmButton={TextButton(onClick={deletingId?.let { store.deleteTransaction(it) };deletingId=null;revision++}) { Text("Delete") }},dismissButton={TextButton(onClick={deletingId=null}) { Text("Cancel") }})
                     }
+                    OutlinedButton(onClick={receiptLauncher.launch("image/*")},modifier=Modifier.fillMaxWidth()) { Text("Scan receipt (review before adding)") }
+                    if(receiptPending) Text("Receipt OCR preview: ${receiptPreview.take(400)}",color=Color.White)
                     OutlinedButton(onClick={showTransactionForm=!showTransactionForm},modifier=Modifier.fillMaxWidth()) {
                         Text(if(showTransactionForm) "Hide add transaction" else "+ Add transaction")
                     }
@@ -566,7 +590,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Button(onClick={
                             val v=Money.parseLaari(amount)
                             if(v==null || v<=0 || input.isBlank()) notice="Enter a valid amount and description"
-                            else { store.add(if(income) v else -v,if(income) "Income" else if(category=="Income") "Other" else category,input.trim()); amount="";input="";notice="Transaction saved";revision++ }
+                            else { store.add(if(income) v else -v,if(income) "Income" else if(category=="Income") "Other" else category,input.trim()); amount="";input="";receiptPending=false;notice="Transaction saved";revision++ }
                         }) { Text("Add transaction") }
                             }
                         }
