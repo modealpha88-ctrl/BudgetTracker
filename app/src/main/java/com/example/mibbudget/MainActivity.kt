@@ -914,6 +914,61 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    val monthInsight=FinanceInsights.monthly(monthlyTransactions)
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                            Text("Spending insights",style=MaterialTheme.typography.titleMedium)
+                            Text("Income: ${Money.format(monthInsight.income)} · Expenses: ${Money.format(monthInsight.spending)}")
+                            Text("Net cash flow: ${Money.format(monthInsight.income-monthInsight.spending)}")
+                            if(monthInsight.biggestExpenseCategory!=null)
+                                Text("Largest category: ${monthInsight.biggestExpenseCategory} · ${Money.format(monthInsight.biggestExpense)}")
+                            if(monthInsight.spending>monthInsight.income && monthInsight.income>0)
+                                Text("Alert: Spending exceeds income this month.",color=MaterialTheme.colorScheme.error)
+                            if(monthInsight.internalMoved>0)
+                                Text("Internal movement excluded: ${Money.format(monthInsight.internalMoved)}",
+                                    style=MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    val suggestedPairs=FinanceInsights.suggestedInternalPairs(monthlyTransactions)
+                    var showSuggestedPairs by remember { mutableStateOf(false) }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text("Possible internal transfers",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={showSuggestedPairs=!showSuggestedPairs}) {
+                                    Text("${suggestedPairs.size} pairs ${if(showSuggestedPairs) "↑" else "↓"}")
+                                }
+                            }
+                            Text("Suggestions match equal outgoing and incoming transfer amounts within 3 days. Confirm only your own-account movements.",
+                                style=MaterialTheme.typography.bodySmall)
+                            if(showSuggestedPairs) suggestedPairs.forEach { pair ->
+                                Text("${Money.format(pair.incoming.amountLaari)} · ${pair.outgoing.timestamp.take(10)} → ${pair.incoming.timestamp.take(10)}")
+                                Text(TransactionPresentation.label(pair.outgoing.description),style=MaterialTheme.typography.bodySmall)
+                                Text(TransactionPresentation.label(pair.incoming.description),style=MaterialTheme.typography.bodySmall)
+                                OutlinedButton(onClick={
+                                    originalTransferPrefs.edit()
+                                        .putString(pair.outgoing.id.toString(),pair.outgoing.category)
+                                        .putString(pair.incoming.id.toString(),pair.incoming.category).apply()
+                                    store.markInternal(pair.outgoing.id)
+                                    store.markInternal(pair.incoming.id)
+                                    revision++
+                                    notice="Both sides marked internal"
+                                }) { Text("Confirm both as internal") }
+                                HorizontalDivider()
+                            }
+                        }
+                    }
+                    val accountGroups=monthlyTransactions.groupBy { accountLabels[it.fingerprint] ?: "Unassigned" }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                            Text("Account activity (selected month)",style=MaterialTheme.typography.titleMedium)
+                            Text("Monthly net movements are not bank balances without a verified opening balance.",
+                                style=MaterialTheme.typography.bodySmall)
+                            accountGroups.forEach { (account,rows) ->
+                                Text("$account · ${Money.format(rows.sumOf { it.amountLaari })} net · ${rows.size} transactions")
+                            }
+                        }
+                    }
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
