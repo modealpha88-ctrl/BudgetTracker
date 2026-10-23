@@ -105,7 +105,24 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             Text("Offline • MVR • Prototype",style=MaterialTheme.typography.labelMedium)
             if(notice.isNotBlank()) Text(notice,color=MaterialTheme.colorScheme.primary)
             if (tab == 0) {
-                Text("Privacy mode: no SMS inbox access. Share or paste MIB messages using Import SMS.", style=MaterialTheme.typography.bodySmall)
+                Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auto-import recognized bank SMS")
+                        Text("Off by default. Requires RECEIVE_SMS permission. MIB formats supported; BML SMS requires a verified sample.", style=MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked=monitoring, onCheckedChange={ enabled ->
+                        if (!enabled) {
+                            monitoring=false
+                            prefs.edit().putBoolean("enabled", false).apply()
+                        } else if (context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
+                            monitoring=true
+                            prefs.edit().putBoolean("enabled", true).apply()
+                        } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                    })
+                }
+                Text("Automatic SMS imports save recognized MIB transfers and purchases. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
+
                 Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
                 Text("Notification access is broad. This app filters only BML Favara received messages, storing amount and time for your review.", style=MaterialTheme.typography.bodySmall)
                 Button(onClick={ context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) }) { Text("Manage notification access") }
