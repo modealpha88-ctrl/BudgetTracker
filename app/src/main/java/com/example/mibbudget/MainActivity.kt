@@ -580,6 +580,57 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("↓  Expenses   ${Money.format(outgoing)}",color=Color.White)
                         Text("Cash flow, not your bank balance",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
                     } }
+                        val anchorDate=balancePrefs.getString("mib_date","").orEmpty()
+                        val anchorMinor=balancePrefs.getLong("mib_minor",Long.MIN_VALUE)
+                        val accountMonthTransactions=monthlyTransactions.filter { accountLabels[it.fingerprint]=="MIB" }
+                        val unassignedMonth=monthlyTransactions.filter { (accountLabels[it.fingerprint] ?: "Unassigned")=="Unassigned" }
+                        val monthNet=accountMonthTransactions.sumOf { it.amountLaari }
+                        val monthStart=selectedMonth.atDay(1).toString()
+                        val monthEnd=selectedMonth.atEndOfMonth().toString()
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("MIB balance reconciliation",style=MaterialTheme.typography.titleMedium)
+                                Text("Monthly cash flow shows a change, not the bank's total balance.",style=MaterialTheme.typography.bodySmall)
+                                if(anchorMinor==Long.MIN_VALUE || anchorDate.isBlank()) {
+                                    Text("Upload a recent MIB CSV statement or save a dated bank balance to reconcile.",color=MaterialTheme.colorScheme.error)
+                                } else {
+                                    val anchorDay=runCatching { java.time.LocalDate.parse(anchorDate) }.getOrNull()
+                                    val startDay=selectedMonth.atDay(1)
+                                    val endDay=selectedMonth.atEndOfMonth()
+                                    if(anchorDay==null) Text("Bank balance date is invalid.",color=MaterialTheme.colorScheme.error)
+                                    else {
+                                        val openingMovement=transactions.filter { tx ->
+                                            accountLabels[tx.fingerprint]=="MIB" &&
+                                            tx.timestamp.take(10)>=monthStart && tx.timestamp.take(10)<=anchorDate
+                                        }.sumOf { it.amountLaari }
+                                        val bankAnchorWithinMonth=!anchorDay.isBefore(startDay) && !anchorDay.isAfter(endDay)
+                                        if(bankAnchorWithinMonth) {
+                                            val opening=anchorMinor-openingMovement
+                                            val calculatedClosing=opening+monthNet
+                                            val recordedAfterAnchor=accountMonthTransactions.filter { it.timestamp.take(10)>anchorDate }.sumOf { it.amountLaari }
+                                            Text("Bank statement balance on $anchorDate: ${Money.format(anchorMinor)}")
+                                            Text("Calculated opening balance: ${Money.format(opening)}")
+                                            Text("MIB account movements: ${Money.format(monthNet)}")
+                                            Text("Calculated month-end balance: ${Money.format(calculatedClosing)}",style=MaterialTheme.typography.titleSmall)
+                                            if(recordedAfterAnchor==0L) {
+                                                Text("At the statement date, the reconstructed balance matches the saved bank anchor. This does not independently verify that every transaction was imported.",style=MaterialTheme.typography.bodySmall)
+                                            } else {
+                                                Text("Movements after the statement date: ${Money.format(recordedAfterAnchor)}. Upload a newer statement to verify the closing balance.",style=MaterialTheme.typography.bodySmall)
+                                            }
+                                        } else {
+                                            Text("Saved bank balance: ${Money.format(anchorMinor)} on $anchorDate")
+                                            Text("Select the month containing your bank statement date to calculate its opening and closing balance.",style=MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                }
+                                Text("${unassignedMonth.size} unassigned transactions this month · ${Money.format(unassignedMonth.sumOf { it.amountLaari })} excluded from MIB account movements",style=MaterialTheme.typography.bodySmall,
+                                    color=if(unassignedMonth.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                                if(unassignedMonth.isNotEmpty()) OutlinedButton(onClick={tab=1;accountFilter="Unassigned";showAdvancedFilters=true}) {
+                                    Text("Review unassigned transactions")
+                                }
+                                Text("For a true bank reconciliation, assign each transaction to the correct account and import statement opening/closing balances. Internal transfers still change each account's balance even though they are excluded from overall spending.",style=MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     } else {
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             listOf("MIB","BML","Cash").forEach { bank ->
