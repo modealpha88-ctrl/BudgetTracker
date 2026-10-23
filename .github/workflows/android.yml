@@ -42,6 +42,8 @@ jobs:
           chmod 600 "$RUNNER_TEMP/mib-release.jks"
           keytool -list -keystore "$RUNNER_TEMP/mib-release.jks" -storepass "$MIB_RELEASE_STORE_PASSWORD" -alias "$MIB_RELEASE_KEY_ALIAS" >/dev/null
           echo "MIB_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/mib-release.jks" >> "$GITHUB_ENV"
+      - name: Run unit tests and compile checks
+        run: gradle :app:testDebugUnitTest :app:compileDebugKotlin --stacktrace
       - name: Build signed release APK
         env:
           MIB_RELEASE_STORE_PASSWORD: ${{ secrets.MIB_RELEASE_STORE_PASSWORD }}
