@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
 
 private val categories = listOf("Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Internal Transfer","Other","Income")
@@ -59,6 +60,9 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     }
     var notice by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) }
+    var transactionFilter by remember { mutableStateOf("All") }
+    var showTransactionForm by remember { mutableStateOf(false) }
+    var filterExpanded by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     var importingHistory by remember { mutableStateOf(false) }
     var showImportSettings by remember { mutableStateOf(false) }
@@ -111,9 +115,9 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             }
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).background(if(tab==1) Color(0xFF191B38) else MaterialTheme.colorScheme.background).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=if(tab==1) Color(0xFFB8BDD4) else MaterialTheme.colorScheme.onSurfaceVariant)
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
             if (tab == 0) {
                 OutlinedButton(onClick={showImportSettings = !showImportSettings}, modifier=Modifier.fillMaxWidth()) { Text(if(showImportSettings) "Hide bank import settings  ↑" else "Bank SMS & notification settings  ↓") }
@@ -207,40 +211,81 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
                 }
                 1 -> {
-                    Text("Transaction history", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
-                    Text("${transactions.size} saved transactions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (transactions.isEmpty()) Text("No saved MVR transactions yet.")
-                    Column { transactions.forEach { t ->
-                        ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),fontWeight=FontWeight.SemiBold,color=if(t.amountLaari>0) Color(0xFF0D9488) else MaterialTheme.colorScheme.onSurface)})
-                        if (t.category == "Transfers" || t.category == "Incoming Transfer") TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
-                        HorizontalDivider()
-                    } }
-                    HorizontalDivider(Modifier.padding(vertical=12.dp))
-                    Text("Add a transaction",style=MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(value=amount,onValueChange={amount=it},label={Text("Amount (MVR)")},modifier=Modifier.fillMaxWidth())
-                    OutlinedTextField(value=input,onValueChange={input=it},label={Text("Description")},modifier=Modifier.fillMaxWidth())
-                    Row { Text("Income"); Switch(checked=income,onCheckedChange={income=it}) }
-                    Box { TextButton(onClick={expanded=true}) { Text("Category: $category ▾") }
-                        DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
-                            categories.forEach { c -> DropdownMenuItem(text={Text(c)},onClick={category=c;expanded=false}) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Transactions",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,color=Color.White)
+                        Box {
+                            OutlinedButton(onClick={filterExpanded=true}) { Text("Filter: $transactionFilter") }
+                            DropdownMenu(expanded=filterExpanded,onDismissRequest={filterExpanded=false}) {
+                                listOf("All","Expenses","Income","Transfers").forEach { option ->
+                                    DropdownMenuItem(text={Text(option)},onClick={transactionFilter=option;filterExpanded=false})
+                                }
+                            }
                         }
                     }
-                    Button(onClick={
-                        val v=Money.parseLaari(amount)
-                        if(v==null || v<=0 || input.isBlank()) notice="Enter a valid amount and description"
-                        else { store.add(if(income) v else -v,if(income) "Income" else if(category=="Income") "Other" else category,input.trim()); amount="";input="";notice="Transaction saved";revision++ }
-                    }) { Text("Add transaction") }
-                    HorizontalDivider(Modifier.padding(vertical=12.dp))
-                    Text("Other transaction records",style=MaterialTheme.typography.titleMedium)
-                    Text("Foreign currency purchases (excluded from MVR totals)", style=MaterialTheme.typography.titleMedium)
-                    foreignTransactions.forEach { t ->
-                        ListItem(headlineContent={Text("BML: ${t.merchant}")}, supportingContent={Text(t.timestamp.take(16))}, trailingContent={Text("${t.currency} ${Money.format(t.amountMinor).removePrefix("MVR ")}")})
+                    Text("${transactions.size} saved MVR transactions",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
+                    val filteredTransactions = transactions.filter { t ->
+                        when(transactionFilter) {
+                            "Expenses" -> t.amountLaari < 0
+                            "Income" -> t.amountLaari > 0
+                            "Transfers" -> t.category.contains("Transfer",ignoreCase=true)
+                            else -> true
+                        }
                     }
-                    Text("Declined card attempts (not counted as spending)",style=MaterialTheme.typography.titleMedium)
-                    declinedTransactions.forEach { d ->
-                        ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${Money.format(d.amountLaari).removePrefix("MVR ")}")})
+                    if(filteredTransactions.isEmpty()) Text("No transactions match this filter.",color=Color.White)
+                    filteredTransactions.forEach { t ->
+                        Card(Modifier.fillMaxWidth().padding(vertical=4.dp),shape=RoundedCornerShape(18.dp),
+                            colors=CardDefaults.cardColors(containerColor=Color(0xFF2A2D4C))) {
+                            Row(Modifier.fillMaxWidth().padding(18.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),
+                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("▤",color=Color(0xFF4EA1FF),style=MaterialTheme.typography.headlineMedium)
+                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                    Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),
+                                        color=if(t.amountLaari>0) Color(0xFF4ADEA5) else Color(0xFFFF6B77),
+                                        style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                                    Text(t.description,color=Color.White,style=MaterialTheme.typography.bodyMedium)
+                                    Text("${t.category}  •  ${t.timestamp.take(10)}",color=Color(0xFFADB2CC),style=MaterialTheme.typography.bodySmall)
+                                    if(t.category=="Transfers" || t.category=="Incoming Transfer")
+                                        TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
+                                }
+                            }
+                        }
                     }
-
+                    OutlinedButton(onClick={showTransactionForm=!showTransactionForm},modifier=Modifier.fillMaxWidth()) {
+                        Text(if(showTransactionForm) "Hide add transaction" else "+ Add transaction")
+                    }
+                    if(showTransactionForm) {
+                        Card(colors=CardDefaults.cardColors(containerColor=Color.White),modifier=Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Add a transaction",style=MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(value=amount,onValueChange={amount=it},label={Text("Amount (MVR)")},modifier=Modifier.fillMaxWidth())
+                        OutlinedTextField(value=input,onValueChange={input=it},label={Text("Description")},modifier=Modifier.fillMaxWidth())
+                        Row { Text("Income"); Switch(checked=income,onCheckedChange={income=it}) }
+                        Box { TextButton(onClick={expanded=true}) { Text("Category: $category ▾") }
+                            DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
+                                categories.forEach { c -> DropdownMenuItem(text={Text(c)},onClick={category=c;expanded=false}) }
+                            }
+                        }
+                        Button(onClick={
+                            val v=Money.parseLaari(amount)
+                            if(v==null || v<=0 || input.isBlank()) notice="Enter a valid amount and description"
+                            else { store.add(if(income) v else -v,if(income) "Income" else if(category=="Income") "Other" else category,input.trim()); amount="";input="";notice="Transaction saved";revision++ }
+                        }) { Text("Add transaction") }
+                            }
+                        }
+                    }
+                    Card(colors=CardDefaults.cardColors(containerColor=Color.White),modifier=Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                        Text("Other transaction records",style=MaterialTheme.typography.titleMedium)
+                        Text("Foreign currency purchases (excluded from MVR totals)", style=MaterialTheme.typography.titleMedium)
+                        foreignTransactions.forEach { t ->
+                            ListItem(headlineContent={Text("BML: ${t.merchant}")}, supportingContent={Text(t.timestamp.take(16))}, trailingContent={Text("${t.currency} ${Money.format(t.amountMinor).removePrefix("MVR ")}")})
+                        }
+                        Text("Declined card attempts (not counted as spending)",style=MaterialTheme.typography.titleMedium)
+                        declinedTransactions.forEach { d ->
+                            ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${Money.format(d.amountLaari).removePrefix("MVR ")}")})
+                        }
+                        }
+                    }
                 }
                 2 -> {
                     Text("Paste or share a transaction SMS. Verify details before saving. Never paste OTPs or passwords.")
