@@ -108,6 +108,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         readableDatabase.rawQuery("SELECT category,limit_laari FROM budgets",null).use { c -> while(c.moveToNext()) result[c.getString(0)] = c.getLong(1) }
         return result
     }
+    fun markInternal(id: Long) { writableDatabase.execSQL("UPDATE transactions SET category=? WHERE id=?", arrayOf("Internal Transfer", id)) }
     fun setBudget(category: String, limit: Long) {
         require(limit > 0)
         val v = android.content.ContentValues().apply { put("category",category);put("limit_laari",limit) }
@@ -124,7 +125,7 @@ object Money {
         if (whole > (Long.MAX_VALUE - fractional)/100) return null
         return whole*100+fractional
     }
-    fun format(laari: Long): String = "MVR " + String.format(Locale.US,"%,d.%02d",kotlin.math.abs(laari/100),kotlin.math.abs(laari%100))
+    fun format(laari: Long): String { val sign=if(laari<0) "-" else ""; return sign+"MVR "+String.format(Locale.US,"%,d.%02d",kotlin.math.abs(laari/100),kotlin.math.abs(laari%100)) }
 }
 
 /** MIB sample-based parser. Fail closed on ambiguous SMS. Never persist raw SMS. */
