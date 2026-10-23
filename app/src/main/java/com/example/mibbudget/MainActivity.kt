@@ -122,7 +122,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 receiptPreview=result.text.take(1200)
                 val lines=result.text.lines().map { it.trim() }.filter { it.isNotEmpty() }
                 val totals=lines.filter { it.contains(Regex("(?i)total|amount due|grand total")) }
-                val pattern=Regex("""(?:MVR|RF)?\\s*([0-9][0-9,]*\\.[0-9]{2})""")
+                val pattern=Regex("""(?:MVR|RF)?\s*([0-9][0-9,]*\.[0-9]{2})""")
                 val detected=totals.firstNotNullOfOrNull { pattern.find(it)?.groupValues?.get(1) }
                 amount=detected?.replace(",","") ?: ""
                 input=lines.firstOrNull { !it.contains(Regex("(?i)receipt|invoice|total")) }?.take(80) ?: ""
