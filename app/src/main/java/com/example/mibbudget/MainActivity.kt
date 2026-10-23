@@ -109,6 +109,13 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                 Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
                 Text("Notification access is broad. This app filters only BML Favara received messages, storing amount and time for your review.", style=MaterialTheme.typography.bodySmall)
                 Button(onClick={ context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) }) { Text("Manage notification access") }
+                Button(onClick={
+                    val imported = BmlNotificationListener.importVisible()
+                    notice = if (imported == null) "Enable notification access first, then reopen the app."
+                             else "Scanned visible notifications; queued $imported new BML credits."
+                    revision++
+                }) { Text("Import existing BML notifications") }
+                Text("Only notifications still active in Android can be scanned. Cleared notification history is not accessible.", style=MaterialTheme.typography.bodySmall)
                 Text("BML credits awaiting review: ${pendingBml.size}")
                 pendingBml.forEach { tx ->
                     Card(Modifier.fillMaxWidth().padding(vertical=4.dp)) {
