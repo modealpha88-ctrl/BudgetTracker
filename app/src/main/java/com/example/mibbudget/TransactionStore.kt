@@ -157,7 +157,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
 
 
     /** Only inserts records still classified MISSING at commit time. Never imports POSSIBLE. */
-    fun importMissingCsv(text: String): Pair<Int,Int> {
+    fun importMissingCsv(text: String, selectedLines: Set<Int>? = null): Pair<Int,Int> {
         val db=writableDatabase
         var added=0
         var excluded=0
@@ -165,7 +165,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         try {
             // Reconcile again under the write transaction so prior imports are respected.
             val review=reviewCsv(text)
-            val rows=review.matches.filter { it.status=="MISSING" }
+            val rows=review.matches.filter { it.status=="MISSING" && (selectedLines==null || it.line in selectedLines) }
             excluded=review.matches.size-rows.size
             val records=parseCsvRecords(text.removePrefix("\uFEFF"))
             val header=records.first().map { it.trim().uppercase(Locale.ROOT) }
