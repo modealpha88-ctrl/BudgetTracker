@@ -127,10 +127,11 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val date=java.time.LocalDate.parse(cols[0].trim().take(10)).toString()
             val desc=if(mib) listOf(type,cols[4].trim()).filter { it.isNotBlank() }.joinToString(": ") else cols[2].trim()
             val reference=if(mib) cols[3].trim() else ""
-            val candidates=existing.filter { t ->
-                t.id !in assigned && t.amountLaari==signed &&
+            val nearby=existing.filter { t ->
+                t.amountLaari==signed &&
                 (dayDistance(date,t.timestamp)?.let { it<=2 }==true)
             }
+            val candidates=nearby.filter { it.id !in assigned }
             val exact=candidates.filter { t ->
                 t.timestamp.take(10)==date &&
                 (reference.length>=6 && t.description.contains(reference,true) ||
@@ -144,6 +145,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 exact.size==1 -> { status="MATCHED";reason="Same amount, date and reference/description";chosen=exact.first() }
                 exact.size>1 -> { status="POSSIBLE";reason="Multiple matching records";chosen=null }
                 candidates.isNotEmpty() -> { status="POSSIBLE";reason="Same amount and nearby date; verify merchant/reference";chosen=null }
+                nearby.isNotEmpty() -> { status="POSSIBLE";reason="Amount and date overlap a record already matched to another statement row";chosen=null }
                 else -> { status="MISSING";reason="No matching saved transaction";chosen=null }
             }
             if(chosen!=null) assigned.add(chosen.id)
