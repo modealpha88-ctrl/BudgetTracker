@@ -97,6 +97,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
+    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null) try { val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV"); val result=store.importCsv(data);revision++;notice="CSV imported ${result.first} records; skipped ${result.second} duplicates." } catch(e:Exception) { notice="CSV import failed: ${e.message?.take(100)}" }
+    }
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if(uri!=null) try { context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().toByteArray(Charsets.UTF_8)) }; notice="Backup exported. Keep the file private." } catch(e:Exception) { notice="Export failed: ${e.javaClass.simpleName}" }
     }
@@ -305,6 +308,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup.json")}) { Text("Export backup") }
                         OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
+                    }
+                    OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Import CSV statement") }
+                    Text("CSV format: date,amount,description,category,account. Dates YYYY-MM-DD; negative amounts are expenses. Export a backup before importing.",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
+                    Row {
                     }
                     val filteredTransactions = transactions.filter { t ->
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
