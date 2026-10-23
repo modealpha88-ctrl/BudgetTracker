@@ -111,6 +111,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var selectedMissingCsvLines by remember { mutableStateOf(setOf<Int>()) }
     var selectedPossibleCsvLines by remember { mutableStateOf(setOf<Int>()) }
     var confirmNamingReset by remember { mutableStateOf(false) }
+    val reviewQueue=remember { ReviewQueue(context) }
+    var reviewQueueRevision by remember { mutableIntStateOf(0) }
+    var reviewStatusFilter by remember { mutableStateOf("PENDING") }
     val csvImportPrefs=remember { context.getSharedPreferences("csv_import_history",android.content.Context.MODE_PRIVATE) }
     var encryptedBackupPassword by remember { mutableStateOf("") }
     var useEncryptedBackup by remember { mutableStateOf(true) }
@@ -299,6 +302,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         if(uri!=null) try {
             val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV")
             csvReview=store.reviewCsv(data)
+            reviewQueue.addCsv(data,csvReview!!)
+            reviewQueueRevision++
             selectedMissingCsvLines=emptySet()
             selectedPossibleCsvLines=emptySet()
             csvText=data
@@ -915,21 +920,40 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val merchantUnverified=!isTransfer && VendorProfiles.get(context,tx.description)==null
                         missingRecipient || merchantUnverified
                     }
+                    LaunchedEffect(revision,recipientRevision,socialRevision) {
+                        reviewQueue.addTransactions(reviewNeeded)
+                        reviewQueueRevision++
+                    }
+                    val queuedReviews=remember(reviewQueueRevision) { reviewQueue.all() }
                     var reviewInboxExpanded by remember { mutableStateOf(false) }
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                Text("Transaction review inbox",style=MaterialTheme.typography.titleMedium)
+                                Text("Review queue",style=MaterialTheme.typography.titleMedium)
                                 TextButton(onClick={reviewInboxExpanded=!reviewInboxExpanded}) {
-                                    Text("${reviewNeeded.size} to review")
+                                    Text("${queuedReviews.count { it.status=="PENDING" }} pending")
                                 }
                             }
                             if(reviewInboxExpanded) {
-                                Text("Unidentified transfer recipients and unverified merchant profiles. Tap an item to correct it.",style=MaterialTheme.typography.bodySmall)
-                                reviewNeeded.take(25).forEach { tx ->
-                                    TextButton(onClick={selectedTransactionId=tx.id}) {
-                                        Text("${tx.timestamp.take(10)} · ${TransactionPresentation.label(tx.description)} · ${Money.format(tx.amountLaari)}",maxLines=2)
+                                Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                    listOf("PENDING","APPROVED","REJECTED","RESOLVED").forEach { state ->
+                                        FilterChip(selected=reviewStatusFilter==state,onClick={reviewStatusFilter=state},label={Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)})
                                     }
+                                }
+                                queuedReviews.filter { it.status==reviewStatusFilter }.forEach { item ->
+                                    Column(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                        Text(item.title,style=MaterialTheme.typography.bodyMedium)
+                                        Text(item.detail,style=MaterialTheme.typography.bodySmall)
+                                        if(item.txId>0) TextButton(onClick={selectedTransactionId=item.txId}) { Text("Open transaction") }
+                                        Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                            listOf("PENDING","APPROVED","REJECTED","RESOLVED").filter { it!=item.status }.forEach { state ->
+                                                TextButton(onClick={reviewQueue.status(item.id,state);reviewQueueRevision++}) {
+                                                    Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    HorizontalDivider()
                                 }
                             }
                         }
