@@ -918,48 +918,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                     if(filteredTransactions.size>150) Text("Showing first 150 of ${filteredTransactions.size} results. Narrow your search to see more.",style=MaterialTheme.typography.bodySmall)
-                    val selectedTransaction=transactions.firstOrNull { it.id==selectedTransactionId }
-                    if(selectedTransaction!=null) {
-                        ModalBottomSheet(onDismissRequest={selectedTransactionId=null}) {
-                            Column(Modifier.fillMaxWidth().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                                Text("Transaction details",style=MaterialTheme.typography.headlineSmall)
-                                Text(selectedTransaction.description)
-                                Text(Money.format(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
-                                Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
-                                Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
-                                Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,"Unclassified")}",style=MaterialTheme.typography.bodyMedium)
-                                Box {
-                                    OutlinedButton(onClick={counterpartyEditExpanded=true}) { Text("Classify business / individual") }
-                                    DropdownMenu(expanded=counterpartyEditExpanded,onDismissRequest={counterpartyEditExpanded=false}) {
-                                        listOf("Business","Individual","Unclassified").forEach { kind ->
-                                            DropdownMenuItem(text={Text(kind)},onClick={
-                                                counterpartyPrefs.edit().putString(selectedTransaction.fingerprint,kind).apply()
-                                                counterpartyRevision++
-                                                counterpartyEditExpanded=false
-                                            })
-                                        }
-                                    }
-                                }
-
-                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick={
-                                        store.setAccount(selectedTransaction.fingerprint,if((accountLabels[selectedTransaction.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB")
-                                        revision++
-                                    }) { Text("Change account") }
-                                    OutlinedButton(onClick={
-                                        editingId=selectedTransaction.id
-                                        editingAmount=Money.format(kotlin.math.abs(selectedTransaction.amountLaari)).removePrefix("MVR ").replace(",","")
-                                        editingDescription=selectedTransaction.description
-                                        editingCategory=selectedTransaction.category
-                                        selectedTransactionId=null
-                                    }) { Text("Edit") }
-                                }
-                                if(selectedTransaction.category.contains("Transfer",true))
-                                    OutlinedButton(onClick={store.markInternal(selectedTransaction.id);revision++;selectedTransactionId=null}) { Text("Mark internal transfer") }
-                                TextButton(onClick={deletingId=selectedTransaction.id;selectedTransactionId=null}) { Text("Delete transaction",color=MaterialTheme.colorScheme.error) }
-                            }
-                        }
-                    }
                     if(editingId!=null) {
                         AlertDialog(onDismissRequest={editingId=null},title={Text("Edit transaction")},text={
                             Column {
@@ -1225,5 +1183,47 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
             }
         }
+                    val selectedTransaction=transactions.firstOrNull { it.id==selectedTransactionId }
+                    if(selectedTransaction!=null) {
+                        ModalBottomSheet(onDismissRequest={selectedTransactionId=null}) {
+                            Column(Modifier.fillMaxWidth().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                                Text("Transaction details",style=MaterialTheme.typography.headlineSmall)
+                                Text(selectedTransaction.description)
+                                Text(Money.format(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
+                                Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
+                                Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
+                                Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,"Unclassified")}",style=MaterialTheme.typography.bodyMedium)
+                                Box {
+                                    OutlinedButton(onClick={counterpartyEditExpanded=true}) { Text("Classify business / individual") }
+                                    DropdownMenu(expanded=counterpartyEditExpanded,onDismissRequest={counterpartyEditExpanded=false}) {
+                                        listOf("Business","Individual","Unclassified").forEach { kind ->
+                                            DropdownMenuItem(text={Text(kind)},onClick={
+                                                counterpartyPrefs.edit().putString(selectedTransaction.fingerprint,kind).apply()
+                                                counterpartyRevision++
+                                                counterpartyEditExpanded=false
+                                            })
+                                        }
+                                    }
+                                }
+
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick={
+                                        store.setAccount(selectedTransaction.fingerprint,if((accountLabels[selectedTransaction.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB")
+                                        revision++
+                                    }) { Text("Change account") }
+                                    OutlinedButton(onClick={
+                                        editingId=selectedTransaction.id
+                                        editingAmount=Money.format(kotlin.math.abs(selectedTransaction.amountLaari)).removePrefix("MVR ").replace(",","")
+                                        editingDescription=selectedTransaction.description
+                                        editingCategory=selectedTransaction.category
+                                        selectedTransactionId=null
+                                    }) { Text("Edit") }
+                                }
+                                if(selectedTransaction.category.contains("Transfer",true))
+                                    OutlinedButton(onClick={store.markInternal(selectedTransaction.id);revision++;selectedTransactionId=null}) { Text("Mark internal transfer") }
+                                TextButton(onClick={deletingId=selectedTransaction.id;selectedTransactionId=null}) { Text("Delete transaction",color=MaterialTheme.colorScheme.error) }
+                            }
+                        }
+                    }
     }
 }
