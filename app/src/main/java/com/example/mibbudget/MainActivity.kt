@@ -766,6 +766,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             lastTransactionDay=day
                         }
                         val transferDescription=t.description
+                        val isFavaraTransfer=transferDescription.startsWith("Favara Transfer Web:",ignoreCase=true)
                         val isBankTransfer=transferDescription.startsWith("Internet banking transfer:",ignoreCase=true)
                         val transferRecipient=if(isBankTransfer) {
                             val payeeField=transferDescription.substringAfter(" | ", "").substringBefore(" | ").trim()
@@ -775,7 +776,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 !candidate.contains("transfer:",ignoreCase=true)
                             }
                         } else null
-                        val merchant=if(isBankTransfer) {
+                        val favaraRecipient=if(isFavaraTransfer) {
+                            transferDescription.substringAfter(" | BML - ", "").substringBefore(",").trim()
+                                .takeIf { it.length>=3 && !it.startsWith("MADV",ignoreCase=true) }
+                        } else null
+                        val merchant=if(isFavaraTransfer) {
+                            "Transfer" + (favaraRecipient?.let { " · " + it.take(42) } ?: "")
+                        } else if(isBankTransfer) {
                             if(transferRecipient!=null) "Transfer · "+transferRecipient.take(42) else "Transfer"
                         } else {
                             t.description.substringAfter("@",t.description).substringBefore(" |")
