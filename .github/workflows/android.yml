@@ -27,32 +27,39 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Restore persistent APK signing key
+      - name: Restore release signing key
         env:
-          MIB_SIGNING_KEY_BASE64: ${{ secrets.MIB_SIGNING_KEY_BASE64 }}
+          MIB_RELEASE_KEY_BASE64: ${{ secrets.MIB_RELEASE_KEY_BASE64 }}
+          MIB_RELEASE_STORE_PASSWORD: ${{ secrets.MIB_RELEASE_STORE_PASSWORD }}
+          MIB_RELEASE_KEY_ALIAS: ${{ secrets.MIB_RELEASE_KEY_ALIAS }}
+          MIB_RELEASE_KEY_PASSWORD: ${{ secrets.MIB_RELEASE_KEY_PASSWORD }}
         run: |
-          if [ -z "$MIB_SIGNING_KEY_BASE64" ]; then
-            echo "::error::Add MIB_SIGNING_KEY_BASE64 in repository Settings > Secrets and variables > Actions before building."
+          if [ -z "$MIB_RELEASE_KEY_BASE64" ] || [ -z "$MIB_RELEASE_STORE_PASSWORD" ] || [ -z "$MIB_RELEASE_KEY_ALIAS" ] || [ -z "$MIB_RELEASE_KEY_PASSWORD" ]; then
+            echo "::error::Configure all four MIB_RELEASE_* GitHub Actions secrets before building."
             exit 1
           fi
-          mkdir -p "$HOME/.android"
-          printf "%s" "$MIB_SIGNING_KEY_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
-          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+          printf '%s' "$MIB_RELEASE_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/mib-release.jks"
+          chmod 600 "$RUNNER_TEMP/mib-release.jks"
+          keytool -list -keystore "$RUNNER_TEMP/mib-release.jks" -storepass "$MIB_RELEASE_STORE_PASSWORD" -alias "$MIB_RELEASE_KEY_ALIAS" >/dev/null
+          echo "MIB_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/mib-release.jks" >> "$GITHUB_ENV"
+      - name: Build signed release APK
+        env:
+          MIB_RELEASE_STORE_PASSWORD: ${{ secrets.MIB_RELEASE_STORE_PASSWORD }}
+          MIB_RELEASE_KEY_ALIAS: ${{ secrets.MIB_RELEASE_KEY_ALIAS }}
+          MIB_RELEASE_KEY_PASSWORD: ${{ secrets.MIB_RELEASE_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: MIBBudgetTracker-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: MIBBudgetTracker-release-apk
+          path: app/build/outputs/apk/release/*-release.apk
 
       - name: Publish installable APK release
         if: success() && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk MIBBudgetTracker.apk
+          cp app/build/outputs/apk/release/app-release.apk MIBBudgetTracker.apk
           gh release create "build-${GITHUB_RUN_NUMBER}" MIBBudgetTracker.apk \
             --title "MIB Budget Tracker build ${GITHUB_RUN_NUMBER}" \
             --notes "Install this APK over the previous version. Keep the existing app installed to preserve local data." \
