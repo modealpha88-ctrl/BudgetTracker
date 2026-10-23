@@ -72,6 +72,70 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         return rows
     }
 
+
+    data class CsvMatch(val line: Int, val amountLaari: Long, val date: String, val description: String,
+                        val status: String, val reason: String)
+    data class CsvReview(val matches: List<CsvMatch>, val confirmed: Int, val possible: Int, val missing: Int, val ignored: Int)
+
+    private fun normalizedWords(value: String): Set<String> =
+        value.uppercase(Locale.ROOT).replace(Regex("[^A-Z0-9 ]")," ").split(Regex("\\s+"))
+            .filter { it.length>=4 && it !in setOf("TRANSFER","FAVARA","PURCHASE","TRANSACTION","PROCESSED","FROM","ACCOUNT","BANK","PAYMENT","MVR") }.toSet()
+
+    private fun dayDistance(a: String, b: String): Long? = try {
+        kotlin.math.abs(java.time.temporal.ChronoUnit.DAYS.between(
+            java.time.LocalDate.parse(a.take(10)), java.time.LocalDate.parse(b.take(10))))
+    } catch(e:Exception) { null }
+
+    /** Read-only reconciliation. A possible match is never silently imported. */
+    fun reviewCsv(text: String): CsvReview {
+        require(text.length<=5_000_000) { "CSV too large" }
+        val records=parseCsvRecords(text.removePrefix("\uFEFF"))
+        require(records.isNotEmpty() && records.size<=10001) { "Empty or oversized CSV" }
+        val header=records.first().map { it.trim().uppercase(Locale.ROOT) }
+        val mib=header==listOf("POSTED DATE","VALUE DATE","TRANSACTION TYPE","REFERENCE","DESCRIPTION","AMOUNT","RUNNING BALANCE")
+        val simple=header==listOf("DATE","AMOUNT","DESCRIPTION","CATEGORY","ACCOUNT")
+        require(mib || simple) { "Unsupported CSV statement" }
+        val existing=all()
+        val assigned=mutableSetOf<Long>()
+        val results=mutableListOf<CsvMatch>()
+        var ignored=0
+        records.drop(1).forEachIndexed { index,cols ->
+            require(cols.size==header.size) { "Invalid CSV row ${index+2}" }
+            val raw=(if(mib) cols[5] else cols[1]).trim().replace(",","")
+            val amount=Money.parseLaari(raw.removePrefix("-").removePrefix("+"))
+                ?: throw IllegalArgumentException("Invalid amount at row ${index+2}")
+            val type=if(mib) cols[2].trim() else ""
+            if(amount==0L || (mib && type.startsWith("**B/F",true))) { ignored++;return@forEachIndexed }
+            val signed=if(raw.startsWith("-")) -amount else amount
+            val date=java.time.LocalDate.parse(cols[0].trim().take(10)).toString()
+            val desc=if(mib) listOf(type,cols[4].trim()).filter { it.isNotBlank() }.joinToString(": ") else cols[2].trim()
+            val reference=if(mib) cols[3].trim() else ""
+            val candidates=existing.filter { t ->
+                t.id !in assigned && t.amountLaari==signed &&
+                (dayDistance(date,t.timestamp)?.let { it<=2 }==true)
+            }
+            val exact=candidates.filter { t ->
+                t.timestamp.take(10)==date &&
+                (reference.length>=6 && t.description.contains(reference,true) ||
+                 normalizedWords(desc).intersect(normalizedWords(t.description)).isNotEmpty() ||
+                 (t.fingerprint.startsWith("csv-") && t.description.equals(desc,true)))
+            }
+            val status: String
+            val reason: String
+            val chosen: Tx?
+            when {
+                exact.size==1 -> { status="MATCHED";reason="Same amount, date and reference/description";chosen=exact.first() }
+                exact.size>1 -> { status="POSSIBLE";reason="Multiple matching records";chosen=null }
+                candidates.isNotEmpty() -> { status="POSSIBLE";reason="Same amount and nearby date; verify merchant/reference";chosen=null }
+                else -> { status="MISSING";reason="No matching saved transaction";chosen=null }
+            }
+            if(chosen!=null) assigned.add(chosen.id)
+            results.add(CsvMatch(index+2,signed,date,desc.take(120),status,reason))
+        }
+        return CsvReview(results,results.count { it.status=="MATCHED" },
+            results.count { it.status=="POSSIBLE" },results.count { it.status=="MISSING" },ignored)
+    }
+
     fun importCsv(text: String): Pair<Int,Int> {
         require(text.length<=5_000_000) { "CSV too large" }
         val records=parseCsvRecords(text.removePrefix("\uFEFF"))
