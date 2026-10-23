@@ -9,18 +9,51 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+data class PendingBml(val id: Long, val amountLaari: Long, val timestamp: String, val fingerprint: String)
+
 data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String, val merchant: String, val timestamp: String, val reason: String)
 
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 3) {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE budgets(category TEXT PRIMARY KEY, limit_laari INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
+        db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+    }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 3) db.execSQL("CREATE TABLE IF NOT EXISTS declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+        if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+    }
+    fun queueBml(amount: Long, timestamp: String, fingerprint: String): Boolean {
+        val v = android.content.ContentValues().apply { put("amount_laari", amount); put("occurred_at", timestamp); put("fingerprint", fingerprint) }
+        return writableDatabase.insertWithOnConflict("bml_pending", null, v, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+    }
+    fun pendingBml(): List<PendingBml> {
+        val result = mutableListOf<PendingBml>()
+        readableDatabase.rawQuery("SELECT id,amount_laari,occurred_at,fingerprint FROM bml_pending ORDER BY id DESC", null).use { c ->
+            while (c.moveToNext()) result += PendingBml(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3))
+        }
+        return result
+    }
+    fun resolveBml(tx: PendingBml, approve: Boolean, internalTransfer: Boolean = false): Boolean {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (approve && !internalTransfer) {
+                val v = android.content.ContentValues().apply {
+                    put("amount_laari", tx.amountLaari); put("category", "Incoming Transfer")
+                    put("description", "BML Favara funds received"); put("created_at", tx.timestamp)
+                    put("fingerprint", tx.fingerprint)
+                }
+                db.insertWithOnConflict("transactions", null, v, SQLiteDatabase.CONFLICT_IGNORE)
+            }
+            val removed = db.delete("bml_pending", "id=?", arrayOf(tx.id.toString())) > 0
+            db.setTransactionSuccessful()
+            return removed
+        } finally { db.endTransaction() }
     }
     fun addDeclined(candidate: BankSmsParser.Declined): Boolean {
         val values = android.content.ContentValues().apply {
