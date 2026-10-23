@@ -129,6 +129,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var counterpartyEditExpanded by remember { mutableStateOf(false) }
     var showTransactionForm by remember { mutableStateOf(false) }
     var filterExpanded by remember { mutableStateOf(false) }
+    var showAdvancedFilters by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     val balancePrefs=remember { context.getSharedPreferences("balance_anchor",android.content.Context.MODE_PRIVATE) }
     var dashboardView by remember { mutableStateOf("Cash flow") }
@@ -318,9 +319,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if(tab==0) {
             Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/MIBBudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
+            }
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
             if (tab == 2) {
                 OutlinedButton(onClick={showImportSettings = !showImportSettings}, modifier=Modifier.fillMaxWidth()) { Text(if(showImportSettings) "Hide bank import settings  ↑" else "Bank SMS & notification settings  ↓") }
@@ -663,48 +666,63 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 1 -> {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Transactions",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.onBackground)
-                        Box {
-                            OutlinedButton(onClick={filterExpanded=true}) { Text("Filter: $transactionFilter") }
-                            DropdownMenu(expanded=filterExpanded,onDismissRequest={filterExpanded=false}) {
-                                listOf("All","Expenses","Income","Transfers").forEach { option ->
-                                    DropdownMenuItem(text={Text(option)},onClick={transactionFilter=option;filterExpanded=false})
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Column {
+                            Text("Transactions",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                            Text("${transactions.size} transactions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick={tab=2}) { Text("Import") }
+                    }
+                    OutlinedTextField(value=searchText,onValueChange={searchText=it},
+                        placeholder={Text("Search merchant, amount or date")},
+                        leadingIcon={Text("⌕")},modifier=Modifier.fillMaxWidth(),singleLine=true,
+                        shape=RoundedCornerShape(20.dp))
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        listOf("All","Expenses","Income","Transfers").forEach { option ->
+                            FilterChip(selected=transactionFilter==option,onClick={transactionFilter=option},
+                                label={Text(option,style=MaterialTheme.typography.labelSmall)})
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Activity",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+                        TextButton(onClick={showAdvancedFilters=!showAdvancedFilters}) {
+                            Text(if(showAdvancedFilters) "Hide filters ↑" else "More filters ↓")
+                        }
+                    }
+                    if(showAdvancedFilters) {
+                        Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)) {
+                            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    Box {
+                                        OutlinedButton(onClick={accountExpanded=true}) { Text(accountFilter) }
+                                        DropdownMenu(expanded=accountExpanded,onDismissRequest={accountExpanded=false}) {
+                                            listOf("All accounts","Unassigned","MIB","BML","Cash","Other").forEach { label ->
+                                                DropdownMenuItem(text={Text(label)},onClick={accountFilter=label;accountExpanded=false})
+                                            }
+                                        }
+                                    }
+                                    Box {
+                                        OutlinedButton(onClick={counterpartyExpanded=true}) { Text(counterpartyFilter) }
+                                        DropdownMenu(expanded=counterpartyExpanded,onDismissRequest={counterpartyExpanded=false}) {
+                                            listOf("All types","Business","Individual","Unclassified").forEach { option ->
+                                                DropdownMenuItem(text={Text(option)},onClick={counterpartyFilter=option;counterpartyExpanded=false})
+                                            }
+                                        }
+                                    }
                                 }
+                                Box {
+                                    OutlinedButton(onClick={categoryFilterExpanded=true}) { Text(categoryFilter) }
+                                    DropdownMenu(expanded=categoryFilterExpanded,onDismissRequest={categoryFilterExpanded=false}) {
+                                        (listOf("All categories")+categories).forEach { option ->
+                                            DropdownMenuItem(text={Text(option)},onClick={categoryFilter=option;categoryFilterExpanded=false})
+                                        }
+                                    }
+                                }
+                                Text("Classify a business or individual from transaction details.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";transactionFilter="All";searchText=""}) { Text("Clear all filters") }
                             }
                         }
                     }
-                    Text("${transactions.size} saved MVR transactions",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(value=searchText,onValueChange={searchText=it},label={Text("Search transactions")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Box {
-                            OutlinedButton(onClick={accountExpanded=true}) { Text(accountFilter) }
-                            DropdownMenu(expanded=accountExpanded,onDismissRequest={accountExpanded=false}) {
-                                (listOf("All accounts","Unassigned","MIB","BML","Cash","Other")).forEach { label ->
-                                    DropdownMenuItem(text={Text(label)},onClick={accountFilter=label;accountExpanded=false})
-                                }
-                            }
-                        }
-                    }
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Box {
-                            OutlinedButton(onClick={counterpartyExpanded=true}) { Text(counterpartyFilter) }
-                            DropdownMenu(expanded=counterpartyExpanded,onDismissRequest={counterpartyExpanded=false}) {
-                                listOf("All types","Business","Individual","Unclassified").forEach { option ->
-                                    DropdownMenuItem(text={Text(option)},onClick={counterpartyFilter=option;counterpartyExpanded=false})
-                                }
-                            }
-                        }
-                        Box {
-                            OutlinedButton(onClick={categoryFilterExpanded=true}) { Text(categoryFilter) }
-                            DropdownMenu(expanded=categoryFilterExpanded,onDismissRequest={categoryFilterExpanded=false}) {
-                                (listOf("All categories")+categories).forEach { option ->
-                                    DropdownMenuItem(text={Text(option)},onClick={categoryFilter=option;categoryFilterExpanded=false})
-                                }
-                            }
-                        }
-                    }
-                    Text("Business or Individual is assigned manually in transaction details. Unclassified records are not guessed.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick={showTransactionTools=!showTransactionTools},modifier=Modifier.fillMaxWidth()) {
                         Text(if(showTransactionTools) "Hide import & backup tools" else "Import & backup tools")
                     }
@@ -759,7 +777,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    Text("Supports MIB statement CSV and the five-column template. Opening balances are skipped. Export a backup first; review transactions for duplicates from SMS imports.",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
                     val filteredTransactions = transactions.filter { t ->
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
@@ -780,13 +797,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text(day,style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
                             lastTransactionDay=day
                         }
-                        Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=3.dp),shape=RoundedCornerShape(18.dp)) {
-                            ListItem(
-                                headlineContent={Text(t.description.take(75),maxLines=2)},
-                                supportingContent={Text("${t.category} • ${counterpartyPrefs.getString(t.fingerprint,"Unclassified")} • ${t.timestamp.take(10)} • ${accountLabels[t.fingerprint] ?: "Unassigned"}")},
-                                leadingContent={Text(when(t.category) { "Food","Groceries" -> "◉"; "Transport" -> "▣"; "Shopping" -> "▤"; "Bills" -> "▥"; "Income" -> "↓"; else -> if(t.amountLaari>=0) "↓" else "↑" },color=MaterialTheme.colorScheme.primary)},
-                                trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),color=if(t.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,fontWeight=FontWeight.SemiBold)}
-                            )
+                        val merchant=t.description.substringAfter("@",t.description).substringBefore(" |").substringBefore(" VISA").substringBefore(" MASTERCARD").trim().ifBlank { t.description }.take(34)
+                        Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
+                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.secondaryContainer,RoundedCornerShape(14.dp)),contentAlignment=androidx.compose.ui.Alignment.Center) {
+                                    Text(when(t.category) { "Food","Fast Food" -> "☕"; "Groceries" -> "▦"; "Transport" -> "↗"; "Shopping" -> "▤"; "Bills" -> "▥"; else -> if(t.amountLaari>=0) "↓" else "↑" },color=MaterialTheme.colorScheme.onSecondaryContainer)
+                                }
+                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                                    Text(merchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
+                                    Text("${t.category} · ${accountLabels[t.fingerprint] ?: "Unassigned"} · ${t.timestamp.takeLast(8)}",
+                                        style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
+                                }
+                                Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),
+                                    style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,
+                                    color=if(t.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                            }
                         }
                     }
                     if(filteredTransactions.size>150) Text("Showing first 150 of ${filteredTransactions.size} results. Narrow your search to see more.",style=MaterialTheme.typography.bodySmall)
