@@ -108,7 +108,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             }
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).then(if (tab == 0 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
@@ -201,6 +201,16 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
                 }
                 1 -> {
+                    Text("Transaction history", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
+                    Text("${transactions.size} saved transactions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (transactions.isEmpty()) Text("No saved MVR transactions yet.")
+                    Column { transactions.forEach { t -> { t ->
+                        ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),fontWeight=FontWeight.SemiBold,color=if(t.amountLaari>0) Color(0xFF0D9488) else MaterialTheme.colorScheme.onSurface)})
+                        if (t.category == "Transfers" || t.category == "Incoming Transfer") TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
+                        HorizontalDivider()
+                    } }
+                    HorizontalDivider(Modifier.padding(vertical=12.dp))
+                    Text("Add a transaction",style=MaterialTheme.typography.titleMedium)
                     OutlinedTextField(value=amount,onValueChange={amount=it},label={Text("Amount (MVR)")},modifier=Modifier.fillMaxWidth())
                     OutlinedTextField(value=input,onValueChange={input=it},label={Text("Description")},modifier=Modifier.fillMaxWidth())
                     Row { Text("Income"); Switch(checked=income,onCheckedChange={income=it}) }
@@ -215,7 +225,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                         else { store.add(if(income) v else -v,if(income) "Income" else if(category=="Income") "Other" else category,input.trim()); amount="";input="";notice="Transaction saved";revision++ }
                     }) { Text("Add transaction") }
                     HorizontalDivider(Modifier.padding(vertical=12.dp))
-                    Text("Transaction history (all dates)",style=MaterialTheme.typography.titleMedium)
+                    Text("Other transaction records",style=MaterialTheme.typography.titleMedium)
                     Text("Foreign currency purchases (excluded from MVR totals)", style=MaterialTheme.typography.titleMedium)
                     foreignTransactions.forEach { t ->
                         ListItem(headlineContent={Text("BML: ${t.merchant}")}, supportingContent={Text(t.timestamp.take(16))}, trailingContent={Text("${t.currency} ${Money.format(t.amountMinor).removePrefix("MVR ")}")})
@@ -224,11 +234,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     declinedTransactions.forEach { d ->
                         ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${Money.format(d.amountLaari).removePrefix("MVR ")}")})
                     }
-                    LazyColumn { items(transactions,key={it.id}) { t ->
-                        ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),fontWeight=FontWeight.SemiBold,color=if(t.amountLaari>0) Color(0xFF0D9488) else MaterialTheme.colorScheme.onSurface)})
-                        if (t.category == "Transfers" || t.category == "Incoming Transfer") TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
-                        HorizontalDivider()
-                    } }
+
                 }
                 2 -> {
                     Text("Paste or share a transaction SMS. Verify details before saving. Never paste OTPs or passwords.")
