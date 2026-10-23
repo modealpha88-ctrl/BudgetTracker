@@ -62,6 +62,7 @@ object BankSmsParser {
     data class Candidate(val amountLaari: Long, val category: String, val description: String, val fingerprint: String, val transactionTime: String? = null)
     private val sensitive = Regex("""(?i)\b(otp|one.time.password|verification code|login code|password|pin|authentication code)\b""")
     private val favara = Regex("""(?is)^Favara\s+Transfer\s+from\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
+    private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
     private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*[\w-]+\s*$""")
     private fun date(value: String, pattern: String): String? = try {
         val formatter = DateTimeFormatter.ofPattern(pattern, Locale.US).withResolverStyle(java.time.format.ResolverStyle.STRICT)
@@ -73,6 +74,12 @@ object BankSmsParser {
         val fingerprint = MessageDigest.getInstance("SHA-256")
             .digest(text.lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
+        favaraIncoming.matchEntire(text)?.let { m ->
+            val amount = Money.parseLaari(m.groupValues[1]) ?: return null
+            val whenAt = date(m.groupValues[2], "dd/MM/uuuu HH:mm:ss") ?: return null
+            if (amount <= 0) return null
+            return Candidate(amount, "Incoming Transfer", "Favara incoming transfer", fingerprint, whenAt)
+        }
         favara.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[1]) ?: return null
             val whenAt = date(m.groupValues[2], "dd/MM/uuuu HH:mm:ss") ?: return null
