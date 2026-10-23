@@ -131,6 +131,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var editingCategoryExpanded by remember { mutableStateOf(false) }
     var deletingId by remember { mutableStateOf<Long?>(null) }
     var selectedTransactionId by remember { mutableStateOf<Long?>(null) }
+    var internalSelectionMode by remember { mutableStateOf(false) }
+    var selectedInternalIds by remember { mutableStateOf(setOf<Long>()) }
+    var confirmInternalSelection by remember { mutableStateOf(false) }
+    val originalInternalCategories=remember { context.getSharedPreferences("internal_transfer_original_categories",android.content.Context.MODE_PRIVATE) }
+
     val recipientPrefs=remember { context.getSharedPreferences("transaction_recipients",android.content.Context.MODE_PRIVATE) }
     val vendorAvatarPrefs=remember { context.getSharedPreferences("vendor_avatar_files",android.content.Context.MODE_PRIVATE) }
     var avatarRevision by remember { mutableIntStateOf(0) }
@@ -1119,6 +1124,48 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             .thenByDescending { TransactionPresentation.time(it.description,it.timestamp) ?: "00:00" }
                             .thenByDescending { it.id }
                     )
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text("Internal transfers",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={
+                                    internalSelectionMode=!internalSelectionMode
+                                    selectedInternalIds=emptySet()
+                                }) { Text(if(internalSelectionMode) "Cancel selection" else "Select transactions") }
+                            }
+                            if(internalSelectionMode) {
+                                Text("Select incoming or outgoing transactions below. Marking them internal excludes them from spending and income, but keeps bank records and balances.",style=MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick={
+                                        selectedInternalIds=orderedTransactions.filter { it.category!="Internal Transfer" }.take(150).map { it.id }.toSet()
+                                    }) { Text("Select visible") }
+                                    TextButton(onClick={selectedInternalIds=emptySet()}) { Text("Clear") }
+                                }
+                                Button(onClick={confirmInternalSelection=true},
+                                    enabled=selectedInternalIds.isNotEmpty(),modifier=Modifier.fillMaxWidth()) {
+                                    Text("Mark ${selectedInternalIds.size} selected as internal")
+                                }
+                            }
+                        }
+                    }
+                    if(confirmInternalSelection) AlertDialog(
+                        onDismissRequest={confirmInternalSelection=false},
+                        title={Text("Mark selected transactions as internal?")},
+                        text={Text("${selectedInternalIds.size} incoming/outgoing transactions will be excluded from income and spending totals. They remain in transaction history and bank balance calculations. You can undo each classification.")},
+                        confirmButton={TextButton(onClick={
+                            val chosen=transactions.filter { it.id in selectedInternalIds && it.category!="Internal Transfer" }
+                            chosen.forEach { tx ->
+                                originalInternalCategories.edit().putString(tx.id.toString(),tx.category).apply()
+                                store.markInternal(tx.id)
+                            }
+                            notice="${chosen.size} transactions marked internal"
+                            revision++
+                            selectedInternalIds=emptySet()
+                            internalSelectionMode=false
+                            confirmInternalSelection=false
+                        }) { Text("Confirm ${selectedInternalIds.size}") }},
+                        dismissButton={TextButton(onClick={confirmInternalSelection=false}) { Text("Cancel") }}
                     if(orderedTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     var lastTransactionDay = ""
                     orderedTransactions.take(150).forEach { t ->
@@ -1128,9 +1175,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             lastTransactionDay=day
                         }
                         val merchant=TransactionPresentation.label(t.description)
-                        Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
+                        Card(onClick={
+                            if(internalSelectionMode) selectedInternalIds=if(t.id in selectedInternalIds) selectedInternalIds-t.id else selectedInternalIds+t.id
+                            else selectedTransactionId=t.id
+                        },modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                if(internalSelectionMode) Checkbox(checked=t.id in selectedInternalIds,onCheckedChange={ checked ->
+                                    selectedInternalIds=if(checked) selectedInternalIds+t.id else selectedInternalIds-t.id
+                                })
                                 Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.secondaryContainer,RoundedCornerShape(14.dp)),contentAlignment=androidx.compose.ui.Alignment.Center) {
                                     val vendorKey=VendorProfiles.key(t.description)
                                     val avatarPath=remember(avatarRevision,vendorKey) { vendorAvatarPrefs.getString(vendorKey,null) }
