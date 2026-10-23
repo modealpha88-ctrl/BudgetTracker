@@ -111,7 +111,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         permissionRefresh++
         notice=if(granted) "App notifications allowed." else "App notifications not allowed. Bank notification reading is a separate permission."
     }
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableStateOf(1) }
     var csvReview by remember { mutableStateOf<TransactionStore.CsvReview?>(null) }
     var csvText by remember { mutableStateOf<String?>(null) }
     var confirmMissingImport by remember { mutableStateOf(false) }
@@ -401,8 +401,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     Scaffold(floatingActionButton = {
         if(tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
     }, bottomBar = {
-        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp) {
-            listOf("Dashboard","Transactions","Import & Access","Budgets").forEachIndexed { i, label ->
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
+            listOf("Home","Transactions","Import","Budgets").forEachIndexed { i, label ->
                 NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","⚙","◉")[i])},label={Text(label)})
             }
         }
