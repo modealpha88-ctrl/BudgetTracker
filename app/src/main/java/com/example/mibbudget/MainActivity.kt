@@ -86,6 +86,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var showTransactionForm by remember { mutableStateOf(false) }
     var filterExpanded by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
+    val balancePrefs=remember { context.getSharedPreferences("balance_anchor",android.content.Context.MODE_PRIVATE) }
+    var dashboardView by remember { mutableStateOf("Cash flow") }
+    var balanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
+    var balanceAmount by remember { mutableStateOf(balancePrefs.getString("mib_amount","") ?: "") }
+    var savedBalanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
+    var savedBalanceMinor by remember { mutableStateOf(balancePrefs.getLong("mib_minor",Long.MIN_VALUE)) }
     var importingHistory by remember { mutableStateOf(false) }
     var showImportSettings by remember { mutableStateOf(false) }
     var historyRequested by remember { mutableStateOf(false) }
@@ -221,6 +227,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             Spacer(Modifier.height(14.dp))
             when(tab) {
                 0 -> {
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected=dashboardView=="Cash flow",onClick={dashboardView="Cash flow"},label={Text("Cash flow")})
+                        FilterChip(selected=dashboardView=="Account balance",onClick={dashboardView="Account balance"},label={Text("Account balance")})
+                    }
+                    if(dashboardView=="Cash flow") {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                         TextButton(onClick={selectedMonth=selectedMonth.minusMonths(1)}) { Text("‹ Previous") }
                         Text(selectedMonth.toString(),modifier=Modifier.padding(top=12.dp))
@@ -236,6 +247,38 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("↓  Expenses   ${Money.format(outgoing)}",color=Color.White)
                         Text("Cash flow, not your bank balance",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
                     } }
+                    } else {
+                        Text("MIB account balance",style=MaterialTheme.typography.titleMedium)
+                        Text("Enter a verified MIB bank balance and its statement date (end of day). Later MIB transactions will be applied to it.",style=MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                        OutlinedTextField(value=balanceAmount,onValueChange={balanceAmount=it},label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                        Button(onClick={
+                            val date=runCatching { java.time.LocalDate.parse(balanceDate) }.getOrNull()
+                            val amount=Money.parseLaari(balanceAmount)
+                            if(date==null || date>java.time.LocalDate.now() || amount==null) notice="Enter a valid date and non-negative MVR balance"
+                            else {
+                                savedBalanceDate=date.toString()
+                                savedBalanceMinor=amount
+                                balancePrefs.edit().putString("mib_date",savedBalanceDate).putString("mib_amount",balanceAmount).putLong("mib_minor",amount).apply()
+                                notice="MIB balance reference saved"
+                            }
+                        }) { Text("Save verified balance") }
+                        if(savedBalanceMinor!=Long.MIN_VALUE && savedBalanceDate.isNotBlank()) {
+                            val later=transactions.filter { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint]=="MIB" && it.category!="Internal Transfer" }
+                            val unlabeled=transactions.count { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint].isNullOrBlank() }
+                            val estimated=savedBalanceMinor+later.sumOf { it.amountLaari }
+                            Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) {
+                                Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    Text("MIB ESTIMATED BALANCE",color=Color.White)
+                                    Text(Money.format(estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                                    Text("Verified at ${savedBalanceDate}: ${Money.format(savedBalanceMinor)}",color=Color.White)
+                                    Text("MIB transactions after reference: ${later.size}",color=Color.White)
+                                    Text("Not a live bank balance. Check against the latest MIB statement.",color=Color.White)
+                                }
+                            }
+                            if(unlabeled>0) Text("Warning: ${unlabeled} unassigned transactions after the reference date were excluded. Label accounts to improve accuracy.")
+                        } else Text("Balance unavailable until you enter a verified statement balance.")
+                    }
                     Spacer(Modifier.height(20.dp))
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
