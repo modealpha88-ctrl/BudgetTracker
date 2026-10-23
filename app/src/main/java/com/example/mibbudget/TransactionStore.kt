@@ -468,8 +468,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val db = writableDatabase
         // Bank SMS must fill gaps in a statement, never silently duplicate a CSV row.
         // Compare amount and posting date; CSV dates may differ by one day from SMS.
-        if(fingerprint.startsWith("mib-",true) || fingerprint.startsWith("sms-",true) ||
-           fingerprint.startsWith("favara-",true)) {
+        if(!fingerprint.startsWith("manual-") && !fingerprint.startsWith("csv-") && transactionTime!=null) {
             val smsDate=transactionTime?.take(10).orEmpty()
             if(smsDate.length==10) {
                 val matchingCsv=all().any { existing ->
