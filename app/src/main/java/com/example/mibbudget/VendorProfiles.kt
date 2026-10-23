@@ -52,13 +52,14 @@ object VendorProfiles {
         context.getSharedPreferences("vendor_verified_profiles",Context.MODE_PRIVATE)
             .edit().putString(key(description),json.toString()).apply()
     }
-    fun get(context: Context, description: String): Profile? = try {
+    fun get(context: Context, description: String): Profile? { return try {
         val json=JSONObject(context.getSharedPreferences("vendor_verified_profiles",Context.MODE_PRIVATE)
             .getString(key(description),null) ?: return null)
         if(json.getString("vendor")!=vendor(description)) return null
         Profile(json.getString("vendor"),json.getString("socialUrl"),json.getString("evidenceUrl"),
             json.getString("platform"),json.getLong("verifiedAt"))
     } catch (_:Exception) { null }
+    }
     fun remove(context: Context, description: String) {
         context.getSharedPreferences("vendor_verified_profiles",Context.MODE_PRIVATE)
             .edit().remove(key(description)).apply()
