@@ -151,6 +151,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var accountChoice by remember { mutableStateOf("MIB") }
     var otherBalanceAmount by remember { mutableStateOf("") }
     var otherBalanceDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
+    var historicalBalanceDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
     var screenshotPending by remember { mutableStateOf(false) }
     var screenshotExtract by remember { mutableStateOf("") }
     var importingHistory by remember { mutableStateOf(false) }
@@ -507,6 +508,31 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     otherBalanceAmount=""
                                     otherBalanceDate=java.time.LocalDate.now().toString()
                                 },label={Text(bank)})
+                            }
+                        }
+                        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Balance on a selected date",style=MaterialTheme.typography.titleMedium)
+                                OutlinedTextField(value=historicalBalanceDate,onValueChange={historicalBalanceDate=it},
+                                    label={Text("Date (YYYY-MM-DD)")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                                val key=accountChoice.lowercase(java.util.Locale.ROOT)
+                                val anchorAmount=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
+                                val anchorDate=balancePrefs.getString("${key}_date","").orEmpty()
+                                val requested=runCatching { java.time.LocalDate.parse(historicalBalanceDate) }.getOrNull()
+                                val anchorDay=runCatching { java.time.LocalDate.parse(anchorDate) }.getOrNull()
+                                if(requested==null) Text("Enter a valid date.",color=MaterialTheme.colorScheme.error)
+                                else if(anchorAmount==Long.MIN_VALUE || anchorDay==null)
+                                    Text("Save a dated ${accountChoice} balance snapshot first.",style=MaterialTheme.typography.bodySmall)
+                                else {
+                                    val movement=transactions.filter { tx ->
+                                        accountLabels[tx.fingerprint]==accountChoice &&
+                                        (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
+                                         else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
+                                    }.sumOf { it.amountLaari }
+                                    val estimate=if(requested.isAfter(anchorDay)) anchorAmount+movement else anchorAmount-movement
+                                    Text(Money.format(estimate),style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                                    Text("Estimated from the ${anchorDate} balance and recorded ${accountChoice} transactions. Missing or duplicate transactions affect accuracy; this is not a bank-confirmed historical balance.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                         Card(Modifier.fillMaxWidth()) {
