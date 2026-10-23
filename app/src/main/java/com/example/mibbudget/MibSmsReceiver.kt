@@ -18,6 +18,8 @@ class MibSmsReceiver : BroadcastReceiver() {
         // Multipart SMS: group parts by originating address, preserving received order.
         val grouped = messages.groupBy { it.originatingAddress.orEmpty() }
         TransactionStore(context).use { store ->
+            // A statement baseline must be imported before SMS can add gap transactions.
+            if (store.all().none { it.fingerprint.startsWith("csv-") }) return
             for ((_, parts) in grouped) {
                 val body = parts.joinToString("") { it.messageBody.orEmpty() }
                 val declined = BankSmsParser.parseDeclined(body)
