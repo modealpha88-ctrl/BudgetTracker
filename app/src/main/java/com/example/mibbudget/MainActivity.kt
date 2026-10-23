@@ -841,30 +841,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text(day,style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
                             lastTransactionDay=day
                         }
-                        val transferDescription=t.description
-                        val isFavaraTransfer=transferDescription.startsWith("Favara Transfer Web:",ignoreCase=true)
-                        val isBankTransfer=transferDescription.startsWith("Internet banking transfer:",ignoreCase=true)
-                        val transferRecipient=if(isBankTransfer) {
-                            val payeeField=transferDescription.substringAfter(" | ", "").substringBefore(" | ").trim()
-                            payeeField.takeIf { candidate ->
-                                candidate.length>=3 && candidate.any { it.isLetter() } &&
-                                !candidate.contains("internet banking",ignoreCase=true) &&
-                                !candidate.contains("transfer:",ignoreCase=true)
-                            }
-                        } else null
-                        val favaraRecipient=if(isFavaraTransfer) {
-                            transferDescription.substringAfter(" | BML - ", "").substringBefore(",").trim()
-                                .takeIf { it.length>=3 && !it.startsWith("MADV",ignoreCase=true) }
-                        } else null
-                        val merchant=if(isFavaraTransfer) {
-                            "Transfer" + (favaraRecipient?.let { " · " + it.take(42) } ?: "")
-                        } else if(isBankTransfer) {
-                            if(transferRecipient!=null) "Transfer · "+transferRecipient.take(42) else "Transfer"
-                        } else {
-                            t.description.substringAfter("@",t.description).substringBefore(" |")
-                                .substringBefore(" VISA").substringBefore(" MASTERCARD")
-                                .trim().ifBlank { t.description }.take(34)
-                        }
+                        val merchant=TransactionPresentation.label(t.description)
                         Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -873,22 +850,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     Text(merchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
-                                    val storedTime=t.timestamp.substringAfter("T",t.timestamp.substringAfter(" ","")).take(5)
-                                    val bankTimePattern=Regex("""[0-9]{2}-[0-9]{2}-[0-9]{4}[ ]+([0-9]{2})-([0-9]{2})-[0-9]{2}""")
-                                    val bankTime=bankTimePattern.find(t.description)?.let { match ->
-                                        val hour=match.groupValues[1].toIntOrNull()
-                                        val minute=match.groupValues[2].toIntOrNull()
-                                        if(hour!=null && hour in 0..23 && minute!=null && minute in 0..59)
-                                            "%02d:%02d".format(java.util.Locale.US,hour,minute)
-                                        else null
-                                    }
-                                    val validStoredTime=storedTime.takeIf { value ->
-                                        value.length==5 && value[2]==':' &&
-                                        value.substring(0,2).toIntOrNull() in 0..23 &&
-                                        value.substring(3,5).toIntOrNull() in 0..59 &&
-                                        value!="00:00"
-                                    }
-                                    val displayTime=bankTime ?: validStoredTime
+                                    val displayTime=TransactionPresentation.time(t.description,t.timestamp)
                                     Text(displayTime ?: "Time not recorded",
                                         style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                                 }
