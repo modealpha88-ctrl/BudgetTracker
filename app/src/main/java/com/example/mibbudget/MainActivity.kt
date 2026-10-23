@@ -294,9 +294,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             }
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).background(if(tab==1) Color(0xFF191B38) else MaterialTheme.colorScheme.background).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=if(tab==1) Color(0xFFB8BDD4) else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/MIBBudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
             if (tab == 0) {
@@ -540,7 +540,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 1 -> {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Transactions",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,color=Color.White)
+                        Text("Transactions",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.onBackground)
                         Box {
                             OutlinedButton(onClick={filterExpanded=true}) { Text("Filter: $transactionFilter") }
                             DropdownMenu(expanded=filterExpanded,onDismissRequest={filterExpanded=false}) {
@@ -550,8 +550,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    Text("${transactions.size} saved MVR transactions",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(value=searchText,onValueChange={searchText=it},label={Text("Search transactions")},modifier=Modifier.fillMaxWidth(),singleLine=true,colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Color.White,unfocusedLabelColor=Color.LightGray))
+                    Text("${transactions.size} saved MVR transactions",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(value=searchText,onValueChange={searchText=it},label={Text("Search transactions")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         Box {
                             OutlinedButton(onClick={accountExpanded=true}) { Text(accountFilter) }
@@ -586,16 +586,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         )
                     }
                     csvReview?.let { review ->
-                        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF33395B))) {
+                        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Text("Statement cross-check",color=Color.White,style=MaterialTheme.typography.titleMedium)
+                                Text("Statement cross-check",color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.titleMedium)
                                 Text("Matched: ${review.confirmed}  •  Possible: ${review.possible}  •  Missing: ${review.missing}  •  Ignored: ${review.ignored}",color=Color.White)
-                                Text("Read-only preview. No CSV transactions have been added. Possible matches need manual review.",color=Color(0xFFE3E7FF))
+                                Text("Read-only preview. No CSV transactions have been added. Possible matches need manual review.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 review.matches.filter { it.status!="MATCHED" }.take(100).forEach { item ->
                                     HorizontalDivider()
                                     Text("${item.status}  •  ${item.date}  •  ${Money.format(item.amountLaari)}",color=if(item.status=="POSSIBLE") Color(0xFFFFD166) else Color(0xFF8FE4C0))
                                     Text(item.description,color=Color.White)
-                                    Text(item.reason,color=Color(0xFFC5C9E2),style=MaterialTheme.typography.bodySmall)
+                                    Text(item.reason,color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
                                 }
                                 if(review.matches.count { it.status!="MATCHED" }>100) Text("Showing first 100 unmatched/possible records",color=Color.White)
                                 if(review.missing>0 && csvText!=null) {
@@ -619,7 +619,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     if(filteredTransactions.isEmpty()) Text("No transactions match this filter.",color=Color.White)
                     filteredTransactions.forEach { t ->
                         Card(Modifier.fillMaxWidth().padding(vertical=4.dp),shape=RoundedCornerShape(18.dp),
-                            colors=CardDefaults.cardColors(containerColor=Color(0xFF2A2D4C))) {
+                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
                             Row(Modifier.fillMaxWidth().padding(18.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),
                                 verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Text("▤",color=Color(0xFF4EA1FF),style=MaterialTheme.typography.headlineMedium)
@@ -627,8 +627,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),
                                         color=if(t.amountLaari>0) Color(0xFF4ADEA5) else Color(0xFFFF6B77),
                                         style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                                    Text(t.description,color=Color.White,style=MaterialTheme.typography.bodyMedium)
-                                    Text("${t.category}  •  ${t.timestamp.take(10)}",color=Color(0xFFADB2CC),style=MaterialTheme.typography.bodySmall)
+                                    Text(t.description,color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.bodyMedium)
+                                    Text("${t.category}  •  ${t.timestamp.take(10)}",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
                                     Row {
                                         TextButton(onClick={store.setAccount(t.fingerprint,if((accountLabels[t.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB");revision++}) { Text(accountLabels[t.fingerprint] ?: "Set MIB/BML") }
                                         TextButton(onClick={editingId=t.id;editingAmount=Money.format(kotlin.math.abs(t.amountLaari)).removePrefix("MVR ").replace(",","");editingDescription=t.description;editingCategory=t.category}) { Text("Edit") }
@@ -665,7 +665,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text(if(showTransactionForm) "Hide add transaction" else "+ Add transaction")
                     }
                     if(showTransactionForm) {
-                        Card(colors=CardDefaults.cardColors(containerColor=Color.White),modifier=Modifier.fillMaxWidth()) {
+                        Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer),modifier=Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text("Add a transaction",style=MaterialTheme.typography.titleMedium)
                         OutlinedTextField(value=amount,onValueChange={amount=it},label={Text("Amount (MVR)")},modifier=Modifier.fillMaxWidth())
