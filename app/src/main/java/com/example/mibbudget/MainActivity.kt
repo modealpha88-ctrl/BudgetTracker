@@ -204,7 +204,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     Text("Transaction history", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
                     Text("${transactions.size} saved transactions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     if (transactions.isEmpty()) Text("No saved MVR transactions yet.")
-                    Column { transactions.forEach { t -> { t ->
+                    Column { transactions.forEach { t ->
                         ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),fontWeight=FontWeight.SemiBold,color=if(t.amountLaari>0) Color(0xFF0D9488) else MaterialTheme.colorScheme.onSurface)})
                         if (t.category == "Transfers" || t.category == "Incoming Transfer") TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
                         HorizontalDivider()
