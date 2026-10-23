@@ -22,7 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-private val categories = listOf("Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Other","Income")
+private val categories = listOf("Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Internal Transfer","Other","Income")
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: TransactionStore
@@ -158,8 +158,9 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                         Text(selectedMonth.toString(),modifier=Modifier.padding(top=12.dp))
                         TextButton(onClick={selectedMonth=selectedMonth.plusMonths(1)},enabled=selectedMonth<YearMonth.now()) { Text("Next ›") }
                     }
-                    val incoming = monthlyTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
-                    val outgoing = monthlyTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
+                    val cashflowTransactions = monthlyTransactions.filter { it.category != "Internal Transfer" }
+                    val incoming = cashflowTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
+                    val outgoing = cashflowTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
                     Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
                         Text("Monthly net cash flow (not bank balance)")
                         Text(Money.format(incoming-outgoing),style=MaterialTheme.typography.headlineMedium)
@@ -168,7 +169,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     } }
                     Spacer(Modifier.height(20.dp))
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
-                    val grouped = monthlyTransactions.filter { it.amountLaari<0 }.groupBy { it.category }
+                    val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
                         val spent=txs.sumOf{-it.amountLaari}
                         Text("$cat — ${Money.format(spent)}",Modifier.padding(top=10.dp))
@@ -203,6 +204,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     }
                     LazyColumn { items(transactions,key={it.id}) { t ->
                         ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "−")+Money.format(t.amountLaari))})
+                        if (t.category == "Transfers" || t.category == "Incoming Transfer") TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
                         HorizontalDivider()
                     } }
                 }
