@@ -9,21 +9,26 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+data class ForeignTx(val id: Long, val amountMinor: Long, val currency: String, val merchant: String, val timestamp: String)
+
 data class PendingBml(val id: Long, val amountLaari: Long, val timestamp: String, val fingerprint: String)
 
 data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String, val merchant: String, val timestamp: String, val reason: String)
 
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 4) {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 5) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE budgets(category TEXT PRIMARY KEY, limit_laari INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
+        db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+    }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 3) db.execSQL("CREATE TABLE IF NOT EXISTS declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+        if (oldVersion < 5) db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
     fun queueBml(amount: Long, timestamp: String, fingerprint: String): Boolean {
@@ -53,6 +58,20 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             db.setTransactionSuccessful()
             return removed
         } finally { db.endTransaction() }
+    }
+    fun addForeign(tx: BankSmsParser.ForeignPurchase): Boolean {
+        val v = android.content.ContentValues().apply {
+            put("amount_minor", tx.amountMinor); put("currency", tx.currency)
+            put("merchant", tx.merchant); put("occurred_at", tx.transactionTime); put("fingerprint", tx.fingerprint)
+        }
+        return writableDatabase.insertWithOnConflict("foreign_transactions", null, v, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+    }
+    fun foreign(): List<ForeignTx> {
+        val result = mutableListOf<ForeignTx>()
+        readableDatabase.rawQuery("SELECT id,amount_minor,currency,merchant,occurred_at FROM foreign_transactions ORDER BY occurred_at DESC", null).use { c ->
+            while (c.moveToNext()) result += ForeignTx(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4))
+        }
+        return result
     }
     fun addDeclined(candidate: BankSmsParser.Declined): Boolean {
         val values = android.content.ContentValues().apply {
@@ -126,6 +145,19 @@ object BankSmsParser {
         if (amount <= 0 || merchant.length !in 2..100) return null
         val fingerprint = MessageDigest.getInstance("SHA-256").digest(text.lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
         return Declined(amount, m.groupValues[2].uppercase(Locale.ROOT), merchant, whenAt, m.groupValues[5].trim(), fingerprint)
+    }
+    data class ForeignPurchase(val amountMinor: Long, val currency: String, val merchant: String, val transactionTime: String, val fingerprint: String)
+    private val bmlCard = Regex("""(?is)^Transaction\s+from\s+\d{4}\s+on\s+(\d{2}/\d{2}/\d{2}\s+at\s+\d{2}:\d{2}:\d{2})\s+for\s+([A-Z]{3})\s*([\d,]+\.\d{2})\s+at\s+(.+?)\s+was\s+processed\.\s+Reference\s+No:\s*[\w-]+,\s*Approval\s+Code:\s*[\w-]+\.\s*$""")
+    fun parseBmlCard(raw: String): ForeignPurchase? {
+        val text = raw.trim()
+        if (text.length !in 30..1000 || sensitive.containsMatchIn(text)) return null
+        val m = bmlCard.matchEntire(text) ?: return null
+        val amount = Money.parseLaari(m.groupValues[3]) ?: return null
+        val whenAt = date(m.groupValues[1], "dd/MM/uu 'at' HH:mm:ss") ?: return null
+        val merchant = m.groupValues[4].trim().replace(Regex("""\s+"""), " ")
+        if (amount <= 0 || merchant.length !in 2..100) return null
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(text.lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        return ForeignPurchase(amount, m.groupValues[2].uppercase(Locale.ROOT), merchant, whenAt, fingerprint)
     }
     private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
     private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*[\w-]+\s*$""")
