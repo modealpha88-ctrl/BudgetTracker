@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.telephony" android:required="false"/>
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
     <application android:allowBackup="false" android:label="MIB Budget Tracker" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">
+        <receiver android:name=".MibSmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED"/></intent-filter>
+        </receiver>
         <service android:name=".BmlNotificationListener" android:label="BML transaction notifications" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService"/></intent-filter>
         </service>
