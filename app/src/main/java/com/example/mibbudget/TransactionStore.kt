@@ -73,6 +73,23 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     }
 
 
+    data class StatementBalance(val amountLaari: Long, val date: String, val reference: String)
+
+    /** The final non-opening-balance row is the statement's closing balance. */
+    fun statementBalance(text: String): StatementBalance? {
+        require(text.length<=5_000_000) { "CSV too large" }
+        val rows=parseCsvRecords(text.removePrefix("\uFEFF"))
+        val expected=listOf("POSTED DATE","VALUE DATE","TRANSACTION TYPE","REFERENCE","DESCRIPTION","AMOUNT","RUNNING BALANCE")
+        if(rows.firstOrNull()?.map { it.trim().uppercase(Locale.ROOT) }!=expected) return null
+        require(rows.size<=10001) { "Too many rows" }
+        val entries=rows.drop(1).filter { it.size==7 && !it[2].trim().startsWith("**B/F",true) }
+        val last=entries.lastOrNull() ?: return null
+        val raw=last[6].trim().replace(",","")
+        val amount=Money.parseLaari(raw.removePrefix("-").removePrefix("+")) ?: return null
+        val date=runCatching { java.time.LocalDate.parse(last[0].trim().take(10)).toString() }.getOrNull() ?: return null
+        return StatementBalance(if(raw.startsWith("-")) -amount else amount,date,last[3].trim())
+    }
+
     data class CsvMatch(val line: Int, val amountLaari: Long, val date: String, val description: String,
                         val status: String, val reason: String)
     data class CsvReview(val matches: List<CsvMatch>, val confirmed: Int, val possible: Int, val missing: Int, val ignored: Int)
