@@ -492,6 +492,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("Expenses: ${Money.format(monthOut)}")
                             LinearProgressIndicator(progress={if(monthIncome>0) (monthOut.toFloat()/monthIncome).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
                             Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
+                            HorizontalDivider()
+                            Text("Top spending categories",style=MaterialTheme.typography.titleSmall)
+                            val topCategories=monthExpenses.groupBy { it.category }.mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
+                                .toList().sortedByDescending { it.second }.take(5)
+                            if(topCategories.isEmpty()) Text("No recorded expenses for this month.",style=MaterialTheme.typography.bodySmall)
+                            topCategories.forEach { (category,total) ->
+                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                    Text(category,style=MaterialTheme.typography.bodySmall)
+                                    Text(Money.format(total),style=MaterialTheme.typography.bodySmall)
+                                }
+                                LinearProgressIndicator(progress={if(monthOut>0L) (total.toFloat()/monthOut).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
+                            }
+                            val net=monthIncome-monthOut
+                            Text("Net cash flow: ${Money.format(net)}",style=MaterialTheme.typography.titleSmall)
+                            Text("Based on recorded transactions; transfers and incomplete imports can affect totals.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         } }
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -590,7 +605,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                          else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
                                     }.sumOf { it.amountLaari }
                                     val estimate=if(requested.isAfter(anchorDay)) anchorAmount+movement else anchorAmount-movement
+                                    val affected=transactions.count { tx ->
+                                        accountLabels[tx.fingerprint]==accountChoice &&
+                                        (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
+                                         else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
+                                    }
+                                    val unassigned=transactions.count { tx ->
+                                        (accountLabels[tx.fingerprint] ?: "Unassigned")=="Unassigned" &&
+                                        (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
+                                         else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
+                                    }
                                     Text(Money.format(estimate),style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                                    Text("${affected} assigned transactions included · ${unassigned} unassigned records excluded",style=MaterialTheme.typography.bodySmall)
+                                    if(unassigned>0) Text("Some transactions have no account assignment. The balance may be incomplete.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                                    if(requested.isAfter(java.time.LocalDate.now())) Text("Future dates are projections, not verified balances.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                                     Text("Estimated from the ${anchorDate} balance and recorded ${accountChoice} transactions. Missing or duplicate transactions affect accuracy; this is not a bank-confirmed historical balance.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
