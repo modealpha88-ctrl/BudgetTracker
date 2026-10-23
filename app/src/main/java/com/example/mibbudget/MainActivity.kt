@@ -806,7 +806,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     Text(merchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
-                                    Text("${t.category} · ${accountLabels[t.fingerprint] ?: "Unassigned"} · ${t.timestamp.takeLast(8)}",
+                                    val timePart=t.timestamp.substringAfter(" ",t.timestamp.substringAfter("T","")).take(5)
+                                    Text(if(timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else "Time unavailable",
                                         style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                                 }
                                 Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),
