@@ -110,7 +110,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text("Auto-import recognized bank SMS")
-                        Text("Off by default. Requires RECEIVE_SMS permission. MIB formats supported; BML SMS requires a verified sample.", style=MaterialTheme.typography.bodySmall)
+                        Text("Requires RECEIVE_SMS permission. Supported MIB and BML transaction formats import automatically after enabling.", style=MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked=monitoring, onCheckedChange={ enabled ->
                         if (!enabled) {
