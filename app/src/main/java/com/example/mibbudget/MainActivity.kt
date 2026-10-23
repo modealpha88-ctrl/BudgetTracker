@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = TransactionStore(this)
-        darkTheme = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark",false)
+        darkTheme = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark",true)
         sharedText = intent?.takeIf { it.action == Intent.ACTION_SEND && it.type == "text/plain" }?.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
         setContent { MaterialTheme(colorScheme = (if(darkTheme) darkColorScheme(primary=Color(0xFF8FB5FF),secondary=Color(0xFF5EEAD4)) else lightColorScheme(primary = Color(0xFF2563EB), secondary = Color(0xFF0D9488), background = Color(0xFFF6F8FC), surface = Color.White, surfaceVariant = Color(0xFFEAF0FA))), shapes = Shapes(medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp))) { BudgetApp(store, sharedText, darkTheme, { darkTheme = it; getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark",it).apply() }) { sharedText = "" } } }
     }
