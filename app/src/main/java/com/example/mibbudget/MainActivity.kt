@@ -120,6 +120,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var savedBalanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var savedBalanceMinor by remember { mutableStateOf(balancePrefs.getLong("mib_minor",Long.MIN_VALUE)) }
     var balanceSource by remember { mutableStateOf(balancePrefs.getString("mib_source","Manual") ?: "Manual") }
+    var accountChoice by remember { mutableStateOf("MIB") }
+    var otherBalanceAmount by remember { mutableStateOf("") }
+    var otherBalanceDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
     var screenshotPending by remember { mutableStateOf(false) }
     var screenshotExtract by remember { mutableStateOf("") }
     var importingHistory by remember { mutableStateOf(false) }
@@ -382,6 +385,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("Cash flow, not your bank balance",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
                     } }
                     } else {
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            listOf("MIB","BML","Cash").forEach { bank ->
+                                FilterChip(selected=accountChoice==bank,onClick={
+                                    accountChoice=bank
+                                    otherBalanceAmount=""
+                                    otherBalanceDate=java.time.LocalDate.now().toString()
+                                },label={Text(bank)})
+                            }
+                        }
+                        if(accountChoice=="MIB") {
                         Text("MIB account balance",style=MaterialTheme.typography.titleMedium)
                         Text("Upload an MIB CSV in Transactions to automatically use its closing running balance. You can also enter a manual balance below.",style=MaterialTheme.typography.bodySmall)
                         OutlinedButton(onClick={screenshotLauncher.launch("image/*")}) { Text("Use MIB bank screenshot") }
@@ -433,6 +446,31 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             if(later.size>50) Text("Showing latest 50 of ${later.size} transactions")
                             if(unlabeled>0) Text("Warning: ${unlabeled} unassigned transactions after the reference date were excluded. Label accounts to improve accuracy.")
                         } else Text("Balance unavailable until you enter a verified statement balance.")
+                        } else {
+                            val key=accountChoice.lowercase(java.util.Locale.ROOT)
+                            val storedMinor=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
+                            val storedDate=balancePrefs.getString("${key}_date","").orEmpty()
+                            Text("${accountChoice} balance",style=MaterialTheme.typography.titleMedium)
+                            Text("Manual verified balance for this account. This is a snapshot, not live banking data.")
+                            OutlinedTextField(value=otherBalanceDate,onValueChange={otherBalanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
+                            OutlinedTextField(value=otherBalanceAmount,onValueChange={otherBalanceAmount=it},label={Text("Balance (MVR)")},modifier=Modifier.fillMaxWidth())
+                            Button(onClick={
+                                val date=runCatching { java.time.LocalDate.parse(otherBalanceDate) }.getOrNull()
+                                val value=Money.parseLaari(otherBalanceAmount)
+                                if(date==null || date>java.time.LocalDate.now() || value==null) notice="Enter a valid date and amount"
+                                else {
+                                    balancePrefs.edit().putLong("${key}_minor",value).putString("${key}_date",date.toString()).apply()
+                                    notice="${accountChoice} verified balance saved"
+                                }
+                            }) { Text("Save ${accountChoice} balance") }
+                            if(storedMinor!=Long.MIN_VALUE) {
+                                Text("Verified ${accountChoice} balance: ${Money.format(storedMinor)}",style=MaterialTheme.typography.headlineSmall)
+                                Text("Reference date: $storedDate")
+                                val related=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.take(10)>storedDate }
+                                Text("Recorded transactions after reference: ${related.size}")
+                                Text("Shown balance is the verified snapshot; later transactions are not silently added.")
+                            }
+                        }
                     }
                     Spacer(Modifier.height(20.dp))
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
