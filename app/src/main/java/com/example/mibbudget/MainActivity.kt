@@ -134,6 +134,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var internalSelectionMode by remember { mutableStateOf(false) }
     var owedSelectionMode by remember { mutableStateOf(false) }
     var owedSelectedIds by remember { mutableStateOf(setOf<Long>()) }
+    var debtPersonName by remember { mutableStateOf("") }
+    var debtRecordsRevision by remember { mutableIntStateOf(0) }
+    val debtPrefs=remember { context.getSharedPreferences("debt_tracker",android.content.Context.MODE_PRIVATE) }
+    var debtDirection by remember { mutableStateOf("Owed to me") }
+    var transactionMinAmount by remember { mutableStateOf("") }
+    var transactionMaxAmount by remember { mutableStateOf("") }
+
 
     var selectedInternalIds by remember { mutableStateOf(setOf<Long>()) }
     var confirmInternalSelection by remember { mutableStateOf(false) }
@@ -1108,8 +1115,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    val minFilterLaari=Money.parseLaari(transactionMinAmount)
+                    val maxFilterLaari=Money.parseLaari(transactionMaxAmount)
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value=transactionMinAmount,onValueChange={transactionMinAmount=it},
+                            label={Text("Min MVR")},singleLine=true,modifier=Modifier.weight(1f))
+                        OutlinedTextField(value=transactionMaxAmount,onValueChange={transactionMaxAmount=it},
+                            label={Text("Max MVR")},singleLine=true,modifier=Modifier.weight(1f))
+                    }
                     val filteredTransactions = transactions.filter { t ->
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
+                        (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
+                        (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
                         (categoryFilter=="All categories" || t.category==categoryFilter || (categoryFilter=="Fast Food" && t.description.contains("fast food",true))) &&
                         (counterpartyFilter=="All types" || (counterpartyPrefs.getString(t.fingerprint,"Unclassified") ?: "Unclassified")==counterpartyFilter) &&
@@ -1146,9 +1163,33 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 val selectedOwedTransactions=transactions.filter { it.id in owedSelectedIds }
                                 val lent=selectedOwedTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
                                 val repaid=selectedOwedTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
+                                OutlinedTextField(value=debtPersonName,onValueChange={debtPersonName=it},
+                                    label={Text("Person / debt name")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    listOf("Owed to me","I owe").forEach { direction ->
+                                        FilterChip(selected=debtDirection==direction,onClick={debtDirection=direction},label={Text(direction)})
+                                    }
+                                }
                                 Text("Selected: ${owedSelectedIds.size} transactions",style=MaterialTheme.typography.bodyMedium)
                                 Text("Money sent: ${Money.format(lent)} · Money received: ${Money.format(repaid)}",
                                     style=MaterialTheme.typography.bodySmall)
+                                val debtBalance=if(debtDirection=="Owed to me") lent-repaid else repaid-lent
+                                Text("Outstanding for $debtDirection: ${Money.format(debtBalance)}",
+                                    style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                                Button(enabled=debtPersonName.isNotBlank() && owedSelectedIds.isNotEmpty(),
+                                    onClick={
+                                        val key="debt_${java.util.UUID.randomUUID()}"
+                                        val record=org.json.JSONObject()
+                                            .put("name",debtPersonName.trim())
+                                            .put("direction",debtDirection)
+                                            .put("ids",org.json.JSONArray(owedSelectedIds.toList()))
+                                        debtPrefs.edit().putString(key,record.toString()).apply()
+                                        debtRecordsRevision++
+                                        notice="Debt group saved"
+                                    },modifier=Modifier.fillMaxWidth()) { Text("Save debt group") }
+                                Text("Raw outgoing minus incoming: ${Money.format(lent-repaid)}",
+                                    style=MaterialTheme.typography.bodySmall)
+                                // Previous calculator display retained for comparison.
                                 Text("Estimated outstanding: ${Money.format(lent-repaid)}",
                                     style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,
                                     color=if(lent-repaid<0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
@@ -1160,6 +1201,42 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }) { Text("Add visible") }
                                     TextButton(onClick={owedSelectedIds=emptySet()}) { Text("Clear all") }
                                 }
+                            }
+                        }
+                    }
+                    val savedDebtGroups=remember(debtRecordsRevision) {
+                        debtPrefs.all.filterKeys { it.startsWith("debt_") }.mapNotNull { (key,value) ->
+                            try { key to org.json.JSONObject(value as String) } catch (_: Exception) { null }
+                        }
+                    }
+                    if(savedDebtGroups.isNotEmpty()) Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("Saved debts",style=MaterialTheme.typography.titleMedium)
+                            savedDebtGroups.forEach { (key,record) ->
+                                val ids=record.optJSONArray("ids")
+                                val chosenIds=(0 until (ids?.length() ?: 0)).map { ids!!.optLong(it) }.toSet()
+                                val rows=transactions.filter { it.id in chosenIds }
+                                val sent=rows.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
+                                val received=rows.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
+                                val direction=record.optString("direction","Owed to me")
+                                val balance=if(direction=="I owe") received-sent else sent-received
+                                Text("${record.optString("name")} · $direction",fontWeight=FontWeight.SemiBold)
+                                Text("${Money.format(balance)} outstanding · ${rows.size} transactions",
+                                    style=MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick={
+                                        owedSelectedIds=chosenIds
+                                        debtPersonName=record.optString("name")
+                                        debtDirection=direction
+                                        owedSelectionMode=true
+                                        internalSelectionMode=false
+                                    }) { Text("Load") }
+                                    TextButton(onClick={
+                                        debtPrefs.edit().remove(key).apply()
+                                        debtRecordsRevision++
+                                    }) { Text("Remove group") }
+                                }
+                                HorizontalDivider()
                             }
                         }
                     }
