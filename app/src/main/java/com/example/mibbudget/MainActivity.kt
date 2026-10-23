@@ -66,7 +66,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var unlocked by remember { mutableStateOf(!lockEnabled) }
     var lockError by remember { mutableStateOf("") }
     val authenticate = {
-        if(android.os.Build.VERSION.SDK_INT>=28) {
+        if(android.os.Build.VERSION.SDK_INT>=29) {
             val manager=context.getSystemService(android.content.Context.BIOMETRIC_SERVICE) as android.hardware.biometrics.BiometricManager
             if(manager.canAuthenticate()==android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS) {
                 android.hardware.biometrics.BiometricPrompt.Builder(context)
@@ -82,7 +82,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         override fun onAuthenticationError(errorCode:Int,errString:CharSequence) { lockError=errString.toString() }
                     })
             } else lockError="Set up fingerprint or face unlock in Android Settings first."
-        } else lockError="Biometric lock requires Android 9 or later."
+        } else lockError="Biometric lock requires Android 10 or later."
     }
 
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
