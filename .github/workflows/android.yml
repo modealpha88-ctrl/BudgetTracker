@@ -19,7 +19,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu runner includes the Android SDK.
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms/android-35" || echo "Android 35 platform will be downloaded by Gradle if required"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
