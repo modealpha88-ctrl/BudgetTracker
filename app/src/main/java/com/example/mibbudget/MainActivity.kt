@@ -61,6 +61,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     var revision by remember { mutableIntStateOf(0) }
     val transactions = remember(revision) { store.all() }
     val declinedTransactions = remember(revision) { store.declined() }
+    val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
     LaunchedEffect(historyRequested) {
@@ -104,7 +105,25 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             Text("Offline • MVR • Prototype",style=MaterialTheme.typography.labelMedium)
             if(notice.isNotBlank()) Text(notice,color=MaterialTheme.colorScheme.primary)
             if (tab == 0) {
-                Text("Privacy mode: no SMS inbox access. Share or paste transaction messages using Import SMS.", style=MaterialTheme.typography.bodySmall)
+                Text("Privacy mode: no SMS inbox access. Share or paste MIB messages using Import SMS.", style=MaterialTheme.typography.bodySmall)
+                Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
+                Text("Notification access is broad. This app filters only BML Favara received messages, storing amount and time for your review.", style=MaterialTheme.typography.bodySmall)
+                Button(onClick={ context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) }) { Text("Manage notification access") }
+                Text("BML credits awaiting review: ${pendingBml.size}")
+                pendingBml.forEach { tx ->
+                    Card(Modifier.fillMaxWidth().padding(vertical=4.dp)) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("BML received: +${Money.format(tx.amountLaari)}")
+                            Text(tx.timestamp.take(16), style=MaterialTheme.typography.bodySmall)
+                            Text("For your own MIB-to-BML transfer, choose Own transfer to avoid double-counting.", style=MaterialTheme.typography.bodySmall)
+                            Row {
+                                TextButton(onClick={store.resolveBml(tx,true);revision++}) { Text("Add credit") }
+                                TextButton(onClick={store.resolveBml(tx,true,true);revision++}) { Text("Own transfer") }
+                                TextButton(onClick={store.resolveBml(tx,false);revision++}) { Text("Discard") }
+                            }
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(14.dp))
             when(tab) {
