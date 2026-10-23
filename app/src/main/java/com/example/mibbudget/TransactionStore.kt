@@ -41,6 +41,45 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         if (oldVersion < 5) db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
+
+    // Strict template CSV: date,amount,description,category,account
+    // Signed decimal amounts; date ISO yyyy-MM-dd. Quoted CSV is deliberately rejected.
+    fun importCsv(text: String): Pair<Int,Int> {
+        require(text.length <= 5_000_000) { "CSV too large" }
+        val lines=text.trim().lines()
+        require(lines.isNotEmpty() && lines.first().trim().lowercase(Locale.ROOT)=="date,amount,description,category,account") { "Expected date,amount,description,category,account header" }
+        require(lines.size<=10001) { "Too many rows" }
+        data class Row(val amount:Long,val category:String,val description:String,val date:String,val account:String,val fingerprint:String)
+        val parsed=lines.drop(1).filter { it.isNotBlank() }.mapIndexed { index,line ->
+            require(!line.contains('"')) { "Quoted CSV is not supported; use the provided simple template" }
+            val cols=line.split(",")
+            require(cols.size==5) { "Invalid row ${index+2}" }
+            val date=java.time.LocalDate.parse(cols[0].trim()).toString()
+            val raw=cols[1].trim()
+            val negative=raw.startsWith("-")
+            val amount=Money.parseLaari(raw.removePrefix("-")) ?: throw IllegalArgumentException("Invalid amount on row ${index+2}")
+            require(amount>0 && cols[2].isNotBlank() && cols[2].length<=120 && cols[3].length<=40 && cols[4].length<=40)
+            val fingerprint="csv-"+MessageDigest.getInstance("SHA-256").digest(line.trim().toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+            Row(if(negative) -amount else amount,cols[3].trim().ifBlank { "Other" },cols[2].trim(),date,cols[4].trim(),fingerprint)
+        }
+        val db=writableDatabase
+        var imported=0
+        db.beginTransaction()
+        try {
+            parsed.forEach { row ->
+                val v=ContentValues().apply {put("amount_laari",row.amount);put("category",row.category);put("description",row.description);put("created_at",row.date+"T12:00:00");put("fingerprint",row.fingerprint)}
+                if(db.insertWithOnConflict("transactions",null,v,SQLiteDatabase.CONFLICT_IGNORE)!=-1L) {
+                    imported++
+                    if(row.account.isNotBlank()) {
+                        val a=ContentValues().apply {put("fingerprint",row.fingerprint);put("label",row.account)}
+                        db.insertWithOnConflict("account_labels",null,a,SQLiteDatabase.CONFLICT_REPLACE)
+                    }
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return imported to (parsed.size-imported)
+    }
     fun updateTransaction(id: Long, amount: Long, category: String, description: String): Boolean {
         if (amount == 0L || amount == Long.MIN_VALUE || description.isBlank()) return false
         val v = ContentValues().apply {
