@@ -2,6 +2,7 @@
     <uses-feature android:name="android.hardware.telephony" android:required="false"/>
     <uses-permission android:name="android.permission.RECEIVE_SMS"/>
     <uses-permission android:name="android.permission.READ_SMS"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application android:allowBackup="false" android:label="MIB Budget Tracker" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">
         <receiver android:name=".MibSmsReceiver" android:exported="true">
             <intent-filter><action android:name="android.provider.Telephony.SMS_RECEIVED"/></intent-filter>
