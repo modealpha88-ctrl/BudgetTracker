@@ -124,6 +124,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     val balancePrefs=remember { context.getSharedPreferences("balance_anchor",android.content.Context.MODE_PRIVATE) }
     var dashboardView by remember { mutableStateOf("Cash flow") }
+    val dashboardPrefs=remember { context.getSharedPreferences("dashboard_layout",android.content.Context.MODE_PRIVATE) }
+    var showAccountCards by remember { mutableStateOf(dashboardPrefs.getBoolean("accounts",true)) }
+    var showSpendingInsights by remember { mutableStateOf(dashboardPrefs.getBoolean("insights",true)) }
+    var showDashboardOptions by remember { mutableStateOf(false) }
     var balanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var balanceAmount by remember { mutableStateOf(balancePrefs.getString("mib_amount","") ?: "") }
     var savedBalanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
@@ -296,10 +300,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         }
         return
     }
-    Scaffold(bottomBar = {
+    Scaffold(floatingActionButton = {
+        if(tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
+    }, bottomBar = {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp) {
-            listOf("Dashboard","Transactions","Import SMS","Budgets").forEachIndexed { i, label ->
-                NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","✉","◉")[i])},label={Text(label)})
+            listOf("Dashboard","Transactions","Import & Access","Budgets").forEachIndexed { i, label ->
+                NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","⚙","◉")[i])},label={Text(label)})
             }
         }
     }) { padding ->
@@ -308,7 +314,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/MIBBudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
-            if (tab == 0) {
+            if (tab == 2) {
                 OutlinedButton(onClick={showImportSettings = !showImportSettings}, modifier=Modifier.fillMaxWidth()) { Text(if(showImportSettings) "Hide bank import settings  ↑" else "Bank SMS & notification settings  ↓") }
                 if (showImportSettings) {
                 Text("Permissions & Android restricted settings",style=MaterialTheme.typography.titleMedium)
@@ -412,6 +418,50 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             Spacer(Modifier.height(14.dp))
             when(tab) {
                 0 -> {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Overview",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                        TextButton(onClick={showDashboardOptions=!showDashboardOptions}) { Text("Customize") }
+                    }
+                    if(showDashboardOptions) {
+                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) {
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Account cards",Modifier.weight(1f))
+                                Switch(checked=showAccountCards,onCheckedChange={showAccountCards=it;dashboardPrefs.edit().putBoolean("accounts",it).apply()})
+                            }
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Spending insights",Modifier.weight(1f))
+                                Switch(checked=showSpendingInsights,onCheckedChange={showSpendingInsights=it;dashboardPrefs.edit().putBoolean("insights",it).apply()})
+                            }
+                        } }
+                    }
+                    if(showAccountCards) {
+                        Text("Account snapshots",style=MaterialTheme.typography.titleMedium)
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            listOf("MIB","BML","Cash").forEach { bank ->
+                                val key=bank.lowercase(java.util.Locale.ROOT)
+                                val minor=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
+                                Card(onClick={dashboardView="Account balance";accountChoice=bank},modifier=Modifier.weight(1f)) {
+                                    Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                                        Text(bank,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
+                                        Text(if(minor==Long.MIN_VALUE) "Not set" else Money.format(minor),style=MaterialTheme.typography.bodySmall,maxLines=2)
+                                        Text("Snapshot",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if(showSpendingInsights) {
+                        val monthExpenses=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
+                        val monthIncome=monthlyTransactions.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }
+                        val monthOut=monthExpenses.sumOf { -it.amountLaari }
+                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("Monthly insights",style=MaterialTheme.typography.titleMedium)
+                            Text("Income: ${Money.format(monthIncome)}")
+                            Text("Expenses: ${Money.format(monthOut)}")
+                            LinearProgressIndicator(progress={if(monthIncome>0) (monthOut.toFloat()/monthIncome).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
+                            Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
+                        } }
+                    }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected=dashboardView=="Cash flow",onClick={dashboardView="Cash flow"},label={Text("Cash flow")})
                         FilterChip(selected=dashboardView=="Account balance",onClick={dashboardView="Account balance"},label={Text("Account balance")})
@@ -675,13 +725,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else -> true
                         }
                     }
-                    if(filteredTransactions.isEmpty()) Text("No transactions match this filter.",color=Color.White)
+                    if(filteredTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    var lastTransactionDay = ""
                     filteredTransactions.take(150).forEach { t ->
+                        val day=t.timestamp.take(10)
+                        if(day!=lastTransactionDay) {
+                            Text(day,style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
+                            lastTransactionDay=day
+                        }
                         Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=3.dp),shape=RoundedCornerShape(18.dp)) {
                             ListItem(
                                 headlineContent={Text(t.description.take(75),maxLines=2)},
                                 supportingContent={Text("${t.category} • ${t.timestamp.take(10)} • ${accountLabels[t.fingerprint] ?: "Unassigned"}")},
-                                leadingContent={Text(if(t.amountLaari>=0) "↓" else "↑",color=MaterialTheme.colorScheme.primary)},
+                                leadingContent={Text(when(t.category) { "Food","Groceries" -> "◉"; "Transport" -> "▣"; "Shopping" -> "▤"; "Bills" -> "▥"; "Income" -> "↓"; else -> if(t.amountLaari>=0) "↓" else "↑" },color=MaterialTheme.colorScheme.primary)},
                                 trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),color=if(t.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,fontWeight=FontWeight.SemiBold)}
                             )
                         }
@@ -774,6 +830,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 2 -> {
+                    Text("Import & Access",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                     Text("Paste or share a transaction SMS. Verify details before saving. Never paste OTPs or passwords.")
                     OutlinedTextField(value=input,onValueChange={input=it},label={Text("Bank SMS text")},modifier=Modifier.fillMaxWidth().height(160.dp))
                     val candidate = remember(input) { BankSmsParser.parse(input) }
@@ -820,7 +877,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 3 -> {
                     Text("Set monthly category limits (MVR)",style=MaterialTheme.typography.titleMedium)
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Column {
                         categories.filter { it!="Income" }.forEach { cat ->
                             var limitText by remember(cat,revision) { mutableStateOf(budgets[cat]?.let { "${it/100}.${(it%100).toString().padStart(2,'0')}" } ?: "") }
                             Text(cat,Modifier.padding(top=12.dp))
