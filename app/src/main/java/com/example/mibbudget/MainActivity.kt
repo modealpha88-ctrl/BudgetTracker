@@ -9,6 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import android.os.Bundle
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.geometry.Offset
@@ -93,6 +96,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var savedBalanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var savedBalanceMinor by remember { mutableStateOf(balancePrefs.getLong("mib_minor",Long.MIN_VALUE)) }
     var balanceSource by remember { mutableStateOf(balancePrefs.getString("mib_source","Manual") ?: "Manual") }
+    var screenshotPending by remember { mutableStateOf(false) }
+    var screenshotExtract by remember { mutableStateOf("") }
     var importingHistory by remember { mutableStateOf(false) }
     var showImportSettings by remember { mutableStateOf(false) }
     var historyRequested by remember { mutableStateOf(false) }
@@ -108,6 +113,25 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
+    val screenshotLauncher=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if(uri!=null) {
+            try {
+                val image=InputImage.fromFilePath(context,uri)
+                val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                recognizer.process(image).addOnSuccessListener { result ->
+                    screenshotExtract=result.text.take(2000)
+                    val lines=result.text.lines()
+                    val candidate=lines.firstOrNull { it.contains("available balance",true) || it.contains("account balance",true) }
+                    val match=Regex("""(?:MVR|Rf\\.?|\\b)([0-9][0-9,]*\\.[0-9]{2})""").find(candidate ?: "")
+                    if(match!=null) balanceAmount=match.groupValues[1].replace(",","")
+                    balanceDate=java.time.LocalDate.now().toString()
+                    screenshotPending=true
+                    notice="Check the amount carefully before saving; OCR can be wrong."
+                }.addOnFailureListener { notice="Could not read screenshot: ${it.message?.take(70)}" }
+                    .addOnCompleteListener { recognizer.close() }
+            } catch(e:Exception) { notice="Screenshot failed: ${e.message?.take(80)}" }
+        }
+    }
     val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null) try {
             val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV")
@@ -264,6 +288,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     } else {
                         Text("MIB account balance",style=MaterialTheme.typography.titleMedium)
                         Text("Upload an MIB CSV in Transactions to automatically use its closing running balance. You can also enter a manual balance below.",style=MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick={screenshotLauncher.launch("image/*")}) { Text("Use MIB bank screenshot") }
+                        if(screenshotPending) {
+                            Text("Screenshot recognized. Confirm that this is the MIB available balance, not a transaction amount, before saving.",style=MaterialTheme.typography.bodySmall)
+                            Text("Recognized text: ${screenshotExtract.take(300)}",style=MaterialTheme.typography.bodySmall)
+                        }
                         OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         OutlinedTextField(value=balanceAmount,onValueChange={balanceAmount=it},label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         Button(onClick={
@@ -273,8 +302,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else {
                                 savedBalanceDate=date.toString()
                                 savedBalanceMinor=amount
-                                balanceSource="Manual"
-                                balancePrefs.edit().putString("mib_date",savedBalanceDate).putString("mib_amount",balanceAmount).putLong("mib_minor",amount).putString("mib_source","Manual").apply()
+                                balanceSource=if(screenshotPending) "MIB screenshot (user confirmed)" else "Manual"
+                                screenshotPending=false
+                                balancePrefs.edit().putString("mib_date",savedBalanceDate).putString("mib_amount",balanceAmount).putLong("mib_minor",amount).putString("mib_source",balanceSource).apply()
                                 notice="MIB balance reference saved"
                             }
                         }) { Text("Save verified balance") }
@@ -291,6 +321,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text("Statement balance plus later labeled MIB records; not a live bank balance.",color=Color.White)
                                 }
                             }
+                            Text("Transactions affecting estimated balance",style=MaterialTheme.typography.titleMedium)
+                            if(later.isEmpty()) Text("No recorded MIB transactions after the balance reference.")
+                            later.sortedByDescending { it.timestamp }.take(50).forEach { tx ->
+                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(tx.description.take(75))
+                                        Text(tx.timestamp.take(16),style=MaterialTheme.typography.bodySmall)
+                                    }
+                                    Text(Money.format(tx.amountLaari))
+                                }
+                                HorizontalDivider()
+                            }
+                            if(later.size>50) Text("Showing latest 50 of ${later.size} transactions")
                             if(unlabeled>0) Text("Warning: ${unlabeled} unassigned transactions after the reference date were excluded. Label accounts to improve accuracy.")
                         } else Text("Balance unavailable until you enter a verified statement balance.")
                     }
