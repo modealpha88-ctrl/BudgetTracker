@@ -122,6 +122,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var editingCategoryExpanded by remember { mutableStateOf(false) }
     var deletingId by remember { mutableStateOf<Long?>(null) }
     var selectedTransactionId by remember { mutableStateOf<Long?>(null) }
+    val recipientPrefs=remember { context.getSharedPreferences("transaction_recipients",android.content.Context.MODE_PRIVATE) }
+    var recipientEdit by remember { mutableStateOf(false) }
+    var recipientText by remember { mutableStateOf("") }
+    var recipientRevision by remember { mutableIntStateOf(0) }
     var showTransactionTools by remember { mutableStateOf(false) }
     var accountFilter by remember { mutableStateOf("All accounts") }
     var accountExpanded by remember { mutableStateOf(false) }
@@ -906,7 +910,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text(when(t.category) { "Food","Fast Food" -> "☕"; "Groceries" -> "▦"; "Transport" -> "↗"; "Shopping" -> "▤"; "Bills" -> "▥"; else -> if(t.amountLaari>=0) "↓" else "↑" },color=MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                                    Text(merchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
+                                    val savedName=recipientPrefs.getString(t.fingerprint,null).orEmpty()
+                                    val displayMerchant=if(savedName.isNotBlank() && t.category.contains("Transfer",true)) "Transfer · $savedName" else merchant
+                                    Text(displayMerchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
                                     val displayTime=TransactionPresentation.time(t.description,t.timestamp)
                                     Text(displayTime ?: "Time not recorded",
                                         style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
@@ -1188,8 +1194,56 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         ModalBottomSheet(onDismissRequest={selectedTransactionId=null}) {
                             Column(Modifier.fillMaxWidth().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                                 Text("Transaction details",style=MaterialTheme.typography.headlineSmall)
-                                Text(selectedTransaction.description)
+                                val isTransfer=selectedTransaction.category.contains("Transfer",ignoreCase=true) ||
+                                    selectedTransaction.description.contains("transfer",ignoreCase=true)
+                                val savedRecipient=recipientPrefs.getString(selectedTransaction.fingerprint,null)?.trim().orEmpty()
+                                val parsedLabel=TransactionPresentation.label(selectedTransaction.description)
+                                val parsedRecipient=parsedLabel.substringAfter(" · ","").trim()
+                                val knownRecipient=savedRecipient.ifBlank { parsedRecipient }
+                                val recipient=knownRecipient.ifBlank {
+                                    // SMS-only Favara records contain no recipient. Match only when one
+                                    // distinct CSV statement recipient shares the exact amount and day.
+                                    val candidates=transactions.filter { other ->
+                                        other.id!=selectedTransaction.id &&
+                                        other.amountLaari==selectedTransaction.amountLaari &&
+                                        other.timestamp.take(10)==selectedTransaction.timestamp.take(10) &&
+                                        other.description!=selectedTransaction.description &&
+                                        (other.description.contains("Favara Transfer Web:",true) ||
+                                         other.description.contains("Internet banking transfer:",true))
+                                    }.mapNotNull { other ->
+                                        TransactionPresentation.label(other.description).substringAfter(" · ","").trim().takeIf { it.isNotBlank() }
+                                    }.distinct()
+                                    candidates.singleOrNull().orEmpty()
+                                }
+                                Text(TransactionPresentation.label(selectedTransaction.description),style=MaterialTheme.typography.titleMedium)
+                                if(isTransfer) {
+                                    Text("Recipient: "+recipient.ifBlank { "Not identified" },
+                                        style=MaterialTheme.typography.bodyLarge)
+                                    Text(if(recipient.isBlank()) "The saved SMS does not contain a recipient. Add it manually or import a matching bank statement."
+                                        else if(savedRecipient.isNotBlank()) "Recipient manually confirmed"
+                                        else if(parsedRecipient.isNotBlank()) "Recipient from bank description"
+                                        else "Possible recipient from same-date, same-amount statement; verify before relying on it.",
+                                        style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    OutlinedButton(onClick={recipientText=savedRecipient.ifBlank { recipient };recipientEdit=true}) {
+                                        Text(if(savedRecipient.isNotBlank()) "Edit recipient" else "Set recipient")
+                                    }
+                                }
                                 Text(Money.format(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
+                                Text("Original bank description",style=MaterialTheme.typography.labelMedium)
+                                Text(selectedTransaction.description,style=MaterialTheme.typography.bodySmall)
+                                if(recipientEdit && isTransfer) {
+                                    OutlinedTextField(value=recipientText,onValueChange={recipientText=it.take(100)},
+                                        label={Text("Recipient name")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                        TextButton(onClick={recipientEdit=false}) { Text("Cancel") }
+                                        Button(onClick={
+                                            if(recipientText.isBlank()) recipientPrefs.edit().remove(selectedTransaction.fingerprint).apply()
+                                            else recipientPrefs.edit().putString(selectedTransaction.fingerprint,recipientText.trim()).apply()
+                                            recipientRevision++
+                                            recipientEdit=false
+                                        }) { Text("Save recipient") }
+                                    }
+                                }
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
                                 Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,"Unclassified")}",style=MaterialTheme.typography.bodyMedium)
