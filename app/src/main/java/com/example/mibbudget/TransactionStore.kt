@@ -1,6 +1,9 @@
 package com.example.mibbudget
 
 import android.content.Context
+import android.content.ContentValues
+import org.json.JSONArray
+import org.json.JSONObject
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.security.MessageDigest
@@ -17,19 +20,150 @@ data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String,
 
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 5) {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 6) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS recurring_expenses(name TEXT PRIMARY KEY, amount_laari INTEGER NOT NULL, category TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS account_labels(fingerprint TEXT PRIMARY KEY, label TEXT NOT NULL)")
         db.execSQL("CREATE TABLE budgets(category TEXT PRIMARY KEY, limit_laari INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 6) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS recurring_expenses(name TEXT PRIMARY KEY, amount_laari INTEGER NOT NULL, category TEXT NOT NULL)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS account_labels(fingerprint TEXT PRIMARY KEY, label TEXT NOT NULL)")
+        }
         if (oldVersion < 3) db.execSQL("CREATE TABLE IF NOT EXISTS declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 5) db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
+    fun updateTransaction(id: Long, amount: Long, category: String, description: String): Boolean {
+        if (amount == 0L || amount == Long.MIN_VALUE || description.isBlank()) return false
+        val v = ContentValues().apply {
+            put("amount_laari", amount); put("category", category.take(40)); put("description", description.trim().take(120))
+        }
+        return writableDatabase.update("transactions", v, "id=?", arrayOf(id.toString())) > 0
+    }
+    fun deleteTransaction(id: Long): Boolean =
+        writableDatabase.delete("transactions", "id=?", arrayOf(id.toString())) > 0
+
+    fun setAccount(fingerprint: String, label: String) {
+        val v=ContentValues().apply { put("fingerprint", fingerprint);put("label", label.take(40)) }
+        writableDatabase.insertWithOnConflict("account_labels",null,v,SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun accounts(): Map<String,String> {
+        val out=mutableMapOf<String,String>()
+        readableDatabase.rawQuery("SELECT fingerprint,label FROM account_labels",null).use { c ->
+            while(c.moveToNext()) out[c.getString(0)]=c.getString(1)
+        }
+        return out
+    }
+    fun setGoal(name: String, target: Long, saved: Long) {
+        require(name.isNotBlank() && target>0 && saved>=0)
+        val v=ContentValues().apply { put("name",name.take(80));put("target_laari",target);put("saved_laari",saved) }
+        writableDatabase.insertWithOnConflict("savings_goals",null,v,SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun goals(): List<Triple<String,Long,Long>> {
+        val out=mutableListOf<Triple<String,Long,Long>>()
+        readableDatabase.rawQuery("SELECT name,target_laari,saved_laari FROM savings_goals ORDER BY name",null).use { c ->
+            while(c.moveToNext()) out+=Triple(c.getString(0),c.getLong(1),c.getLong(2))
+        }
+        return out
+    }
+    fun setRecurring(name: String, amount: Long, category: String) {
+        require(name.isNotBlank() && amount>0)
+        val v=ContentValues().apply { put("name",name.take(80));put("amount_laari",amount);put("category",category.take(40)) }
+        writableDatabase.insertWithOnConflict("recurring_expenses",null,v,SQLiteDatabase.CONFLICT_REPLACE)
+    }
+    fun recurring(): List<Triple<String,Long,String>> {
+        val out=mutableListOf<Triple<String,Long,String>>()
+        readableDatabase.rawQuery("SELECT name,amount_laari,category FROM recurring_expenses ORDER BY name",null).use { c ->
+            while(c.moveToNext()) out+=Triple(c.getString(0),c.getLong(1),c.getString(2))
+        }
+        return out
+    }
+    // JSON export retains source fingerprints to prevent duplicates on restore.
+    fun exportJson(): String {
+        val root=JSONObject().put("format","mib-budget-backup").put("version",1)
+        val db=readableDatabase
+        val specs=mapOf(
+            "transactions" to listOf("amount_laari","category","description","created_at","fingerprint"),
+            "budgets" to listOf("category","limit_laari"),
+            "foreign_transactions" to listOf("amount_minor","currency","merchant","occurred_at","fingerprint"),
+            "declined_transactions" to listOf("amount_laari","currency","merchant","occurred_at","reason","fingerprint"),
+            "bml_pending" to listOf("amount_laari","occurred_at","fingerprint"),
+            "savings_goals" to listOf("name","target_laari","saved_laari"),
+            "recurring_expenses" to listOf("name","amount_laari","category"),
+            "account_labels" to listOf("fingerprint","label")
+        )
+        specs.forEach { (table,cols) ->
+            val rows=JSONArray()
+            db.query(table,cols.toTypedArray(),null,null,null,null,null).use { c ->
+                while(c.moveToNext()) {
+                    val item=JSONObject()
+                    cols.forEachIndexed { i,key ->
+                        if(c.getType(i)==android.database.Cursor.FIELD_TYPE_INTEGER) item.put(key,c.getLong(i))
+                        else item.put(key,c.getString(i))
+                    }
+                    rows.put(item)
+                }
+            }
+            root.put(table,rows)
+        }
+        return root.toString(2)
+    }
+    fun restoreJson(text: String): Int {
+        require(text.length <= 20_000_000) { "Backup too large" }
+        val root=JSONObject(text)
+        require(root.optString("format")=="mib-budget-backup" && root.optInt("version")==1) { "Unsupported backup" }
+        val specs=mapOf(
+            "transactions" to listOf("amount_laari","category","description","created_at","fingerprint"),
+            "budgets" to listOf("category","limit_laari"),
+            "foreign_transactions" to listOf("amount_minor","currency","merchant","occurred_at","fingerprint"),
+            "declined_transactions" to listOf("amount_laari","currency","merchant","occurred_at","reason","fingerprint"),
+            "bml_pending" to listOf("amount_laari","occurred_at","fingerprint"),
+            "savings_goals" to listOf("name","target_laari","saved_laari"),
+            "recurring_expenses" to listOf("name","amount_laari","category"),
+            "account_labels" to listOf("fingerprint","label")
+        )
+        // Validate every row before any database write.
+        var total=0
+        specs.forEach { (table,cols) ->
+            val rows=root.optJSONArray(table) ?: throw IllegalArgumentException("Missing $table")
+            require(rows.length()<=100000) { "Too many records" }
+            for(i in 0 until rows.length()) {
+                val item=rows.getJSONObject(i)
+                cols.forEach { key -> require(item.has(key) && !item.isNull(key)) { "Invalid $table row" } }
+            }
+        }
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            specs.forEach { (table,cols) ->
+                val rows=root.getJSONArray(table)
+                for(i in 0 until rows.length()) {
+                    val item=rows.getJSONObject(i)
+                    val v=ContentValues()
+                    cols.forEach { key ->
+                        val value=item.get(key)
+                        when(value) {
+                            is Number -> v.put(key,value.toLong())
+                            is String -> v.put(key,value.take(500))
+                            else -> throw IllegalArgumentException("Invalid value")
+                        }
+                    }
+                    if(db.insertWithOnConflict(table,null,v,SQLiteDatabase.CONFLICT_IGNORE)!=-1L) total++
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return total
+    }
+
     fun queueBml(amount: Long, timestamp: String, fingerprint: String): Boolean {
         val v = android.content.ContentValues().apply { put("amount_laari", amount); put("occurred_at", timestamp); put("fingerprint", fingerprint) }
         return writableDatabase.insertWithOnConflict("bml_pending", null, v, SQLiteDatabase.CONFLICT_IGNORE) != -1L
