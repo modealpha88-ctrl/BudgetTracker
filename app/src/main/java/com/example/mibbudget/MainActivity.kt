@@ -10,6 +10,7 @@ import android.os.Bundle
 import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -57,6 +58,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     var tab by remember { mutableStateOf(0) }
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     var importingHistory by remember { mutableStateOf(false) }
+    var showImportSettings by remember { mutableStateOf(false) }
     var historyRequested by remember { mutableStateOf(false) }
     var historyMonths by remember { mutableStateOf(1L) }
     val historyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -77,6 +79,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                 val result = withContext(Dispatchers.IO) { SmsHistoryImporter.importPrevious(context, store, historyMonths) }
                 notice = "Scanned ${result.scanned} inbox messages; imported ${result.imported}, duplicates ${result.duplicates}, ignored ${result.ignored}."
                 revision++
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) { notice = "History import failed: ${e.javaClass.simpleName}" }
             finally { importingHistory = false }
         }
@@ -110,6 +113,8 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
             if (tab == 0) {
+                OutlinedButton(onClick={showImportSettings = !showImportSettings}, modifier=Modifier.fillMaxWidth()) { Text(if(showImportSettings) "Hide bank import settings  ↑" else "Bank SMS & notification settings  ↓") }
+                if (showImportSettings) {
                 Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
@@ -164,6 +169,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                         }
                     }
                 }
+            }
             }
             Spacer(Modifier.height(14.dp))
             when(tab) {
