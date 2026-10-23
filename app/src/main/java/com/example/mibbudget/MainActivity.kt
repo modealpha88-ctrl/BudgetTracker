@@ -797,9 +797,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text(day,style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
                             lastTransactionDay=day
                         }
-                        val nameParts=t.description.substringAfter(" | ", "").split(" | ")
-                        val holder=nameParts.map { it.trim() }.lastOrNull { part -> part.length>3 && part.any { it.isLetter() } && !part.contains("banking transfer",true) }
-                        val merchant=if(t.description.contains("internet banking transfer",true)) "Transfer" + (holder?.let { " · " + it.take(35) } ?: "") else t.description.substringAfter("@",t.description).substringBefore(" |").substringBefore(" VISA").substringBefore(" MASTERCARD").trim().ifBlank { t.description }.take(34)
+                        val transferDescription=t.description
+                        val transferRecipient=if(transferDescription.startsWith("Internet banking transfer:",ignoreCase=true)) {
+                            val fields=transferDescription.split(" | ")
+                            if(fields.size>=2) fields.last().trim().takeIf { it.length>=3 && it.any(Char::isLetter) } else null
+                        } else null
+                        val merchant=if(transferDescription.startsWith("Internet banking transfer:",ignoreCase=true)) {
+                            "Transfer" + (transferRecipient?.let { " · " + it.take(35) } ?: "")
+                        } else t.description.substringAfter("@",t.description).substringBefore(" |").substringBefore(" VISA").substringBefore(" MASTERCARD").trim().ifBlank { t.description }.take(34)
                         Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
