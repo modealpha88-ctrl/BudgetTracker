@@ -804,9 +804,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text("Data tools",style=MaterialTheme.typography.titleMedium)
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup.json")}) { Text("Export backup") }
-                                    OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
+                                    OutlinedButton(onClick={backupLauncher.launch(if(useEncryptedBackup) "mib-budget-backup.enc" else "mib-budget-backup.json")},enabled=!useEncryptedBackup || encryptedBackupPassword.length>=12) { Text("Export backup") }
+                                    OutlinedButton(onClick={restoreLauncher.launch(arrayOf("*/*"))}) { Text("Restore") }
                                 }
+                                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                    Checkbox(checked=useEncryptedBackup,onCheckedChange={useEncryptedBackup=it})
+                                    Text("Encrypt backup with a password")
+                                }
+                                if(useEncryptedBackup) OutlinedTextField(value=encryptedBackupPassword,onValueChange={encryptedBackupPassword=it},
+                                    label={Text("Backup password (12+ characters)")},visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
+                                OutlinedTextField(value=restoreBackupPassword,onValueChange={restoreBackupPassword=it},
+                                    label={Text("Password for encrypted restore")},visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
+                                Text("Keep the password safe. Encrypted backups cannot be restored without it. Existing JSON backups remain supported.",style=MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Cross-check CSV vs SMS") }
                                 OutlinedButton(onClick={receiptLauncher.launch("image/*")}) { Text("Scan receipt") }
                             }
@@ -1009,6 +1018,23 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("CSV comparison does not add transactions automatically.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("Secure backup & restore",style=MaterialTheme.typography.titleMedium)
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Checkbox(checked=useEncryptedBackup,onCheckedChange={useEncryptedBackup=it})
+                                Text("Password-encrypted export (recommended)")
+                            }
+                            if(useEncryptedBackup) OutlinedTextField(value=encryptedBackupPassword,onValueChange={encryptedBackupPassword=it},
+                                label={Text("Export password (at least 12 characters)")},visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
+                            Button(onClick={backupLauncher.launch(if(useEncryptedBackup) "mib-budget-backup.enc" else "mib-budget-backup.json")},
+                                enabled=!useEncryptedBackup || encryptedBackupPassword.length>=12,modifier=Modifier.fillMaxWidth()) { Text("Export backup") }
+                            OutlinedTextField(value=restoreBackupPassword,onValueChange={restoreBackupPassword=it},
+                                label={Text("Password if restoring encrypted backup")},visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
+                            OutlinedButton(onClick={restoreLauncher.launch(arrayOf("*/*"))},modifier=Modifier.fillMaxWidth()) { Text("Restore from file (merge safely)") }
+                            Text("Keep your password private. The app cannot recover a forgotten password. Older JSON backups still work.",style=MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     if(confirmMissingImport) {
                         AlertDialog(
                             onDismissRequest={confirmMissingImport=false},
@@ -1044,7 +1070,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text(item.description,color=MaterialTheme.colorScheme.onSurface)
                                     Text(item.reason,color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
                                 }
-                                if(review.matches.count { it.status!="MATCHED" }>100) Text("Showing first 100 unmatched/possible records",color=Color.White)
+                                if(review.matches.count { it.status==csvReviewFilter }>100) Text("Showing first 100 records in this group",color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 if(review.missing>0 && csvText!=null) {
                                     Button(onClick={confirmMissingImport=true}) { Text("Add all ${review.missing} missing transactions") }
                                 }
