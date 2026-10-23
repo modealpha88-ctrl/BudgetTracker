@@ -466,18 +466,12 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     fun add(amountLaari: Long, category: String, description: String, fingerprint: String = "manual-${java.util.UUID.randomUUID()}", transactionTime: String? = null): Boolean {
         require(amountLaari != 0L && amountLaari != Long.MIN_VALUE)
         val db = writableDatabase
-        // Bank SMS must fill gaps in a statement, never silently duplicate a CSV row.
-        // Compare amount and posting date; CSV dates may differ by one day from SMS.
+        // Never discard a genuine payment just because its amount matches another.
+        // CSV is authoritative only when description/reference or exact timestamp corroborates.
         if(!fingerprint.startsWith("manual-") && !fingerprint.startsWith("csv-") && transactionTime!=null) {
-            val smsDate=transactionTime?.take(10).orEmpty()
-            if(smsDate.length==10) {
-                val matchingCsv=all().any { existing ->
-                    existing.fingerprint.startsWith("csv-") &&
-                    existing.amountLaari==amountLaari &&
-                    (dayDistance(smsDate,existing.timestamp)?.let { it<=1 }==true)
-                }
-                if(matchingCsv) return false
-            }
+            val sameAmount=all().filter { it.fingerprint.startsWith("csv-") && it.amountLaari==amountLaari }
+            if(sameAmount.any { CsvSmsMatcher.isConfirmedDuplicate(
+                    amountLaari,description,transactionTime,it.amountLaari,it.description,it.timestamp) }) return false
         }
         val values = android.content.ContentValues().apply {
             put("amount_laari", amountLaari); put("category", category.take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
