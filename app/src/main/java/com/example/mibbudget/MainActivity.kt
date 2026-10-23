@@ -155,6 +155,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var otherBalanceAmount by remember { mutableStateOf("") }
     var otherBalanceDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
     var historicalBalanceDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
+    var largeMovementThreshold by remember { mutableStateOf("1000") }
     var screenshotPending by remember { mutableStateOf(false) }
     var screenshotExtract by remember { mutableStateOf("") }
     var importingHistory by remember { mutableStateOf(false) }
@@ -535,6 +536,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         Text(calendarMonth.toString(),style=MaterialTheme.typography.titleMedium)
                                         TextButton(onClick={calendarMonth=calendarMonth.plusMonths(1)}) { Text("›") }
                                     }
+                                    OutlinedTextField(value=largeMovementThreshold,onValueChange={largeMovementThreshold=it},
+                                        label={Text("Highlight movements from (MVR)")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                                    val thresholdMinor=Money.parseLaari(largeMovementThreshold)?.takeIf { it>0L } ?: 100000L
+                                    Row(Modifier.fillMaxWidth()) {
+                                        listOf("M","T","W","T","F","S","S").forEach { label ->
+                                            Box(Modifier.weight(1f),contentAlignment=androidx.compose.ui.Alignment.Center) {
+                                                Text(label,style=MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
                                     val offset=calendarMonth.atDay(1).dayOfWeek.value-1
                                     val count=calendarMonth.lengthOfMonth()
                                     repeat((offset+count+6)/7) { week ->
@@ -544,17 +555,25 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                                 if(day in 1..count) {
                                                     val date=calendarMonth.atDay(day).toString()
                                                     val daily=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.startsWith(date) }
-                                                    val incoming=daily.any { it.amountLaari>=100000L }
-                                                    val outgoing=daily.any { it.amountLaari<=-100000L }
+                                                    val incoming=daily.any { it.amountLaari>=thresholdMinor }
+                                                    val outgoing=daily.any { it.amountLaari<=-thresholdMinor }
                                                     Column(Modifier.weight(1f),horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {
                                                         TextButton(onClick={historicalBalanceDate=date;calendarOpen=false},contentPadding=PaddingValues(0.dp)) { Text(day.toString()) }
-                                                        Text((if(incoming) "●" else "")+(if(outgoing) "●" else ""),color=if(outgoing) MaterialTheme.colorScheme.error else Color(0xFF15966C),style=MaterialTheme.typography.labelSmall)
+                                                        Row(horizontalArrangement=Arrangement.spacedBy(2.dp)) {
+                                                            if(incoming) Text("●",color=Color(0xFF15966C),style=MaterialTheme.typography.labelSmall)
+                                                            if(outgoing) Text("●",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
+                                                        }
                                                     }
                                                 } else Spacer(Modifier.weight(1f))
                                             }
                                         }
                                     }
-                                    Text("● Large incoming / outgoing transactions (MVR 1,000+).",style=MaterialTheme.typography.bodySmall)
+                                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                        Text("● Incoming",color=Color(0xFF15966C),style=MaterialTheme.typography.labelSmall)
+                                        Text("● Outgoing",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
+                                    }
+                                    val selectedDay=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.startsWith(historicalBalanceDate) }
+                                    Text("${selectedDay.size} transactions on selected date · Net ${Money.format(selectedDay.sumOf { it.amountLaari })}",style=MaterialTheme.typography.bodySmall)
                                 }
                                 val key=accountChoice.lowercase(java.util.Locale.ROOT)
                                 val anchorAmount=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
