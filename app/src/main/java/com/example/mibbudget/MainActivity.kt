@@ -61,6 +61,30 @@ class MainActivity : ComponentActivity() {
 fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDarkTheme: (Boolean)->Unit, clearShared: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("sms_settings", android.content.Context.MODE_PRIVATE) }
+    val securityPrefs=remember { context.getSharedPreferences("app_security",android.content.Context.MODE_PRIVATE) }
+    var lockEnabled by remember { mutableStateOf(securityPrefs.getBoolean("biometric_lock",false)) }
+    var unlocked by remember { mutableStateOf(!lockEnabled) }
+    var lockError by remember { mutableStateOf("") }
+    val authenticate = {
+        if(android.os.Build.VERSION.SDK_INT>=28) {
+            val manager=context.getSystemService(android.content.Context.BIOMETRIC_SERVICE) as android.hardware.biometrics.BiometricManager
+            if(manager.canAuthenticate()==android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS) {
+                android.hardware.biometrics.BiometricPrompt.Builder(context)
+                    .setTitle("Unlock MIB Budget Tracker")
+                    .setSubtitle("Confirm your fingerprint or face")
+                    .setNegativeButton("Cancel",context.mainExecutor,{ _,_ -> lockError="Authentication cancelled" })
+                    .build()
+                    .authenticate(android.os.CancellationSignal(),context.mainExecutor,object:android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result:android.hardware.biometrics.BiometricPrompt.AuthenticationResult) {
+                            unlocked=true
+                            lockError=""
+                        }
+                        override fun onAuthenticationError(errorCode:Int,errString:CharSequence) { lockError=errString.toString() }
+                    })
+            } else lockError="Set up fingerprint or face unlock in Android Settings first."
+        } else lockError="Biometric lock requires Android 9 or later."
+    }
+
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
     var monitoring by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -251,6 +275,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    if(lockEnabled && !unlocked) {
+        Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.Center) {
+            Text("MIB Budget Tracker is locked",style=MaterialTheme.typography.headlineSmall)
+            Button(onClick={authenticate}) { Text("Unlock with biometrics") }
+            if(lockError.isNotBlank()) Text(lockError)
+        }
+        return
     }
     Scaffold(bottomBar = {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp) {
@@ -452,6 +484,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val v=Money.parseLaari(recurringAmount)
                         if(recurringName.isNotBlank() && v!=null && v>0) {store.setRecurring(recurringName,v,"Bills");revision++;recurringName="";recurringAmount=""} else notice="Invalid recurring amount"
                     }) { Text("Save recurring template") }
+                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Biometric app lock",modifier=Modifier.weight(1f))
+                        Switch(checked=lockEnabled,onCheckedChange={ enabled ->
+                            if(!enabled || android.os.Build.VERSION.SDK_INT>=28) {
+                                lockEnabled=enabled
+                                securityPrefs.edit().putBoolean("biometric_lock",enabled).apply()
+                                unlocked=true
+                            } else notice="Biometric lock requires Android 9 or later"
+                        })
+                    }
+                    Text("Uses Android biometric enrollment. Keep a device backup before enabling.",style=MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Dark theme",modifier=Modifier.weight(1f))
                         Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
