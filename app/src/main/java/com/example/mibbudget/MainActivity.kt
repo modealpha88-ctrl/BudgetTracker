@@ -957,6 +957,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 2 -> {
                     Text("Import & Access",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Text("CSV statements",style=MaterialTheme.typography.titleMedium)
+                            Text("Import or cross-check your MIB bank statement against saved transactions. Review matches and missing entries before saving.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Button(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))},modifier=Modifier.fillMaxWidth()) {
+                                Text("Select CSV statement")
+                            }
+                            Text("CSV comparison does not add transactions automatically.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     Text("Paste or share a transaction SMS. Verify details before saving. Never paste OTPs or passwords.")
                     OutlinedTextField(value=input,onValueChange={input=it},label={Text("Bank SMS text")},modifier=Modifier.fillMaxWidth().height(160.dp))
                     val candidate = remember(input) { BankSmsParser.parse(input) }
