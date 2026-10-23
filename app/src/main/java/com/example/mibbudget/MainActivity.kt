@@ -12,6 +12,10 @@ import android.os.Bundle
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.geometry.Offset
@@ -125,6 +129,27 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var deletingId by remember { mutableStateOf<Long?>(null) }
     var selectedTransactionId by remember { mutableStateOf<Long?>(null) }
     val recipientPrefs=remember { context.getSharedPreferences("transaction_recipients",android.content.Context.MODE_PRIVATE) }
+    val vendorAvatarPrefs=remember { context.getSharedPreferences("vendor_avatar_files",android.content.Context.MODE_PRIVATE) }
+    var avatarRevision by remember { mutableIntStateOf(0) }
+    val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val chosen=transactions.firstOrNull { it.id==selectedTransactionId }
+        if(uri!=null && chosen!=null) try {
+            val vendor=TransactionPresentation.label(chosen.description).substringBefore(" · ").trim().uppercase(java.util.Locale.ROOT)
+            val key=vendor.replace(Regex("[^A-Z0-9]"),"_").take(80)
+            val file=java.io.File(context.filesDir,"vendor_avatar_$key.jpg")
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val bitmap=BitmapFactory.decodeStream(input) ?: error("Invalid image")
+                val resized=android.graphics.Bitmap.createScaledBitmap(bitmap,128,128,true)
+                file.outputStream().use { output -> resized.compress(android.graphics.Bitmap.CompressFormat.JPEG,85,output) }
+                if(resized!==bitmap) resized.recycle()
+                bitmap.recycle()
+            } ?: error("Cannot read image")
+            vendorAvatarPrefs.edit().putString(key,file.absolutePath).apply()
+            avatarRevision++
+            notice="Vendor icon saved on this device"
+        } catch(e:Exception) { notice="Icon could not be saved: ${e.message?.take(80)}" }
+    }
+
     var recipientEdit by remember { mutableStateOf(false) }
     var recipientText by remember { mutableStateOf("") }
     var recipientRevision by remember { mutableIntStateOf(0) }
@@ -923,7 +948,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.secondaryContainer,RoundedCornerShape(14.dp)),contentAlignment=androidx.compose.ui.Alignment.Center) {
-                                    Text(when(t.category) { "Food","Fast Food" -> "☕"; "Groceries" -> "▦"; "Transport" -> "↗"; "Shopping" -> "▤"; "Bills" -> "▥"; else -> if(t.amountLaari>=0) "↓" else "↑" },color=MaterialTheme.colorScheme.onSecondaryContainer)
+                                    val vendorKey=TransactionPresentation.label(t.description).substringBefore(" · ").trim().uppercase(java.util.Locale.ROOT).replace(Regex("[^A-Z0-9]"),"_").take(80)
+                                    val avatarPath=remember(avatarRevision,vendorKey) { vendorAvatarPrefs.getString(vendorKey,null) }
+                                    val avatar=remember(avatarPath) { avatarPath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
+                                    if(avatar!=null) Image(bitmap=avatar,contentDescription="Vendor icon",modifier=Modifier.size(42.dp),contentScale=ContentScale.Crop)
+                                    else Text(if(t.category.contains("Transfer",true)) "↗" else vendorKey.split("_").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.ifBlank { "▤" },color=MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     val savedName=recipientPrefs.getString(t.fingerprint,null).orEmpty()
@@ -1249,6 +1278,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     candidates.singleOrNull().orEmpty()
                                 }
                                 Text(TransactionPresentation.label(selectedTransaction.description),style=MaterialTheme.typography.titleMedium)
+                                if(!isTransfer) OutlinedButton(onClick={avatarPicker.launch("image/*")}) { Text("Set vendor profile picture") }
+                                Text("Vendor pictures are chosen from your gallery and stored privately on this device. Social-media pictures are not guessed from similar names.",style=MaterialTheme.typography.bodySmall)
                                 if(isTransfer) {
                                     Text("Recipient: "+recipient.ifBlank { "Not identified" },
                                         style=MaterialTheme.typography.bodyLarge)
