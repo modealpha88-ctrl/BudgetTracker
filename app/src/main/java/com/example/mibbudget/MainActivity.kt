@@ -21,6 +21,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 
 private val categories = listOf("Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Internal Transfer","Other","Income")
 
@@ -31,7 +34,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         store = TransactionStore(this)
         sharedText = intent?.takeIf { it.action == Intent.ACTION_SEND && it.type == "text/plain" }?.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
-        setContent { MaterialTheme { BudgetApp(store, sharedText) { sharedText = "" } } }
+        setContent { MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF2563EB), secondary = Color(0xFF0D9488), background = Color(0xFFF6F8FC), surface = Color.White, surfaceVariant = Color(0xFFEAF0FA)), shapes = Shapes(medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp))) { BudgetApp(store, sharedText) { sharedText = "" } } }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -96,16 +99,16 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     Scaffold(bottomBar = {
-        NavigationBar {
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 6.dp) {
             listOf("Dashboard","Transactions","Import SMS","Budgets").forEachIndexed { i, label ->
                 NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","✉","◉")[i])},label={Text(label)})
             }
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineSmall)
-            Text("Offline • MVR • Prototype",style=MaterialTheme.typography.labelMedium)
-            if(notice.isNotBlank()) Text(notice,color=MaterialTheme.colorScheme.primary)
+        Column(Modifier.fillMaxSize().padding(padding).then(if (tab == 0 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
             if (tab == 0) {
                 Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
@@ -173,20 +176,21 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     val cashflowTransactions = monthlyTransactions.filter { it.category != "Internal Transfer" }
                     val incoming = cashflowTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
                     val outgoing = cashflowTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
-                    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(18.dp)) {
-                        Text("Monthly net cash flow (not bank balance)")
-                        Text(Money.format(incoming-outgoing),style=MaterialTheme.typography.headlineMedium)
-                        Text("Income: ${Money.format(incoming)}")
-                        Text("Expenses: ${Money.format(outgoing)}")
+                    Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(24.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) { Column(Modifier.padding(22.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("MONTHLY CASH FLOW", style=MaterialTheme.typography.labelLarge, color=Color.White.copy(alpha=0.8f))
+                        Text(Money.format(incoming-outgoing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                        Text("↑  Income   ${Money.format(incoming)}",color=Color.White)
+                        Text("↓  Expenses   ${Money.format(outgoing)}",color=Color.White)
+                        Text("Cash flow, not your bank balance",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
                     } }
                     Spacer(Modifier.height(20.dp))
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
                         val spent=txs.sumOf{-it.amountLaari}
-                        Text("$cat — ${Money.format(spent)}",Modifier.padding(top=10.dp))
+                        Text("$cat    •    ${Money.format(spent)}",Modifier.padding(top=12.dp),fontWeight=FontWeight.Medium)
                         val limit=budgets[cat]
-                        if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth()); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
+                        if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth().height(8.dp),strokeCap=androidx.compose.ui.graphics.StrokeCap.Round); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
                     }
                     if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
                 }
@@ -215,7 +219,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                         ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${Money.format(d.amountLaari).removePrefix("MVR ")}")})
                     }
                     LazyColumn { items(transactions,key={it.id}) { t ->
-                        ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "−")+Money.format(t.amountLaari))})
+                        ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),fontWeight=FontWeight.SemiBold,color=if(t.amountLaari>0) Color(0xFF0D9488) else MaterialTheme.colorScheme.onSurface)})
                         if (t.category == "Transfers" || t.category == "Incoming Transfer") TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
                         HorizontalDivider()
                     } }
