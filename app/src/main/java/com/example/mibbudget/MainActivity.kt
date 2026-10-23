@@ -99,6 +99,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         prefs.edit().putBoolean("enabled", granted).apply()
     }
     var notice by remember { mutableStateOf("") }
+    // Each new notice resets the timer; persistent status banners must not obscure the dashboard.
+    LaunchedEffect(notice) {
+        if(notice.isNotBlank()) {
+            kotlinx.coroutines.delay(4500)
+            notice=""
+        }
+    }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         permissionRefresh++
         notice=if(granted) "App notifications allowed." else "App notifications not allowed. Bank notification reading is a separate permission."
@@ -405,7 +413,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/MIBBudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
             }
-            if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) { Text(notice, Modifier.padding(14.dp), color=MaterialTheme.colorScheme.onPrimaryContainer) }
+            if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().padding(start=14.dp,end=6.dp,top=6.dp,bottom=6.dp),
+                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Text(notice,Modifier.weight(1f),color=MaterialTheme.colorScheme.onPrimaryContainer)
+                    TextButton(onClick={notice=""}) { Text("Dismiss") }
+                }
+            }
             if (tab == 2) {
                 OutlinedButton(onClick={showImportSettings = !showImportSettings}, modifier=Modifier.fillMaxWidth()) { Text(if(showImportSettings) "Hide bank import settings  ↑" else "Bank SMS & notification settings  ↓") }
                 if (showImportSettings) {
