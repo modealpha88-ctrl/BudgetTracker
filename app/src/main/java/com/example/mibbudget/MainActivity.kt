@@ -131,11 +131,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val recipientPrefs=remember { context.getSharedPreferences("transaction_recipients",android.content.Context.MODE_PRIVATE) }
     val vendorAvatarPrefs=remember { context.getSharedPreferences("vendor_avatar_files",android.content.Context.MODE_PRIVATE) }
     var avatarRevision by remember { mutableIntStateOf(0) }
+    var socialUrl by remember { mutableStateOf("") }
+    var socialEvidence by remember { mutableStateOf("") }
+    var showSocialMatch by remember { mutableStateOf(false) }
+    var socialRevision by remember { mutableIntStateOf(0) }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val chosen=store.all().firstOrNull { it.id==selectedTransactionId }
         if(uri!=null && chosen!=null) try {
-            val vendor=TransactionPresentation.label(chosen.description).substringBefore(" · ").trim().uppercase(java.util.Locale.ROOT)
-            val key=vendor.replace(Regex("[^A-Z0-9]"),"_").take(80)
+            val key=VendorProfiles.key(chosen.description)
             val file=java.io.File(context.filesDir,"vendor_avatar_$key.jpg")
             context.contentResolver.openInputStream(uri)?.use { input ->
                 val bitmap=BitmapFactory.decodeStream(input) ?: error("Invalid image")
@@ -948,7 +951,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.secondaryContainer,RoundedCornerShape(14.dp)),contentAlignment=androidx.compose.ui.Alignment.Center) {
-                                    val vendorKey=TransactionPresentation.label(t.description).substringBefore(" · ").trim().uppercase(java.util.Locale.ROOT).replace(Regex("[^A-Z0-9]"),"_").take(80)
+                                    val vendorKey=VendorProfiles.key(t.description)
                                     val avatarPath=remember(avatarRevision,vendorKey) { vendorAvatarPrefs.getString(vendorKey,null) }
                                     val avatar=remember(avatarPath) { avatarPath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
                                     if(avatar!=null) Image(bitmap=avatar,contentDescription="Vendor icon",modifier=Modifier.size(42.dp),contentScale=ContentScale.Crop)
@@ -1278,8 +1281,60 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     candidates.singleOrNull().orEmpty()
                                 }
                                 Text(TransactionPresentation.label(selectedTransaction.description),style=MaterialTheme.typography.titleMedium)
-                                if(!isTransfer) OutlinedButton(onClick={avatarPicker.launch("image/*")}) { Text("Set vendor profile picture") }
-                                Text("Vendor pictures are chosen from your gallery and stored privately on this device. Social-media pictures are not guessed from similar names.",style=MaterialTheme.typography.bodySmall)
+                                if(!isTransfer) {
+                                    val matchedProfile=remember(socialRevision,selectedTransaction.description) {
+                                        VendorProfiles.get(context,selectedTransaction.description)
+                                    }
+                                    Text(if(matchedProfile==null) "Social profile: Not verified"
+                                        else "Social profile: User-confirmed · ${matchedProfile.platform}",
+                                        style=MaterialTheme.typography.bodyMedium)
+                                    if(matchedProfile!=null) {
+                                        Text(matchedProfile.socialUrl,style=MaterialTheme.typography.bodySmall)
+                                        OutlinedButton(onClick={
+                                            context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(matchedProfile.socialUrl)))
+                                        }) { Text("View linked social profile") }
+                                    }
+                                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(onClick={
+                                            socialUrl=matchedProfile?.socialUrl.orEmpty()
+                                            socialEvidence=matchedProfile?.evidenceUrl.orEmpty()
+                                            showSocialMatch=true
+                                        }) { Text("Verify social profile") }
+                                        OutlinedButton(onClick={avatarPicker.launch("image/*")}) { Text("Set vendor picture") }
+                                    }
+                                    if(showSocialMatch) {
+                                        Text("Match: ${VendorProfiles.vendor(selectedTransaction.description)}",style=MaterialTheme.typography.titleSmall)
+                                        Text("Find the business's official account and confirm it is linked from an independent official website. Similar names alone are not proof.",style=MaterialTheme.typography.bodySmall)
+                                        OutlinedButton(onClick={
+                                            val query=java.net.URLEncoder.encode(VendorProfiles.vendor(selectedTransaction.description)+" Maldives official Instagram Facebook","UTF-8")
+                                            context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.google.com/search?q="+query)))
+                                        }) { Text("Search public social profiles") }
+                                        OutlinedTextField(value=socialUrl,onValueChange={socialUrl=it.take(500)},
+                                            label={Text("Social profile HTTPS URL")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                                        OutlinedTextField(value=socialEvidence,onValueChange={socialEvidence=it.take(500)},
+                                            label={Text("Independent official website evidence URL")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                                        Text("Saving confirms you checked that the business website links to this exact profile. The app does not independently authenticate the link.",style=MaterialTheme.typography.bodySmall)
+                                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                            TextButton(onClick={showSocialMatch=false}) { Text("Cancel") }
+                                            Button(onClick={
+                                                val error=VendorProfiles.validate(socialUrl.trim(),socialEvidence.trim())
+                                                if(error!=null) notice=error
+                                                else {
+                                                    VendorProfiles.save(context,selectedTransaction.description,socialUrl.trim(),socialEvidence.trim())
+                                                    socialRevision++
+                                                    showSocialMatch=false
+                                                    notice="Vendor profile saved as user-confirmed"
+                                                }
+                                            }) { Text("Confirm match") }
+                                        }
+                                        if(matchedProfile!=null) TextButton(onClick={
+                                            VendorProfiles.remove(context,selectedTransaction.description)
+                                            socialRevision++
+                                            showSocialMatch=false
+                                        }) { Text("Remove linked profile") }
+                                    }
+                                    Text("Profile pictures are assigned from your gallery after checking the vendor identity. They are not downloaded automatically from social networks.",style=MaterialTheme.typography.bodySmall)
+                                }
                                 if(isTransfer) {
                                     Text("Recipient: "+recipient.ifBlank { "Not identified" },
                                         style=MaterialTheme.typography.bodyLarge)
