@@ -9,14 +9,34 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String, val merchant: String, val timestamp: String, val reason: String)
+
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 2) {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE budgets(category TEXT PRIMARY KEY, limit_laari INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit // Version 2 retains the existing schema; imported dates use created_at.
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 3) db.execSQL("CREATE TABLE IF NOT EXISTS declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+    }
+    fun addDeclined(candidate: BankSmsParser.Declined): Boolean {
+        val values = android.content.ContentValues().apply {
+            put("amount_laari", candidate.amountLaari); put("currency", candidate.currency)
+            put("merchant", candidate.merchant.take(100)); put("occurred_at", candidate.transactionTime)
+            put("reason", candidate.reason.take(100)); put("fingerprint", candidate.fingerprint)
+        }
+        return writableDatabase.insertWithOnConflict("declined_transactions", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+    }
+    fun declined(): List<DeclinedTx> {
+        val out = mutableListOf<DeclinedTx>()
+        readableDatabase.rawQuery("SELECT id,amount_laari,currency,merchant,occurred_at,reason FROM declined_transactions ORDER BY occurred_at DESC", null).use { c ->
+            while(c.moveToNext()) out += DeclinedTx(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5))
+        }
+        return out
+    }
     fun add(amountLaari: Long, category: String, description: String, fingerprint: String = "manual-${java.util.UUID.randomUUID()}", transactionTime: String? = null): Boolean {
         require(amountLaari != 0L && amountLaari != Long.MIN_VALUE)
         val db = writableDatabase
@@ -62,6 +82,19 @@ object BankSmsParser {
     data class Candidate(val amountLaari: Long, val category: String, val description: String, val fingerprint: String, val transactionTime: String? = null)
     private val sensitive = Regex("""(?i)\b(otp|one.time.password|verification code|login code|password|pin|authentication code)\b""")
     private val favara = Regex("""(?is)^Favara\s+Transfer\s+from\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
+    data class Declined(val amountLaari: Long, val currency: String, val merchant: String, val transactionTime: String, val reason: String, val fingerprint: String)
+    private val declinedPattern = Regex("""(?is)^Your\s+last\s+transaction\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+([A-Z]{3})\s+at\s+(.+?),\s*[A-Z]{2}\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+has\s+declined\s+due\s+to\s+([A-Z ]+)\.\s+Please\s+call\s+[\d ]+\s+to\s+update\s+limits\.\s+Decline\s+Code:\s*[\w-]+\s*$""")
+    fun parseDeclined(raw: String): Declined? {
+        val text = raw.trim()
+        if (text.length !in 30..1000 || sensitive.containsMatchIn(text)) return null
+        val m = declinedPattern.matchEntire(text) ?: return null
+        val amount = Money.parseLaari(m.groupValues[1]) ?: return null
+        val whenAt = date(m.groupValues[4], "dd.MM.uu HH:mm") ?: return null
+        val merchant = m.groupValues[3].trim()
+        if (amount <= 0 || merchant.length !in 2..100) return null
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(text.lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        return Declined(amount, m.groupValues[2].uppercase(Locale.ROOT), merchant, whenAt, m.groupValues[5].trim(), fingerprint)
+    }
     private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
     private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*[\w-]+\s*$""")
     private fun date(value: String, pattern: String): String? = try {
