@@ -105,6 +105,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var confirmMissingImport by remember { mutableStateOf(false) }
     var csvReviewFilter by remember { mutableStateOf("MISSING") }
     var selectedMissingCsvLines by remember { mutableStateOf(setOf<Int>()) }
+    var selectedPossibleCsvLines by remember { mutableStateOf(setOf<Int>()) }
+    var confirmNamingReset by remember { mutableStateOf(false) }
     val csvImportPrefs=remember { context.getSharedPreferences("csv_import_history",android.content.Context.MODE_PRIVATE) }
     var encryptedBackupPassword by remember { mutableStateOf("") }
     var useEncryptedBackup by remember { mutableStateOf(true) }
@@ -269,6 +271,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV")
             csvReview=store.reviewCsv(data)
             selectedMissingCsvLines=emptySet()
+            selectedPossibleCsvLines=emptySet()
             csvText=data
             store.statementBalance(data)?.let { closing ->
                 val currentDate=savedBalanceDate
@@ -1023,14 +1026,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         AlertDialog(
                             onDismissRequest={confirmMissingImport=false},
                             title={Text("Import missing transactions?")},
-                            text={Text("Import ${selectedMissingCsvLines.size} selected missing records? Possible matches are excluded. Export a backup first.")},
+                            text={Text("Import ${selectedMissingCsvLines.size} missing and ${selectedPossibleCsvLines.size} possible records? Possible matches may duplicate existing transactions. Review each selection and export a backup first.")},
                             confirmButton={TextButton(onClick={
                                 confirmMissingImport=false
                                 try {
                                     val data=csvText ?: error("CSV not available")
-                                    val result=store.importMissingCsv(data,selectedMissingCsvLines)
+                                    val selectedRows=selectedMissingCsvLines+selectedPossibleCsvLines
+                                    val result=store.importMissingCsv(data,selectedRows,includePossible=selectedPossibleCsvLines.isNotEmpty())
                                     csvImportPrefs.edit().putString("last_import","${java.time.LocalDateTime.now()} · Added ${result.first} records; excluded ${result.second}").apply()
                                     selectedMissingCsvLines=emptySet()
+                                    selectedPossibleCsvLines=emptySet()
                                     revision++
                                     csvReview=store.reviewCsv(data)
                                     notice="Added ${result.first} missing transactions; excluded ${result.second} matched or uncertain records."
@@ -1038,6 +1043,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }) { Text("Import missing") }},
                             dismissButton={TextButton(onClick={confirmMissingImport=false}) { Text("Cancel") }}
                         )
+                    }
+                    if(confirmNamingReset) AlertDialog(onDismissRequest={confirmNamingReset=false},
+                        title={Text("Reset recipient naming?")},
+                        text={Text("Remove all manually saved recipient names and start naming again. Transactions, original bank descriptions, amounts and balances will NOT be deleted. This cannot be undone.")},
+                        confirmButton={TextButton(onClick={
+                            recipientPrefs.edit().clear().apply()
+                            recipientRevision++
+                            confirmNamingReset=false
+                            notice="Manually saved recipient names cleared. Transactions preserved."
+                        }) { Text("Reset names") }},
+                        dismissButton={TextButton(onClick={confirmNamingReset=false}) { Text("Cancel") }})
+                    OutlinedButton(onClick={confirmNamingReset=true},modifier=Modifier.fillMaxWidth()) {
+                        Text("Start over: clear manually saved recipient names")
                     }
                     csvReview?.let { review ->
                         Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
@@ -1050,19 +1068,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         FilterChip(selected=csvReviewFilter==status,onClick={csvReviewFilter=status},label={Text(status)})
                                     }
                                 }
-                                if(csvReviewFilter=="MISSING") {
+                                if(csvReviewFilter=="MISSING" || csvReviewFilter=="POSSIBLE") {
                                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                        TextButton(onClick={selectedMissingCsvLines=review.matches.filter { it.status=="MISSING" }.map { it.line }.toSet()}) { Text("Select all missing") }
-                                        TextButton(onClick={selectedMissingCsvLines=emptySet()}) { Text("Clear selection") }
+                                        if(csvReviewFilter=="MISSING") TextButton(onClick={selectedMissingCsvLines=review.matches.filter { it.status=="MISSING" }.map { it.line }.toSet()}) { Text("Select all missing") }
+                                        TextButton(onClick={if(csvReviewFilter=="MISSING") selectedMissingCsvLines=emptySet() else selectedPossibleCsvLines=emptySet()}) { Text("Clear selection") }
                                     }
-                                    Text("${selectedMissingCsvLines.size} selected for import",style=MaterialTheme.typography.bodySmall)
+                                    Text("${selectedMissingCsvLines.size} missing + ${selectedPossibleCsvLines.size} possible selected",style=MaterialTheme.typography.bodySmall)
+                                    if(csvReviewFilter=="POSSIBLE") Text("Possible matches can duplicate an existing transaction. Select only after comparing the original bank statement.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                 }
                                 review.matches.filter { it.status==csvReviewFilter }.take(100).forEach { item ->
                                     HorizontalDivider()
-                                    if(item.status=="MISSING") {
+                                    if(item.status=="MISSING" || item.status=="POSSIBLE") {
                                         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                            Checkbox(checked=item.line in selectedMissingCsvLines,onCheckedChange={checked ->
-                                                selectedMissingCsvLines=if(checked) selectedMissingCsvLines+item.line else selectedMissingCsvLines-item.line
+                                            Checkbox(checked=if(item.status=="MISSING") item.line in selectedMissingCsvLines else item.line in selectedPossibleCsvLines,onCheckedChange={checked ->
+                                                if(item.status=="MISSING") selectedMissingCsvLines=if(checked) selectedMissingCsvLines+item.line else selectedMissingCsvLines-item.line
+                                                else selectedPossibleCsvLines=if(checked) selectedPossibleCsvLines+item.line else selectedPossibleCsvLines-item.line
                                             })
                                             Column {
                                                 Text("${item.date}  •  ${Money.format(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
@@ -1077,8 +1097,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 if(review.matches.count { it.status==csvReviewFilter }>100) Text("Showing first 100 records in this group",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                if(review.missing>0 && csvText!=null) {
-                                    Button(onClick={confirmMissingImport=true},enabled=selectedMissingCsvLines.isNotEmpty()) { Text("Import ${selectedMissingCsvLines.size} selected missing transactions") }
+                                if(review.missing>0 || selectedPossibleCsvLines.isNotEmpty() && csvText!=null) {
+                                    Button(onClick={confirmMissingImport=true},enabled=selectedMissingCsvLines.isNotEmpty() || selectedPossibleCsvLines.isNotEmpty()) { Text("Import ${selectedMissingCsvLines.size+selectedPossibleCsvLines.size} selected transactions") }
                                 }
                                 OutlinedButton(onClick={csvReview=null;csvText=null}) { Text("Close comparison") }
                             }
