@@ -833,10 +833,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     var largeTransfersExpanded by remember { mutableStateOf(false) }
                     var transferThreshold by remember { mutableStateOf("1000") }
                     val thresholdMinor=Money.parseLaari(transferThreshold) ?: 100000L
+                    var transferDirection by remember { mutableStateOf("Both") }
                     val largeTransfers=monthlyTransactions.filter { tx ->
-                        tx.category.contains("Transfer",true) &&
-                        kotlin.math.abs(tx.amountLaari)>=thresholdMinor
+                        VendorProfiles.isTransfer(tx.description,tx.category) &&
+                        kotlin.math.abs(tx.amountLaari)>=thresholdMinor &&
+                        (transferDirection=="Both" || (transferDirection=="Incoming" && tx.amountLaari>0) ||
+                            (transferDirection=="Outgoing" && tx.amountLaari<0))
                     }.sortedByDescending { kotlin.math.abs(it.amountLaari) }
+                    val incomingTransferCount=monthlyTransactions.count { tx ->
+                        VendorProfiles.isTransfer(tx.description,tx.category) && tx.amountLaari>=thresholdMinor
+                    }
+                    val outgoingTransferCount=monthlyTransactions.count { tx ->
+                        VendorProfiles.isTransfer(tx.description,tx.category) && tx.amountLaari<=-thresholdMinor
+                    }
                     val originalTransferPrefs=remember { context.getSharedPreferences("internal_transfer_original_categories",android.content.Context.MODE_PRIVATE) }
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -850,13 +859,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("Internal transfers should not count as spending or income. They remain in bank history and account balance calculations.",
                                 style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                             if(largeTransfersExpanded) {
+                                Text("Incoming: $incomingTransferCount · Outgoing: $outgoingTransferCount",style=MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    listOf("Both","Incoming","Outgoing").forEach { direction ->
+                                        FilterChip(selected=transferDirection==direction,
+                                            onClick={transferDirection=direction},label={Text(direction)})
+                                    }
+                                }
                                 OutlinedTextField(value=transferThreshold,onValueChange={transferThreshold=it},
                                     label={Text("Minimum transfer (MVR)")},singleLine=true,modifier=Modifier.fillMaxWidth())
                                 if(largeTransfers.isEmpty()) Text("No transfers above this amount this month.",style=MaterialTheme.typography.bodySmall)
                                 largeTransfers.forEach { tx ->
                                     Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
                                         Text(TransactionPresentation.label(tx.description),style=MaterialTheme.typography.bodyMedium)
-                                        Text("${tx.timestamp.take(10)} · ${Money.format(tx.amountLaari)}",
+                                        Text("${if(tx.amountLaari>0) "Incoming" else "Outgoing"} · ${tx.timestamp.take(10)} · ${Money.format(tx.amountLaari)}",
                                             style=MaterialTheme.typography.bodySmall)
                                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                             if(tx.category=="Internal Transfer") {
