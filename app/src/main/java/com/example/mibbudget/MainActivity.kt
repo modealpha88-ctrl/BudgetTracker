@@ -55,6 +55,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     var importingHistory by remember { mutableStateOf(false) }
     var historyRequested by remember { mutableStateOf(false) }
+    var historyMonths by remember { mutableStateOf(1L) }
     val historyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) historyRequested = true else notice = "SMS inbox permission denied. Manual import still works."
     }
@@ -70,7 +71,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             historyRequested = false
             importingHistory = true
             try {
-                val result = withContext(Dispatchers.IO) { SmsHistoryImporter.importLastMonth(context, store) }
+                val result = withContext(Dispatchers.IO) { SmsHistoryImporter.importPrevious(context, store, historyMonths) }
                 notice = "Scanned ${result.scanned} inbox messages; imported ${result.imported}, duplicates ${result.duplicates}, ignored ${result.ignored}."
                 revision++
             } catch (e: Exception) { notice = "History import failed: ${e.javaClass.simpleName}" }
@@ -124,6 +125,17 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                 }
                 Text("Automatic SMS imports save recognized MIB transfers and purchases. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
 
+                Text("Import previous bank SMS", style=MaterialTheme.typography.titleMedium)
+                Text("Scan only SMS stored on this phone. No message bodies are saved or uploaded. Review imported transactions for accuracy.", style=MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    listOf(1L, 3L, 12L).forEach { months ->
+                        FilterChip(selected=historyMonths==months,onClick={historyMonths=months},label={Text("${months} month${if(months>1) "s" else ""}")})
+                    }
+                }
+                Button(enabled=!importingHistory,onClick={
+                    if (context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) historyRequested=true
+                    else historyLauncher.launch(Manifest.permission.READ_SMS)
+                }) { Text(if(importingHistory) "Importing…" else "Import previous SMS") }
                 Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
                 Text("Notification access is broad. This app filters only BML Favara received messages, storing amount and time for your review.", style=MaterialTheme.typography.bodySmall)
                 Button(onClick={ context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) }) { Text("Manage notification access") }
