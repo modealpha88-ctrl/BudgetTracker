@@ -8,7 +8,8 @@ object FullBackup {
     private val preferenceFiles=listOf(
         "transaction_recipients","vendor_avatar_files","vendor_verified_profiles",
         "sms_settings","appearance","balance_settings","csv_import_history",
-        "counterparty_classification","account_settings","app_security"
+        "counterparty_classification","account_settings","app_security",
+        "debt_ledgers","internal_transfer_original_categories","balance_anchor","dashboard_layout"
     )
     fun export(context: Context, store: TransactionStore): String {
         val root=JSONObject(store.exportJson())
