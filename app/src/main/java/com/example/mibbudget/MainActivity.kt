@@ -67,6 +67,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var notice by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) }
     var csvReview by remember { mutableStateOf<TransactionStore.CsvReview?>(null) }
+    var csvText by remember { mutableStateOf<String?>(null) }
+    var confirmMissingImport by remember { mutableStateOf(false) }
     var searchText by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var editingAmount by remember { mutableStateOf("") }
@@ -103,8 +105,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         if(uri!=null) try {
             val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV")
             csvReview=store.reviewCsv(data)
+            csvText=data
             notice="Statement checked. No transactions were imported. Review the results below."
-        } catch(e:Exception) { csvReview=null;notice="CSV comparison failed: ${e.message?.take(100)}" }
+        } catch(e:Exception) { csvReview=null;csvText=null;notice="CSV comparison failed: ${e.message?.take(100)}" }
     }
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if(uri!=null) try { context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().toByteArray(Charsets.UTF_8)) }; notice="Backup exported. Keep the file private." } catch(e:Exception) { notice="Export failed: ${e.javaClass.simpleName}" }
@@ -316,6 +319,24 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
                     }
                     OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Cross-check CSV vs SMS") }
+                    if(confirmMissingImport) {
+                        AlertDialog(
+                            onDismissRequest={confirmMissingImport=false},
+                            title={Text("Import missing transactions?")},
+                            text={Text("Only missing records will be added. Possible matches are excluded. Make a backup first.")},
+                            confirmButton={TextButton(onClick={
+                                confirmMissingImport=false
+                                try {
+                                    val data=csvText ?: error("CSV not available")
+                                    val result=store.importMissingCsv(data)
+                                    revision++
+                                    csvReview=store.reviewCsv(data)
+                                    notice="Added ${result.first} missing transactions; excluded ${result.second} matched or uncertain records."
+                                } catch(e:Exception) { notice="Import failed: ${e.message?.take(100)}" }
+                            }) { Text("Import missing") }},
+                            dismissButton={TextButton(onClick={confirmMissingImport=false}) { Text("Cancel") }}
+                        )
+                    }
                     csvReview?.let { review ->
                         Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF33395B))) {
                             Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -329,7 +350,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text(item.reason,color=Color(0xFFC5C9E2),style=MaterialTheme.typography.bodySmall)
                                 }
                                 if(review.matches.count { it.status!="MATCHED" }>100) Text("Showing first 100 unmatched/possible records",color=Color.White)
-                                OutlinedButton(onClick={csvReview=null}) { Text("Close comparison") }
+                                if(review.missing>0 && csvText!=null) {
+                                    Button(onClick={confirmMissingImport=true}) { Text("Add all ${review.missing} missing transactions") }
+                                }
+                                OutlinedButton(onClick={csvReview=null;csvText=null}) { Text("Close comparison") }
                             }
                         }
                     }
