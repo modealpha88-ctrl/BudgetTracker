@@ -36,7 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
 
-private val categories = listOf("Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Internal Transfer","Other","Income")
+private val categories = listOf("Food","Fast Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Internal Transfer","Other","Income")
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: TransactionStore
@@ -119,6 +119,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var recurringName by remember { mutableStateOf("") }
     var recurringAmount by remember { mutableStateOf("") }
     var transactionFilter by remember { mutableStateOf("All") }
+    var counterpartyFilter by remember { mutableStateOf("All types") }
+    var categoryFilter by remember { mutableStateOf("All categories") }
+    var counterpartyExpanded by remember { mutableStateOf(false) }
+    var categoryFilterExpanded by remember { mutableStateOf(false) }
+    val counterpartyPrefs=remember { context.getSharedPreferences("transaction_counterparty",android.content.Context.MODE_PRIVATE) }
+    var counterpartyRevision by remember { mutableIntStateOf(0) }
+    var counterpartyEditExpanded by remember { mutableStateOf(false) }
     var showTransactionForm by remember { mutableStateOf(false) }
     var filterExpanded by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
@@ -492,6 +499,24 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 },label={Text(bank)})
                             }
                         }
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                    Text("${accountChoice} recent activity",style=MaterialTheme.typography.titleMedium)
+                                    TextButton(onClick={revision++}) { Text("Refresh") }
+                                }
+                                Text("Recorded app transactions, not a live bank feed. Only assigned ${accountChoice} transactions are included.",style=MaterialTheme.typography.bodySmall)
+                                val accountActivity=transactions.filter { accountLabels[it.fingerprint]==accountChoice }.sortedByDescending { it.timestamp }
+                                if(accountActivity.isEmpty()) Text("No assigned transactions yet. Assign accounts in Transactions.")
+                                accountActivity.take(15).forEach { tx ->
+                                    ListItem(headlineContent={Text(tx.description.take(50),maxLines=1)},
+                                        supportingContent={Text("${tx.timestamp.take(16)} • ${tx.category}")},
+                                        trailingContent={Text(Money.format(tx.amountLaari),color=if(tx.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)})
+                                }
+                                if(accountActivity.size>15) Text("Showing 15 of ${accountActivity.size}. Open Transactions for the complete history.",style=MaterialTheme.typography.bodySmall)
+                                OutlinedButton(onClick={tab=1;accountFilter=accountChoice},modifier=Modifier.fillMaxWidth()) { Text("View all ${accountChoice} transactions") }
+                            }
+                        }
                         if(accountChoice=="MIB") {
                         Text("MIB account balance",style=MaterialTheme.typography.titleMedium)
                         Text("Upload an MIB CSV in Transactions to automatically use its closing running balance. You can also enter a manual balance below.",style=MaterialTheme.typography.bodySmall)
@@ -660,6 +685,25 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Box {
+                            OutlinedButton(onClick={counterpartyExpanded=true}) { Text(counterpartyFilter) }
+                            DropdownMenu(expanded=counterpartyExpanded,onDismissRequest={counterpartyExpanded=false}) {
+                                listOf("All types","Business","Individual","Unclassified").forEach { option ->
+                                    DropdownMenuItem(text={Text(option)},onClick={counterpartyFilter=option;counterpartyExpanded=false})
+                                }
+                            }
+                        }
+                        Box {
+                            OutlinedButton(onClick={categoryFilterExpanded=true}) { Text(categoryFilter) }
+                            DropdownMenu(expanded=categoryFilterExpanded,onDismissRequest={categoryFilterExpanded=false}) {
+                                (listOf("All categories")+categories).forEach { option ->
+                                    DropdownMenuItem(text={Text(option)},onClick={categoryFilter=option;categoryFilterExpanded=false})
+                                }
+                            }
+                        }
+                    }
+                    Text("Business or Individual is assigned manually in transaction details. Unclassified records are not guessed.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick={showTransactionTools=!showTransactionTools},modifier=Modifier.fillMaxWidth()) {
                         Text(if(showTransactionTools) "Hide import & backup tools" else "Import & backup tools")
                     }
@@ -718,6 +762,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val filteredTransactions = transactions.filter { t ->
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
+                        (categoryFilter=="All categories" || t.category==categoryFilter || (categoryFilter=="Fast Food" && t.description.contains("fast food",true))) &&
+                        (counterpartyFilter=="All types" || (counterpartyPrefs.getString(t.fingerprint,"Unclassified") ?: "Unclassified")==counterpartyFilter) &&
                         when(transactionFilter) {
                             "Expenses" -> t.amountLaari < 0
                             "Income" -> t.amountLaari > 0
@@ -736,7 +782,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=3.dp),shape=RoundedCornerShape(18.dp)) {
                             ListItem(
                                 headlineContent={Text(t.description.take(75),maxLines=2)},
-                                supportingContent={Text("${t.category} • ${t.timestamp.take(10)} • ${accountLabels[t.fingerprint] ?: "Unassigned"}")},
+                                supportingContent={Text("${t.category} • ${counterpartyPrefs.getString(t.fingerprint,"Unclassified")} • ${t.timestamp.take(10)} • ${accountLabels[t.fingerprint] ?: "Unassigned"}")},
                                 leadingContent={Text(when(t.category) { "Food","Groceries" -> "◉"; "Transport" -> "▣"; "Shopping" -> "▤"; "Bills" -> "▥"; "Income" -> "↓"; else -> if(t.amountLaari>=0) "↓" else "↑" },color=MaterialTheme.colorScheme.primary)},
                                 trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),color=if(t.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,fontWeight=FontWeight.SemiBold)}
                             )
@@ -752,6 +798,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Text(Money.format(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
+                                Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,"Unclassified")}",style=MaterialTheme.typography.bodyMedium)
+                                Box {
+                                    OutlinedButton(onClick={counterpartyEditExpanded=true}) { Text("Classify business / individual") }
+                                    DropdownMenu(expanded=counterpartyEditExpanded,onDismissRequest={counterpartyEditExpanded=false}) {
+                                        listOf("Business","Individual","Unclassified").forEach { kind ->
+                                            DropdownMenuItem(text={Text(kind)},onClick={
+                                                counterpartyPrefs.edit().putString(selectedTransaction.fingerprint,kind).apply()
+                                                counterpartyRevision++
+                                                counterpartyEditExpanded=false
+                                            })
+                                        }
+                                    }
+                                }
+
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(onClick={
                                         store.setAccount(selectedTransaction.fingerprint,if((accountLabels[selectedTransaction.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB")
