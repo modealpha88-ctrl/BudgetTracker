@@ -102,6 +102,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var editingDescription by remember { mutableStateOf("") }
     var editingCategory by remember { mutableStateOf("Other") }
     var deletingId by remember { mutableStateOf<Long?>(null) }
+    var selectedTransactionId by remember { mutableStateOf<Long?>(null) }
+    var showTransactionTools by remember { mutableStateOf(false) }
     var accountFilter by remember { mutableStateOf("All accounts") }
     var accountExpanded by remember { mutableStateOf(false) }
     var goalName by remember { mutableStateOf("") }
@@ -562,11 +564,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup.json")}) { Text("Export backup") }
-                        OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
+                    OutlinedButton(onClick={showTransactionTools=!showTransactionTools},modifier=Modifier.fillMaxWidth()) {
+                        Text(if(showTransactionTools) "Hide import & backup tools" else "Import & backup tools")
                     }
-                    OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Cross-check CSV vs SMS") }
+                    if(showTransactionTools) {
+                        Card(modifier=Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Data tools",style=MaterialTheme.typography.titleMedium)
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup.json")}) { Text("Export backup") }
+                                    OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
+                                }
+                                OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Cross-check CSV vs SMS") }
+                                OutlinedButton(onClick={receiptLauncher.launch("image/*")}) { Text("Scan receipt") }
+                            }
+                        }
+                    }
                     if(confirmMissingImport) {
                         AlertDialog(
                             onDismissRequest={confirmMissingImport=false},
@@ -617,26 +630,42 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                     if(filteredTransactions.isEmpty()) Text("No transactions match this filter.",color=Color.White)
-                    filteredTransactions.forEach { t ->
-                        Card(Modifier.fillMaxWidth().padding(vertical=4.dp),shape=RoundedCornerShape(18.dp),
-                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
-                            Row(Modifier.fillMaxWidth().padding(18.dp),horizontalArrangement=Arrangement.spacedBy(14.dp),
-                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("▤",color=Color(0xFF4EA1FF),style=MaterialTheme.typography.headlineMedium)
-                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                                    Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),
-                                        color=if(t.amountLaari>0) Color(0xFF4ADEA5) else Color(0xFFFF6B77),
-                                        style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                                    Text(t.description,color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.bodyMedium)
-                                    Text("${t.category}  •  ${t.timestamp.take(10)}",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-                                    Row {
-                                        TextButton(onClick={store.setAccount(t.fingerprint,if((accountLabels[t.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB");revision++}) { Text(accountLabels[t.fingerprint] ?: "Set MIB/BML") }
-                                        TextButton(onClick={editingId=t.id;editingAmount=Money.format(kotlin.math.abs(t.amountLaari)).removePrefix("MVR ").replace(",","");editingDescription=t.description;editingCategory=t.category}) { Text("Edit") }
-                                        TextButton(onClick={deletingId=t.id}) { Text("Delete",color=Color(0xFFFF6B77)) }
-                                    }
-                                    if(t.category=="Transfers" || t.category=="Incoming Transfer")
-                                        TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
+                    filteredTransactions.take(150).forEach { t ->
+                        Card(onClick={selectedTransactionId=t.id},modifier=Modifier.fillMaxWidth().padding(vertical=3.dp),shape=RoundedCornerShape(18.dp)) {
+                            ListItem(
+                                headlineContent={Text(t.description.take(75),maxLines=2)},
+                                supportingContent={Text("${t.category} • ${t.timestamp.take(10)} • ${accountLabels[t.fingerprint] ?: "Unassigned"}")},
+                                leadingContent={Text(if(t.amountLaari>=0) "↓" else "↑",color=MaterialTheme.colorScheme.primary)},
+                                trailingContent={Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),color=if(t.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,fontWeight=FontWeight.SemiBold)}
+                            )
+                        }
+                    }
+                    if(filteredTransactions.size>150) Text("Showing first 150 of ${filteredTransactions.size} results. Narrow your search to see more.",style=MaterialTheme.typography.bodySmall)
+                    val selectedTransaction=transactions.firstOrNull { it.id==selectedTransactionId }
+                    if(selectedTransaction!=null) {
+                        ModalBottomSheet(onDismissRequest={selectedTransactionId=null}) {
+                            Column(Modifier.fillMaxWidth().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                                Text("Transaction details",style=MaterialTheme.typography.headlineSmall)
+                                Text(selectedTransaction.description)
+                                Text(Money.format(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
+                                Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
+                                Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick={
+                                        store.setAccount(selectedTransaction.fingerprint,if((accountLabels[selectedTransaction.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB")
+                                        revision++
+                                    }) { Text("Change account") }
+                                    OutlinedButton(onClick={
+                                        editingId=selectedTransaction.id
+                                        editingAmount=Money.format(kotlin.math.abs(selectedTransaction.amountLaari)).removePrefix("MVR ").replace(",","")
+                                        editingDescription=selectedTransaction.description
+                                        editingCategory=selectedTransaction.category
+                                        selectedTransactionId=null
+                                    }) { Text("Edit") }
                                 }
+                                if(selectedTransaction.category.contains("Transfer",true))
+                                    OutlinedButton(onClick={store.markInternal(selectedTransaction.id);revision++;selectedTransactionId=null}) { Text("Mark internal transfer") }
+                                TextButton(onClick={deletingId=selectedTransaction.id;selectedTransactionId=null}) { Text("Delete transaction",color=MaterialTheme.colorScheme.error) }
                             }
                         }
                     }
@@ -659,7 +688,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     if(deletingId!=null) {
                         AlertDialog(onDismissRequest={deletingId=null},title={Text("Delete transaction?")},text={Text("This permanently deletes the selected record. Export a backup first if needed.")},confirmButton={TextButton(onClick={deletingId?.let { store.deleteTransaction(it) };deletingId=null;revision++}) { Text("Delete") }},dismissButton={TextButton(onClick={deletingId=null}) { Text("Cancel") }})
                     }
-                    OutlinedButton(onClick={receiptLauncher.launch("image/*")},modifier=Modifier.fillMaxWidth()) { Text("Scan receipt (review before adding)") }
+
                     if(receiptPending) Text("Receipt OCR preview: ${receiptPreview.take(400)}",color=Color.White)
                     OutlinedButton(onClick={showTransactionForm=!showTransactionForm},modifier=Modifier.fillMaxWidth()) {
                         Text(if(showTransactionForm) "Hide add transaction" else "+ Add transaction")
