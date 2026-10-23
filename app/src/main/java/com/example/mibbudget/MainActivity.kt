@@ -95,6 +95,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         prefs.edit().putBoolean("enabled", granted).apply()
     }
     var notice by remember { mutableStateOf("") }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permissionRefresh++
+        notice=if(granted) "App notifications allowed." else "App notifications not allowed. Bank notification reading is a separate permission."
+    }
     var tab by remember { mutableStateOf(0) }
     var csvReview by remember { mutableStateOf<TransactionStore.CsvReview?>(null) }
     var csvText by remember { mutableStateOf<String?>(null) }
@@ -327,10 +331,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 val canPostNotifications = android.os.Build.VERSION.SDK_INT<33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
-                val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                    permissionRefresh++
-                    notice=if(granted) "App notifications allowed." else "App notifications not allowed. Bank notification reading is a separate permission."
-                }
                 OutlinedButton(onClick={showAccessHelp=!showAccessHelp},modifier=Modifier.fillMaxWidth()) {
                     Text(if(showAccessHelp) "Hide access setup guide" else "Set up SMS & notification access")
                 }
