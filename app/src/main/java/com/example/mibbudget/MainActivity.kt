@@ -135,6 +135,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 .addOnCompleteListener { recognizer.close() }
         } catch(e:Exception) { notice="Cannot open receipt: ${e.message?.take(70)}" }
     }
+    val pdfLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if(uri!=null) try {
+            context.contentResolver.openOutputStream(uri)?.use { BudgetPdfReport.write(it,selectedMonth,transactions,budgets) }
+                ?: error("Could not open PDF destination")
+            notice="Monthly PDF report saved"
+        } catch(e:Exception) { notice="PDF export failed: ${e.message?.take(90)}" }
+    }
     val screenshotLauncher=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if(uri!=null) {
             try {
@@ -405,6 +412,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth().height(8.dp),strokeCap=androidx.compose.ui.graphics.StrokeCap.Round); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
                     }
                     if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
+                    OutlinedButton(onClick={pdfLauncher.launch("MIB-Report-${selectedMonth}.pdf")},modifier=Modifier.fillMaxWidth()) { Text("Export monthly PDF report") }
                     Text("Monthly spending overview",style=MaterialTheme.typography.titleMedium)
                     val totalSpent=grouped.values.flatten().sumOf { -it.amountLaari }
                     grouped.forEach { (cat,txs) ->
