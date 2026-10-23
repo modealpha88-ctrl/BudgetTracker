@@ -132,6 +132,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var deletingId by remember { mutableStateOf<Long?>(null) }
     var selectedTransactionId by remember { mutableStateOf<Long?>(null) }
     var internalSelectionMode by remember { mutableStateOf(false) }
+    var owedSelectionMode by remember { mutableStateOf(false) }
+    var owedSelectedIds by remember { mutableStateOf(setOf<Long>()) }
+
     var selectedInternalIds by remember { mutableStateOf(setOf<Long>()) }
     var confirmInternalSelection by remember { mutableStateOf(false) }
     val originalInternalCategories=remember { context.getSharedPreferences("internal_transfer_original_categories",android.content.Context.MODE_PRIVATE) }
@@ -1126,12 +1129,49 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     )
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
+                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Money owed to me",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={
+                                    owedSelectionMode=!owedSelectionMode
+                                    if(owedSelectionMode) {
+                                        internalSelectionMode=false
+                                        selectedInternalIds=emptySet()
+                                    }
+                                }) { Text(if(owedSelectionMode) "Done" else "Select & calculate") }
+                            }
+                            Text("Search by person, recipient, date or amount above, then select transactions below.",
+                                style=MaterialTheme.typography.bodySmall)
+                            if(owedSelectionMode || owedSelectedIds.isNotEmpty()) {
+                                val selectedOwedTransactions=transactions.filter { it.id in owedSelectedIds }
+                                val lent=selectedOwedTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
+                                val repaid=selectedOwedTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
+                                Text("Selected: ${owedSelectedIds.size} transactions",style=MaterialTheme.typography.bodyMedium)
+                                Text("Money sent: ${Money.format(lent)} · Money received: ${Money.format(repaid)}",
+                                    style=MaterialTheme.typography.bodySmall)
+                                Text("Estimated outstanding: ${Money.format(lent-repaid)}",
+                                    style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,
+                                    color=if(lent-repaid<0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Text("Outgoing selected payments count as money lent; incoming payments count as repayments. Select only transactions related to the debt. A negative balance means more was received than sent.",
+                                    style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick={
+                                        owedSelectedIds=owedSelectedIds+orderedTransactions.take(150).map { it.id }
+                                    }) { Text("Add visible") }
+                                    TextButton(onClick={owedSelectedIds=emptySet()}) { Text("Clear all") }
+                                }
+                            }
+                        }
+                    }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
                                 horizontalArrangement=Arrangement.SpaceBetween) {
                                 Text("Internal transfers",style=MaterialTheme.typography.titleMedium)
                                 TextButton(onClick={
                                     internalSelectionMode=!internalSelectionMode
                                     selectedInternalIds=emptySet()
+                                    if(internalSelectionMode) owedSelectionMode=false
                                 }) { Text(if(internalSelectionMode) "Cancel selection" else "Select transactions") }
                             }
                             if(internalSelectionMode) {
@@ -1177,11 +1217,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         val merchant=TransactionPresentation.label(t.description)
                         Card(onClick={
-                            if(internalSelectionMode) selectedInternalIds=if(t.id in selectedInternalIds) selectedInternalIds-t.id else selectedInternalIds+t.id
+                            if(owedSelectionMode) owedSelectedIds=if(t.id in owedSelectedIds) owedSelectedIds-t.id else owedSelectedIds+t.id
+                            else if(internalSelectionMode) selectedInternalIds=if(t.id in selectedInternalIds) selectedInternalIds-t.id else selectedInternalIds+t.id
                             else selectedTransactionId=t.id
                         },modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                if(owedSelectionMode) Checkbox(checked=t.id in owedSelectedIds,onCheckedChange={ checked ->
+                                    owedSelectedIds=if(checked) owedSelectedIds+t.id else owedSelectedIds-t.id
+                                })
                                 if(internalSelectionMode) Checkbox(checked=t.id in selectedInternalIds,onCheckedChange={ checked ->
                                     selectedInternalIds=if(checked) selectedInternalIds+t.id else selectedInternalIds-t.id
                                 })
