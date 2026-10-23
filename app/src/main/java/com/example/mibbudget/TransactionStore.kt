@@ -42,43 +42,102 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
 
-    // Strict template CSV: date,amount,description,category,account
-    // Signed decimal amounts; date ISO yyyy-MM-dd. Quoted CSV is deliberately rejected.
+
+    // Parse RFC-style quoted CSV including escaped quotes, commas and embedded newlines.
+    private fun parseCsvRecords(text: String): List<List<String>> {
+        val rows=mutableListOf<List<String>>()
+        var row=mutableListOf<String>()
+        val field=StringBuilder()
+        var quoted=false
+        var i=0
+        while(i<text.length) {
+            val ch=text[i]
+            when {
+                ch=='"' && quoted && i+1<text.length && text[i+1]=='"' -> { field.append('"');i++ }
+                ch=='"' -> { quoted=!quoted }
+                ch==',' && !quoted -> { row.add(field.toString());field.setLength(0) }
+                (ch=='\n' || ch=='\r') && !quoted -> {
+                    row.add(field.toString());field.setLength(0)
+                    if(row.any { it.isNotBlank() }) rows.add(row)
+                    row=mutableListOf()
+                    if(ch=='\r' && i+1<text.length && text[i+1]=='\n') i++
+                }
+                else -> field.append(ch)
+            }
+            i++
+        }
+        require(!quoted) { "Unclosed CSV quotation" }
+        row.add(field.toString())
+        if(row.any { it.isNotBlank() }) rows.add(row)
+        return rows
+    }
+
     fun importCsv(text: String): Pair<Int,Int> {
-        require(text.length <= 5_000_000) { "CSV too large" }
-        val lines=text.trim().lines()
-        require(lines.isNotEmpty() && lines.first().trim().lowercase(Locale.ROOT)=="date,amount,description,category,account") { "Expected date,amount,description,category,account header" }
-        require(lines.size<=10001) { "Too many rows" }
-        data class Row(val amount:Long,val category:String,val description:String,val date:String,val account:String,val fingerprint:String)
-        val parsed=lines.drop(1).filter { it.isNotBlank() }.mapIndexed { index,line ->
-            require(!line.contains('"')) { "Quoted CSV is not supported; use the provided simple template" }
-            val cols=line.split(",")
-            require(cols.size==5) { "Invalid row ${index+2}" }
-            val date=java.time.LocalDate.parse(cols[0].trim()).toString()
-            val raw=cols[1].trim()
-            val negative=raw.startsWith("-")
-            val amount=Money.parseLaari(raw.removePrefix("-")) ?: throw IllegalArgumentException("Invalid amount on row ${index+2}")
-            require(amount>0 && cols[2].isNotBlank() && cols[2].length<=120 && cols[3].length<=40 && cols[4].length<=40)
-            val fingerprint="csv-"+MessageDigest.getInstance("SHA-256").digest(line.trim().toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-            Row(if(negative) -amount else amount,cols[3].trim().ifBlank { "Other" },cols[2].trim(),date,cols[4].trim(),fingerprint)
+        require(text.length<=5_000_000) { "CSV too large" }
+        val records=parseCsvRecords(text.removePrefix("\uFEFF"))
+        require(records.isNotEmpty() && records.size<=10001) { "Empty or oversized CSV" }
+        val header=records.first().map { it.trim().uppercase(Locale.ROOT) }
+        val mib=header==listOf("POSTED DATE","VALUE DATE","TRANSACTION TYPE","REFERENCE","DESCRIPTION","AMOUNT","RUNNING BALANCE")
+        val simple=header==listOf("DATE","AMOUNT","DESCRIPTION","CATEGORY","ACCOUNT")
+        require(mib || simple) { "Unsupported CSV columns. Expected MIB statement or date,amount,description,category,account" }
+        data class ImportRow(val amount:Long,val category:String,val description:String,val time:String,val account:String,val fingerprint:String)
+        var skippedNonTransactions=0
+        val parsed=mutableListOf<ImportRow>()
+        records.drop(1).forEachIndexed { index,cols ->
+            require(cols.size==header.size) { "Invalid CSV row ${index+2}" }
+            val amountText=(if(mib) cols[5] else cols[1]).trim().replace(",","")
+            val sign=amountText.startsWith("-")
+            val amount=Money.parseLaari(amountText.removePrefix("-").removePrefix("+"))
+                ?: throw IllegalArgumentException("Invalid amount on row ${index+2}")
+            val kind=if(mib) cols[2].trim() else ""
+            if(amount==0L || (mib && kind.startsWith("**B/F",true))) {
+                skippedNonTransactions++
+            } else {
+                val date=try { java.time.LocalDate.parse(cols[0].trim().take(10)) }
+                    catch(e:Exception) { throw IllegalArgumentException("Invalid date on row ${index+2}") }
+                val description=if(mib) {
+                    listOf(kind,cols[4].trim()).filter { it.isNotBlank() }.joinToString(": ").take(120)
+                } else cols[2].trim().take(120)
+                require(description.isNotBlank()) { "Missing description on row ${index+2}" }
+                val category=if(mib) {
+                    when {
+                        !sign && (kind.contains("salary",true)) -> "Income"
+                        !sign -> "Income"
+                        kind.contains("POS",true) -> "Shopping"
+                        kind.contains("ATM",true) -> "Cash"
+                        kind.contains("Favara",true) || kind.contains("transfer",true) -> "Transfers"
+                        kind.contains("FaisaPay",true) -> "Bills"
+                        else -> "Other"
+                    }
+                } else cols[3].trim().ifBlank { "Other" }.take(40)
+                val account=if(mib) "MIB" else cols[4].trim().take(40)
+                val time=if(mib) cols[0].trim().replace(' ','T') else date.toString()+"T12:00:00"
+                // Stable row fingerprint; repeated import of the same statement is idempotent.
+                val canonical=if(mib) listOf(cols[0].trim(),cols[2].trim(),cols[3].trim(),cols[4].trim(),amountText).joinToString("|")
+                    else cols.joinToString("|") { it.trim() }
+                val digest=MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+                val fingerprint="csv-"+digest.joinToString("") { "%02x".format(it) }
+                parsed.add(ImportRow(if(sign) -amount else amount,category,description,time,account,fingerprint))
+            }
         }
         val db=writableDatabase
         var imported=0
         db.beginTransaction()
         try {
             parsed.forEach { row ->
-                val v=ContentValues().apply {put("amount_laari",row.amount);put("category",row.category);put("description",row.description);put("created_at",row.date+"T12:00:00");put("fingerprint",row.fingerprint)}
+                val v=ContentValues().apply {
+                    put("amount_laari",row.amount);put("category",row.category)
+                    put("description",row.description);put("created_at",row.time);put("fingerprint",row.fingerprint)
+                }
                 if(db.insertWithOnConflict("transactions",null,v,SQLiteDatabase.CONFLICT_IGNORE)!=-1L) {
                     imported++
-                    if(row.account.isNotBlank()) {
-                        val a=ContentValues().apply {put("fingerprint",row.fingerprint);put("label",row.account)}
-                        db.insertWithOnConflict("account_labels",null,a,SQLiteDatabase.CONFLICT_REPLACE)
-                    }
+                    val label=ContentValues().apply { put("fingerprint",row.fingerprint);put("label",row.account) }
+                    db.insertWithOnConflict("account_labels",null,label,SQLiteDatabase.CONFLICT_REPLACE)
                 }
             }
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
-        return imported to (parsed.size-imported)
+        return imported to (parsed.size-imported+skippedNonTransactions)
     }
     fun updateTransaction(id: Long, amount: Long, category: String, description: String): Boolean {
         if (amount == 0L || amount == Long.MIN_VALUE || description.isBlank()) return false
