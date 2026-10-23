@@ -92,6 +92,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var balanceAmount by remember { mutableStateOf(balancePrefs.getString("mib_amount","") ?: "") }
     var savedBalanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var savedBalanceMinor by remember { mutableStateOf(balancePrefs.getLong("mib_minor",Long.MIN_VALUE)) }
+    var balanceSource by remember { mutableStateOf(balancePrefs.getString("mib_source","Manual") ?: "Manual") }
     var importingHistory by remember { mutableStateOf(false) }
     var showImportSettings by remember { mutableStateOf(false) }
     var historyRequested by remember { mutableStateOf(false) }
@@ -112,6 +113,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV")
             csvReview=store.reviewCsv(data)
             csvText=data
+            store.statementBalance(data)?.let { closing ->
+                val currentDate=savedBalanceDate
+                if(currentDate.isBlank() || closing.date>=currentDate) {
+                    savedBalanceDate=closing.date
+                    savedBalanceMinor=closing.amountLaari
+                    balanceDate=closing.date
+                    balanceAmount=String.format(java.util.Locale.US,"%.2f",closing.amountLaari/100.0)
+                    balanceSource="MIB CSV statement"
+                    balancePrefs.edit().putString("mib_date",closing.date)
+                        .putString("mib_amount",balanceAmount).putLong("mib_minor",closing.amountLaari)
+                        .putString("mib_source",balanceSource).apply()
+                }
+            }
             notice="Statement checked. No transactions were imported. Review the results below."
         } catch(e:Exception) { csvReview=null;csvText=null;notice="CSV comparison failed: ${e.message?.take(100)}" }
     }
@@ -249,7 +263,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     } }
                     } else {
                         Text("MIB account balance",style=MaterialTheme.typography.titleMedium)
-                        Text("Enter a verified MIB bank balance and its statement date (end of day). Later MIB transactions will be applied to it.",style=MaterialTheme.typography.bodySmall)
+                        Text("Upload an MIB CSV in Transactions to automatically use its closing running balance. You can also enter a manual balance below.",style=MaterialTheme.typography.bodySmall)
                         OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         OutlinedTextField(value=balanceAmount,onValueChange={balanceAmount=it},label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         Button(onClick={
@@ -259,7 +273,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else {
                                 savedBalanceDate=date.toString()
                                 savedBalanceMinor=amount
-                                balancePrefs.edit().putString("mib_date",savedBalanceDate).putString("mib_amount",balanceAmount).putLong("mib_minor",amount).apply()
+                                balanceSource="Manual"
+                                balancePrefs.edit().putString("mib_date",savedBalanceDate).putString("mib_amount",balanceAmount).putLong("mib_minor",amount).putString("mib_source","Manual").apply()
                                 notice="MIB balance reference saved"
                             }
                         }) { Text("Save verified balance") }
@@ -271,9 +286,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                     Text("MIB ESTIMATED BALANCE",color=Color.White)
                                     Text(Money.format(estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
-                                    Text("Verified at ${savedBalanceDate}: ${Money.format(savedBalanceMinor)}",color=Color.White)
+                                    Text("${balanceSource} at ${savedBalanceDate}: ${Money.format(savedBalanceMinor)}",color=Color.White)
                                     Text("MIB transactions after reference: ${later.size}",color=Color.White)
-                                    Text("Not a live bank balance. Check against the latest MIB statement.",color=Color.White)
+                                    Text("Statement balance plus later labeled MIB records; not a live bank balance.",color=Color.White)
                                 }
                             }
                             if(unlabeled>0) Text("Warning: ${unlabeled} unassigned transactions after the reference date were excluded. Label accounts to improve accuracy.")
