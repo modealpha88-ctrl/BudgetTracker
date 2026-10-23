@@ -830,6 +830,59 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                     Spacer(Modifier.height(20.dp))
+                    var largeTransfersExpanded by remember { mutableStateOf(false) }
+                    var transferThreshold by remember { mutableStateOf("1000") }
+                    val thresholdMinor=Money.parseLaari(transferThreshold) ?: 100000L
+                    val largeTransfers=monthlyTransactions.filter { tx ->
+                        tx.category.contains("Transfer",true) &&
+                        kotlin.math.abs(tx.amountLaari)>=thresholdMinor
+                    }.sortedByDescending { kotlin.math.abs(it.amountLaari) }
+                    val originalTransferPrefs=remember { context.getSharedPreferences("internal_transfer_original_categories",android.content.Context.MODE_PRIVATE) }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
+                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Review large transfers",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={largeTransfersExpanded=!largeTransfersExpanded}) {
+                                    Text(if(largeTransfersExpanded) "Hide ↑" else "${largeTransfers.size} to check ↓")
+                                }
+                            }
+                            Text("Internal transfers should not count as spending or income. They remain in bank history and account balance calculations.",
+                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            if(largeTransfersExpanded) {
+                                OutlinedTextField(value=transferThreshold,onValueChange={transferThreshold=it},
+                                    label={Text("Minimum transfer (MVR)")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                                if(largeTransfers.isEmpty()) Text("No transfers above this amount this month.",style=MaterialTheme.typography.bodySmall)
+                                largeTransfers.forEach { tx ->
+                                    Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                        Text(TransactionPresentation.label(tx.description),style=MaterialTheme.typography.bodyMedium)
+                                        Text("${tx.timestamp.take(10)} · ${Money.format(tx.amountLaari)}",
+                                            style=MaterialTheme.typography.bodySmall)
+                                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                            if(tx.category=="Internal Transfer") {
+                                                TextButton(onClick={
+                                                    val previous=originalTransferPrefs.getString(tx.id.toString(),"Transfers") ?: "Transfers"
+                                                    store.setTransactionCategory(tx.id,previous)
+                                                    originalTransferPrefs.edit().remove(tx.id.toString()).apply()
+                                                    revision++
+                                                    notice="Transfer restored to $previous"
+                                                }) { Text("Undo internal") }
+                                            } else {
+                                                OutlinedButton(onClick={
+                                                    originalTransferPrefs.edit().putString(tx.id.toString(),tx.category).apply()
+                                                    store.markInternal(tx.id)
+                                                    revision++
+                                                    notice="Marked internal; transaction retained"
+                                                }) { Text("Mark internal") }
+                                            }
+                                            TextButton(onClick={selectedTransactionId=tx.id}) { Text("Details") }
+                                        }
+                                        HorizontalDivider()
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
