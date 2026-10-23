@@ -311,7 +311,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
                     }
                     OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Import CSV statement") }
-                    Text("CSV format: date,amount,description,category,account. Dates YYYY-MM-DD; negative amounts are expenses. Export a backup before importing.",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
+                    Text("Supports MIB statement CSV and the five-column template. Opening balances are skipped. Export a backup first; review transactions for duplicates from SMS imports.",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
                     val filteredTransactions = transactions.filter { t ->
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
