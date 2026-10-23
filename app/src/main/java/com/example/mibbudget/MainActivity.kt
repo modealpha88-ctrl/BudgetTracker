@@ -132,7 +132,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val vendorAvatarPrefs=remember { context.getSharedPreferences("vendor_avatar_files",android.content.Context.MODE_PRIVATE) }
     var avatarRevision by remember { mutableIntStateOf(0) }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        val chosen=transactions.firstOrNull { it.id==selectedTransactionId }
+        val chosen=store.all().firstOrNull { it.id==selectedTransactionId }
         if(uri!=null && chosen!=null) try {
             val vendor=TransactionPresentation.label(chosen.description).substringBefore(" · ").trim().uppercase(java.util.Locale.ROOT)
             val key=vendor.replace(Regex("[^A-Z0-9]"),"_").take(80)
