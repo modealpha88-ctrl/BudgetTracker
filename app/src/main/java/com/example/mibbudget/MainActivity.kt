@@ -854,6 +854,33 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 label={Text(option,style=MaterialTheme.typography.labelSmall)})
                         }
                     }
+                    val reviewNeeded=transactions.filter { tx ->
+                        val isTransfer=VendorProfiles.isTransfer(tx.description,tx.category)
+                        val recipient=recipientPrefs.getString(tx.fingerprint,"").orEmpty()
+                        val parsed=TransactionPresentation.label(tx.description)
+                        val missingRecipient=isTransfer && recipient.isBlank() && !parsed.contains(" · ")
+                        val merchantUnverified=!isTransfer && VendorProfiles.get(context,tx.description)==null
+                        missingRecipient || merchantUnverified
+                    }
+                    var reviewInboxExpanded by remember { mutableStateOf(false) }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text("Transaction review inbox",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={reviewInboxExpanded=!reviewInboxExpanded}) {
+                                    Text("${reviewNeeded.size} to review")
+                                }
+                            }
+                            if(reviewInboxExpanded) {
+                                Text("Unidentified transfer recipients and unverified merchant profiles. Tap an item to correct it.",style=MaterialTheme.typography.bodySmall)
+                                reviewNeeded.take(25).forEach { tx ->
+                                    TextButton(onClick={selectedTransactionId=tx.id}) {
+                                        Text("${tx.timestamp.take(10)} · ${TransactionPresentation.label(tx.description)} · ${Money.format(tx.amountLaari)}",maxLines=2)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Activity",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
                         TextButton(onClick={showAdvancedFilters=!showAdvancedFilters}) {
