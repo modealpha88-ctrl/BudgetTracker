@@ -9,6 +9,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import android.os.Bundle
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,11 +38,12 @@ private val categories = listOf("Food","Groceries","Transport","Bills","Shopping
 class MainActivity : ComponentActivity() {
     private lateinit var store: TransactionStore
     private var sharedText by mutableStateOf("")
+    private var darkTheme by mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = TransactionStore(this)
         sharedText = intent?.takeIf { it.action == Intent.ACTION_SEND && it.type == "text/plain" }?.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
-        setContent { MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF2563EB), secondary = Color(0xFF0D9488), background = Color(0xFFF6F8FC), surface = Color.White, surfaceVariant = Color(0xFFEAF0FA)), shapes = Shapes(medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp))) { BudgetApp(store, sharedText) { sharedText = "" } } }
+        setContent { MaterialTheme(colorScheme = (if(darkTheme) darkColorScheme(primary=Color(0xFF8FB5FF),secondary=Color(0xFF5EEAD4)) else lightColorScheme(primary = Color(0xFF2563EB), secondary = Color(0xFF0D9488), background = Color(0xFFF6F8FC), surface = Color.White, surfaceVariant = Color(0xFFEAF0FA))), shapes = Shapes(medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp))) { BudgetApp(store, sharedText, darkTheme, { darkTheme = it }) { sharedText = "" } } }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -49,7 +54,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) {
+fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDarkTheme: (Boolean)->Unit, clearShared: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("sms_settings", android.content.Context.MODE_PRIVATE) }
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
@@ -60,6 +65,18 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     }
     var notice by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) }
+    var searchText by remember { mutableStateOf("") }
+    var editingId by remember { mutableStateOf<Long?>(null) }
+    var editingAmount by remember { mutableStateOf("") }
+    var editingDescription by remember { mutableStateOf("") }
+    var editingCategory by remember { mutableStateOf("Other") }
+    var deletingId by remember { mutableStateOf<Long?>(null) }
+    var accountFilter by remember { mutableStateOf("All accounts") }
+    var goalName by remember { mutableStateOf("") }
+    var goalTarget by remember { mutableStateOf("") }
+    var goalSaved by remember { mutableStateOf("") }
+    var recurringName by remember { mutableStateOf("") }
+    var recurringAmount by remember { mutableStateOf("") }
     var transactionFilter by remember { mutableStateOf("All") }
     var showTransactionForm by remember { mutableStateOf(false) }
     var filterExpanded by remember { mutableStateOf(false) }
@@ -73,11 +90,18 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     }
     var revision by remember { mutableIntStateOf(0) }
     val transactions = remember(revision) { store.all() }
+    val accountLabels = remember(revision) { store.accounts() }
     val declinedTransactions = remember(revision) { store.declined() }
     val foreignTransactions = remember(revision) { store.foreign() }
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if(uri!=null) try { context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().toByteArray(Charsets.UTF_8)) }; notice="Backup exported. Keep the file private." } catch(e:Exception) { notice="Export failed: ${e.javaClass.simpleName}" }
+    }
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null) try { val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read file"); val count=store.restoreJson(data);revision++;notice="Restored $count new records. Existing records kept." } catch(e:Exception) { notice="Restore failed: ${e.message?.take(90)}" }
+    }
     LaunchedEffect(historyRequested) {
         if (historyRequested) {
             historyRequested = false
@@ -223,7 +247,14 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                         }
                     }
                     Text("${transactions.size} saved MVR transactions",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(value=searchText,onValueChange={searchText=it},label={Text("Search transactions")},modifier=Modifier.fillMaxWidth(),singleLine=true,colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Color.White,unfocusedLabelColor=Color.LightGray))
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup.json")}) { Text("Export backup") }
+                        OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
+                    }
                     val filteredTransactions = transactions.filter { t ->
+                        (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
+                        (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
                         when(transactionFilter) {
                             "Expenses" -> t.amountLaari < 0
                             "Income" -> t.amountLaari > 0
@@ -244,11 +275,34 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                                         style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                                     Text(t.description,color=Color.White,style=MaterialTheme.typography.bodyMedium)
                                     Text("${t.category}  •  ${t.timestamp.take(10)}",color=Color(0xFFADB2CC),style=MaterialTheme.typography.bodySmall)
+                                    Row {
+                                        TextButton(onClick={editingId=t.id;editingAmount=Money.format(kotlin.math.abs(t.amountLaari)).removePrefix("MVR ").replace(",","");editingDescription=t.description;editingCategory=t.category}) { Text("Edit") }
+                                        TextButton(onClick={deletingId=t.id}) { Text("Delete",color=Color(0xFFFF6B77)) }
+                                    }
                                     if(t.category=="Transfers" || t.category=="Incoming Transfer")
                                         TextButton(onClick={store.markInternal(t.id);revision++}) { Text("Mark internal transfer") }
                                 }
                             }
                         }
+                    }
+                    if(editingId!=null) {
+                        AlertDialog(onDismissRequest={editingId=null},title={Text("Edit transaction")},text={
+                            Column {
+                                OutlinedTextField(value=editingAmount,onValueChange={editingAmount=it},label={Text("Amount MVR")})
+                                OutlinedTextField(value=editingDescription,onValueChange={editingDescription=it},label={Text("Description")})
+                                Text("Category")
+                                categories.forEach { cat -> if(cat==editingCategory) Text(cat) }
+                                OutlinedButton(onClick={editingCategory=if(editingCategory=="Other") "Food" else "Other"}) { Text("Toggle Food / Other") }
+                            }
+                        },confirmButton={TextButton(onClick={
+                            val original=transactions.firstOrNull { it.id==editingId }
+                            val v=Money.parseLaari(editingAmount)
+                            if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { revision++;notice="Transaction updated";editingId=null }
+                            else notice="Enter a valid amount and description"
+                        }) { Text("Save") }},dismissButton={TextButton(onClick={editingId=null}) { Text("Cancel") }})
+                    }
+                    if(deletingId!=null) {
+                        AlertDialog(onDismissRequest={deletingId=null},title={Text("Delete transaction?")},text={Text("This permanently deletes the selected record. Export a backup first if needed.")},confirmButton={TextButton(onClick={deletingId?.let { store.deleteTransaction(it) };deletingId=null;revision++}) { Text("Delete") }},dismissButton={TextButton(onClick={deletingId=null}) { Text("Cancel") }})
                     }
                     OutlinedButton(onClick={showTransactionForm=!showTransactionForm},modifier=Modifier.fillMaxWidth()) {
                         Text(if(showTransactionForm) "Hide add transaction" else "+ Add transaction")
