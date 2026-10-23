@@ -883,9 +883,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else -> true
                         }
                     }
-                    if(filteredTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Imports arrive out of order; group by transaction date, not insertion ID.
+                    // Sorting is presentation-only and never changes stored records.
+                    val orderedTransactions=filteredTransactions.sortedWith(
+                        compareByDescending<Tx> { it.timestamp.take(10) }
+                            .thenByDescending { TransactionPresentation.time(it.description,it.timestamp) ?: "00:00" }
+                            .thenByDescending { it.id }
+                    )
+                    if(orderedTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     var lastTransactionDay = ""
-                    filteredTransactions.take(150).forEach { t ->
+                    orderedTransactions.take(150).forEach { t ->
                         val day=t.timestamp.take(10)
                         if(day!=lastTransactionDay) {
                             Text(day,style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
