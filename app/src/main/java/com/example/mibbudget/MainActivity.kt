@@ -880,7 +880,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Column {
                         categories.filter { it!="Income" }.forEach { cat ->
                             var limitText by remember(cat,revision) { mutableStateOf(budgets[cat]?.let { "${it/100}.${(it%100).toString().padStart(2,'0')}" } ?: "") }
-                            Text(cat,Modifier.padding(top=12.dp))
+                            val spent=monthlyTransactions.filter { it.category==cat && it.amountLaari<0 }.sumOf { -it.amountLaari }
+                            val limit=budgets[cat] ?: 0L
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                Box(contentAlignment=androidx.compose.ui.Alignment.Center,modifier=Modifier.size(56.dp)) {
+                                    CircularProgressIndicator(progress={if(limit>0) (spent.toFloat()/limit).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxSize(),strokeWidth=6.dp)
+                                    Text(if(limit>0) "${spent*100/limit}%" else "—",style=MaterialTheme.typography.labelSmall)
+                                }
+                                Column {
+                                    Text(cat,style=MaterialTheme.typography.titleMedium)
+                                    Text("${Money.format(spent)} spent"+if(limit>0) " / ${Money.format(limit)}" else " • No limit",style=MaterialTheme.typography.bodySmall)
+                                }
+                            }
                             Row { OutlinedTextField(value=limitText,onValueChange={limitText=it},label={Text("Limit MVR")},modifier=Modifier.weight(1f),singleLine=true)
                                 Spacer(Modifier.width(8.dp))
                                 Button(onClick={val v=Money.parseLaari(limitText);if(v!=null&&v>0){store.setBudget(cat,v);revision++;notice="$cat budget saved"}else notice="Invalid limit"}) { Text("Save") }
