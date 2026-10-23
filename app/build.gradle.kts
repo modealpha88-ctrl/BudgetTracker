@@ -7,7 +7,20 @@ android {
     namespace = "com.example.mibbudget"
     compileSdk = 35
     defaultConfig { applicationId = "com.example.mibbudget"; minSdk = 26; targetSdk = 35; versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1000); versionName = "0.2" }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        create("mibRelease") {
+            storeFile = file(System.getenv("MIB_RELEASE_KEYSTORE_PATH") ?: "missing-release-keystore.jks")
+            storePassword = System.getenv("MIB_RELEASE_STORE_PASSWORD")
+            keyAlias = System.getenv("MIB_RELEASE_KEY_ALIAS")
+            keyPassword = System.getenv("MIB_RELEASE_KEY_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("mibRelease")
+        }
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
