@@ -60,6 +60,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     }
     var revision by remember { mutableIntStateOf(0) }
     val transactions = remember(revision) { store.all() }
+    val declinedTransactions = remember(revision) { store.declined() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
     LaunchedEffect(historyRequested) {
@@ -148,6 +149,10 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     }) { Text("Add transaction") }
                     HorizontalDivider(Modifier.padding(vertical=12.dp))
                     Text("Transaction history (all dates)",style=MaterialTheme.typography.titleMedium)
+                    Text("Declined card attempts (not counted as spending)",style=MaterialTheme.typography.titleMedium)
+                    declinedTransactions.forEach { d ->
+                        ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${Money.format(d.amountLaari).removePrefix("MVR ")}")})
+                    }
                     LazyColumn { items(transactions,key={it.id}) { t ->
                         ListItem(headlineContent={Text(t.description)},supportingContent={Text("${t.category} • ${t.timestamp.take(10)}")},trailingContent={Text((if(t.amountLaari>0) "+" else "−")+Money.format(t.amountLaari))})
                         HorizontalDivider()
@@ -157,8 +162,19 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     Text("Paste or share a transaction SMS. Verify details before saving. Never paste OTPs or passwords.")
                     OutlinedTextField(value=input,onValueChange={input=it},label={Text("Bank SMS text")},modifier=Modifier.fillMaxWidth().height(160.dp))
                     val candidate = remember(input) { BankSmsParser.parse(input) }
+                    val declinedCandidate = remember(input) { BankSmsParser.parseDeclined(input) }
                     LaunchedEffect(candidate?.fingerprint) { importCategory = candidate?.category ?: "Other" }
-                    if(candidate==null) Text("No unambiguous transaction found. This prototype does not yet have verified MIB message templates.")
+                    if (declinedCandidate != null) {
+                        Text("Declined card attempt — NOT a completed expense", color=MaterialTheme.colorScheme.error)
+                        Text("${declinedCandidate.currency} ${Money.format(declinedCandidate.amountLaari).removePrefix("MVR ")} at ${declinedCandidate.merchant}")
+                        Text("Date: ${declinedCandidate.transactionTime} • Reason: ${declinedCandidate.reason}")
+                        Button(onClick={
+                            val inserted = store.addDeclined(declinedCandidate)
+                            notice = if(inserted) "Declined attempt saved (not counted as spending)" else "Duplicate declined attempt ignored"
+                            if(inserted) revision++
+                            input="";clearShared()
+                        }) { Text("Save declined attempt") }
+                    } else if(candidate==null) Text("Unrecognized SMS. Only supported transaction formats can be imported.")
                     else {
                         Text("Detected: ${if(candidate.amountLaari>0) "Credit" else "Debit"} ${Money.format(candidate.amountLaari)}")
                         Text("Transaction date: ${candidate.transactionTime ?: "Unknown"}")
