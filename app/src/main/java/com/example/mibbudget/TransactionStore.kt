@@ -277,6 +277,19 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         }
         return writableDatabase.update("transactions", v, "id=?", arrayOf(id.toString())) > 0
     }
+    /** Removes only records earlier than the chosen ISO date. Caller must confirm and back up. */
+    fun deleteTransactionsBefore(date: String): Int {
+        require(Regex("""[0-9]{4}-[0-9]{2}-[0-9]{2}""").matches(date))
+        java.time.LocalDate.parse(date)
+        val db=writableDatabase
+        db.beginTransaction()
+        return try {
+            val removed=db.delete("transactions","substr(created_at,1,10) < ?",arrayOf(date))
+            db.setTransactionSuccessful()
+            removed
+        } finally { db.endTransaction() }
+    }
+
     fun deleteTransaction(id: Long): Boolean =
         writableDatabase.delete("transactions", "id=?", arrayOf(id.toString())) > 0
 
