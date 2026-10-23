@@ -120,29 +120,46 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
                 recognizer.process(image).addOnSuccessListener { result ->
                     screenshotExtract=result.text.take(2000)
-                    // MIB Account Details places the account balance above the Transactions heading.
-                    // Never infer a balance from transaction amounts further down the screenshot.
-                    // Only consider text above the first transaction. Never use purchase amounts.
+                    // Read the account-card region only; ML Kit often splits "MVR" and
+                    // the numeric amount into separate text lines or blocks.
                     val lines=result.text.lines().map { it.trim() }.filter { it.isNotBlank() }
-                    val transactionsAt=lines.indexOfFirst { it.contains("Transactions",ignoreCase=true) }
-                    val header=if(transactionsAt>=0) lines.take(transactionsAt) else lines.take(12)
-                    val currency=Regex("""(?i)\b(?:MVR|MRF|RF)\s*([0-9][0-9,]*(?:\.[0-9]{2}))\b""")
-                    val amountOnly=Regex("""^\s*([0-9][0-9,]*\.[0-9]{2})\s*$""")
-                    val accountAt=header.indexOfFirst { it.contains("Account Details",ignoreCase=true) }
-                    val balanceLines=if(accountAt>=0) header.drop(accountAt+1).take(5) else header.take(6)
-                    val recognized=balanceLines.firstNotNullOfOrNull { line ->
-                        currency.find(line)?.groupValues?.get(1)
-                    } ?: balanceLines.firstNotNullOfOrNull { line ->
-                        amountOnly.find(line)?.groupValues?.get(1)
+                    val transactionsAt=lines.indexOfFirst {
+                        it.equals("Transactions",true) || it.equals("Transaction History",true)
                     }
-                    val valid=recognized?.replace(",","")?.let { Money.parseLaari(it) }
+                    val header=if(transactionsAt>=0) lines.take(transactionsAt) else lines.take(18)
+                    val accountAt=header.indexOfFirst { it.contains("Account Details",true) }
+                    val card=if(accountAt>=0) header.drop(accountAt+1) else header
+                    val currencyAmount=Regex("""(?i)\b(?:MVR|MRF|RF)\s*[:.]?\s*([0-9][0-9,]*\.[0-9]{2})\b""")
+                    val standaloneAmount=Regex("""^\s*([0-9][0-9,]*\.[0-9]{2})\s*$""")
+                    val currencyOnly=Regex("""(?i)^(?:MVR|MRF|RF)\s*[:.]?$""")
+                    var recognized:String?=null
+                    for(i in card.indices) {
+                        val line=card[i]
+                        val inline=currencyAmount.find(line)?.groupValues?.get(1)
+                        if(inline!=null) { recognized=inline; break }
+                        if(currencyOnly.matches(line)) {
+                            val next=card.drop(i+1).take(3).firstNotNullOfOrNull {
+                                standaloneAmount.matchEntire(it)?.groupValues?.get(1)
+                            }
+                            if(next!=null) { recognized=next; break }
+                        }
+                    }
+                    // Some screenshots show only a numeric balance inside the account card.
+                    if(recognized==null && accountAt>=0) {
+                        recognized=card.take(7).firstNotNullOfOrNull {
+                            standaloneAmount.matchEntire(it)?.groupValues?.get(1)
+                        }
+                    }
+                    val amountCandidate=recognized?.replace(",","")
+                    val valid=amountCandidate?.let { Money.parseLaari(it) }
                     screenshotPending=valid!=null
                     if(valid!=null) {
-                        balanceAmount=recognized!!.replace(",","")
+                        balanceAmount=amountCandidate!!
                         balanceDate=java.time.LocalDate.now().toString()
-                        notice="Detected MVR $balanceAmount. Confirm the amount and date, then tap Save verified balance."
+                        notice="Detected MVR $balanceAmount. Review the amount and screenshot date, then tap Save verified balance."
                     } else {
-                        notice="Balance not detected. Enter the amount manually or try a clearer screenshot."
+                        balanceAmount=""
+                        notice="No safe balance match. Type the account balance below and save it manually. OCR preview is shown below."
                     }
                 }.addOnFailureListener { notice="Could not read screenshot: ${it.message?.take(70)}" }
                     .addOnCompleteListener { recognizer.close() }
@@ -307,8 +324,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("MIB account balance",style=MaterialTheme.typography.titleMedium)
                         Text("Upload an MIB CSV in Transactions to automatically use its closing running balance. You can also enter a manual balance below.",style=MaterialTheme.typography.bodySmall)
                         OutlinedButton(onClick={screenshotLauncher.launch("image/*")}) { Text("Use MIB bank screenshot") }
-                        if(screenshotPending) {
-                            Text("Balance detected above transaction list. Confirm this is your MIB account balance and correct the date if the screenshot is older.",style=MaterialTheme.typography.bodySmall)
+                        if(screenshotExtract.isNotBlank()) {
+                            Text(if(screenshotPending) "Screenshot balance found; confirm before saving." else "Screenshot scanned, but balance not identified. Enter the amount manually.",style=MaterialTheme.typography.bodySmall)
                             Text("Recognized text: ${screenshotExtract.take(300)}",style=MaterialTheme.typography.bodySmall)
                         }
                         OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
