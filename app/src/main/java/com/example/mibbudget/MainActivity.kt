@@ -103,6 +103,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var csvReview by remember { mutableStateOf<TransactionStore.CsvReview?>(null) }
     var csvText by remember { mutableStateOf<String?>(null) }
     var confirmMissingImport by remember { mutableStateOf(false) }
+    var csvReviewFilter by remember { mutableStateOf("MISSING") }
+    var showDataReset by remember { mutableStateOf(false) }
+    var resetDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
+    var resetPhrase by remember { mutableStateOf("") }
+    var resetBackupAcknowledged by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
     var searchText by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var editingAmount by remember { mutableStateOf("") }
@@ -739,44 +745,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    if(confirmMissingImport) {
-                        AlertDialog(
-                            onDismissRequest={confirmMissingImport=false},
-                            title={Text("Import missing transactions?")},
-                            text={Text("Only missing records will be added. Possible matches are excluded. Make a backup first.")},
-                            confirmButton={TextButton(onClick={
-                                confirmMissingImport=false
-                                try {
-                                    val data=csvText ?: error("CSV not available")
-                                    val result=store.importMissingCsv(data)
-                                    revision++
-                                    csvReview=store.reviewCsv(data)
-                                    notice="Added ${result.first} missing transactions; excluded ${result.second} matched or uncertain records."
-                                } catch(e:Exception) { notice="Import failed: ${e.message?.take(100)}" }
-                            }) { Text("Import missing") }},
-                            dismissButton={TextButton(onClick={confirmMissingImport=false}) { Text("Cancel") }}
-                        )
-                    }
-                    csvReview?.let { review ->
-                        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
-                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Text("Statement cross-check",color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.titleMedium)
-                                Text("Matched: ${review.confirmed}  •  Possible: ${review.possible}  •  Missing: ${review.missing}  •  Ignored: ${review.ignored}",color=Color.White)
-                                Text("Read-only preview. No CSV transactions have been added. Possible matches need manual review.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                review.matches.filter { it.status!="MATCHED" }.take(100).forEach { item ->
-                                    HorizontalDivider()
-                                    Text("${item.status}  •  ${item.date}  •  ${Money.format(item.amountLaari)}",color=if(item.status=="POSSIBLE") Color(0xFFFFD166) else Color(0xFF8FE4C0))
-                                    Text(item.description,color=Color.White)
-                                    Text(item.reason,color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
-                                }
-                                if(review.matches.count { it.status!="MATCHED" }>100) Text("Showing first 100 unmatched/possible records",color=Color.White)
-                                if(review.missing>0 && csvText!=null) {
-                                    Button(onClick={confirmMissingImport=true}) { Text("Add all ${review.missing} missing transactions") }
-                                }
-                                OutlinedButton(onClick={csvReview=null;csvText=null}) { Text("Close comparison") }
-                            }
-                        }
-                    }
                     val filteredTransactions = transactions.filter { t ->
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
@@ -967,6 +935,84 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("CSV comparison does not add transactions automatically.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
+                    if(confirmMissingImport) {
+                        AlertDialog(
+                            onDismissRequest={confirmMissingImport=false},
+                            title={Text("Import missing transactions?")},
+                            text={Text("Only missing records will be added. Possible matches are excluded. Make a backup first.")},
+                            confirmButton={TextButton(onClick={
+                                confirmMissingImport=false
+                                try {
+                                    val data=csvText ?: error("CSV not available")
+                                    val result=store.importMissingCsv(data)
+                                    revision++
+                                    csvReview=store.reviewCsv(data)
+                                    notice="Added ${result.first} missing transactions; excluded ${result.second} matched or uncertain records."
+                                } catch(e:Exception) { notice="Import failed: ${e.message?.take(100)}" }
+                            }) { Text("Import missing") }},
+                            dismissButton={TextButton(onClick={confirmMissingImport=false}) { Text("Cancel") }}
+                        )
+                    }
+                    csvReview?.let { review ->
+                        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Statement cross-check",color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.titleMedium)
+                                Text("Matched: ${review.confirmed}  •  Possible: ${review.possible}  •  Missing: ${review.missing}  •  Ignored: ${review.ignored}",color=MaterialTheme.colorScheme.onSurface)
+                                Text("Read-only preview. No CSV transactions have been added. Possible matches need manual review.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                                    listOf("MISSING","POSSIBLE","MATCHED").forEach { status ->
+                                        FilterChip(selected=csvReviewFilter==status,onClick={csvReviewFilter=status},label={Text(status)})
+                                    }
+                                }
+                                review.matches.filter { it.status==csvReviewFilter }.take(100).forEach { item ->
+                                    HorizontalDivider()
+                                    Text("${item.status}  •  ${item.date}  •  ${Money.format(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
+                                    Text(item.description,color=MaterialTheme.colorScheme.onSurface)
+                                    Text(item.reason,color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)
+                                }
+                                if(review.matches.count { it.status!="MATCHED" }>100) Text("Showing first 100 unmatched/possible records",color=Color.White)
+                                if(review.missing>0 && csvText!=null) {
+                                    Button(onClick={confirmMissingImport=true}) { Text("Add all ${review.missing} missing transactions") }
+                                }
+                                OutlinedButton(onClick={csvReview=null;csvText=null}) { Text("Close comparison") }
+                            }
+                        }
+                    }
+                    OutlinedButton(onClick={showDataReset=!showDataReset},modifier=Modifier.fillMaxWidth()) {
+                        Text(if(showDataReset) "Hide transaction reset" else "Start over from a date (advanced)")
+                    }
+                    if(showDataReset) {
+                        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                                Text("Remove transactions before a date",style=MaterialTheme.typography.titleMedium)
+                                Text("Only transactions earlier than the chosen date are removed. Records on or after the date remain. This cannot be undone without a backup.",style=MaterialTheme.typography.bodySmall)
+                                OutlinedTextField(value=resetDate,onValueChange={resetDate=it},label={Text("Keep transactions from (YYYY-MM-DD)")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                                val cutoff=runCatching { java.time.LocalDate.parse(resetDate) }.getOrNull()
+                                val removeCount=if(cutoff!=null) transactions.count { it.timestamp.take(10)<resetDate } else 0
+                                Text(if(cutoff!=null) "${removeCount} of ${transactions.size} transactions would be removed" else "Enter a valid date",style=MaterialTheme.typography.bodyMedium)
+                                OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup-before-reset.json")},modifier=Modifier.fillMaxWidth()) { Text("Export backup before reset") }
+                                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                    Checkbox(checked=resetBackupAcknowledged,onCheckedChange={resetBackupAcknowledged=it})
+                                    Text("I have saved a backup",style=MaterialTheme.typography.bodySmall)
+                                }
+                                OutlinedTextField(value=resetPhrase,onValueChange={resetPhrase=it},label={Text("Type DELETE to confirm")},singleLine=true)
+                                Button(onClick={confirmReset=true},enabled=cutoff!=null && removeCount>0 && resetBackupAcknowledged && resetPhrase=="DELETE",modifier=Modifier.fillMaxWidth()) { Text("Review permanent removal") }
+                            }
+                        }
+                    }
+                    if(confirmReset) AlertDialog(onDismissRequest={confirmReset=false},title={Text("Permanently remove older transactions?")},
+                        text={Text("Delete ${transactions.count { it.timestamp.take(10)<resetDate }} transactions before ${resetDate}? Existing account balance anchors will not be changed. You must set a reliable dated balance to calculate historical balances.")},
+                        confirmButton={TextButton(onClick={
+                            confirmReset=false
+                            try {
+                                val removed=store.deleteTransactionsBefore(resetDate)
+                                revision++
+                                resetPhrase=""
+                                resetBackupAcknowledged=false
+                                notice="Removed ${removed} transactions before ${resetDate}. Your backup is needed to restore them."
+                            } catch(e:Exception) { notice="Reset failed: ${e.message?.take(80)}" }
+                        }) { Text("Delete older transactions") }},
+                        dismissButton={TextButton(onClick={confirmReset=false}) { Text("Cancel") }})
                     Text("Paste or share a transaction SMS. Verify details before saving. Never paste OTPs or passwords.")
                     OutlinedTextField(value=input,onValueChange={input=it},label={Text("Bank SMS text")},modifier=Modifier.fillMaxWidth().height(160.dp))
                     val candidate = remember(input) { BankSmsParser.parse(input) }
