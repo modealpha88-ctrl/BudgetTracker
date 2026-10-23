@@ -1166,6 +1166,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             confirmInternalSelection=false
                         }) { Text("Confirm ${selectedInternalIds.size}") }},
                         dismissButton={TextButton(onClick={confirmInternalSelection=false}) { Text("Cancel") }}
+                    )
                     if(orderedTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     var lastTransactionDay = ""
                     orderedTransactions.take(150).forEach { t ->
