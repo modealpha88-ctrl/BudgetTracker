@@ -66,6 +66,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }
     var notice by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) }
+    var csvReview by remember { mutableStateOf<TransactionStore.CsvReview?>(null) }
     var searchText by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var editingAmount by remember { mutableStateOf("") }
@@ -99,7 +100,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
     val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if(uri!=null) try { val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV"); val result=store.importCsv(data);revision++;notice="CSV imported ${result.first} records; skipped ${result.second} duplicates." } catch(e:Exception) { notice="CSV import failed: ${e.message?.take(100)}" }
+        if(uri!=null) try {
+            val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read CSV")
+            csvReview=store.reviewCsv(data)
+            notice="Statement checked. No transactions were imported. Review the results below."
+        } catch(e:Exception) { csvReview=null;notice="CSV comparison failed: ${e.message?.take(100)}" }
     }
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if(uri!=null) try { context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().toByteArray(Charsets.UTF_8)) }; notice="Backup exported. Keep the file private." } catch(e:Exception) { notice="Export failed: ${e.javaClass.simpleName}" }
@@ -310,7 +315,24 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup.json")}) { Text("Export backup") }
                         OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
                     }
-                    OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Import CSV statement") }
+                    OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Cross-check CSV vs SMS") }
+                    csvReview?.let { review ->
+                        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF33395B))) {
+                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Statement cross-check",color=Color.White,style=MaterialTheme.typography.titleMedium)
+                                Text("Matched: ${review.confirmed}  •  Possible: ${review.possible}  •  Missing: ${review.missing}  •  Ignored: ${review.ignored}",color=Color.White)
+                                Text("Read-only preview. No CSV transactions have been added. Possible matches need manual review.",color=Color(0xFFE3E7FF))
+                                review.matches.filter { it.status!="MATCHED" }.take(100).forEach { item ->
+                                    HorizontalDivider()
+                                    Text("${item.status}  •  ${item.date}  •  ${Money.format(item.amountLaari)}",color=if(item.status=="POSSIBLE") Color(0xFFFFD166) else Color(0xFF8FE4C0))
+                                    Text(item.description,color=Color.White)
+                                    Text(item.reason,color=Color(0xFFC5C9E2),style=MaterialTheme.typography.bodySmall)
+                                }
+                                if(review.matches.count { it.status!="MATCHED" }>100) Text("Showing first 100 unmatched/possible records",color=Color.White)
+                                OutlinedButton(onClick={csvReview=null}) { Text("Close comparison") }
+                            }
+                        }
+                    }
                     Text("Supports MIB statement CSV and the five-column template. Opening balances are skipped. Export a backup first; review transactions for duplicates from SMS imports.",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
                     val filteredTransactions = transactions.filter { t ->
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
