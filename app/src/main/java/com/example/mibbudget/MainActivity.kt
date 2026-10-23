@@ -912,52 +912,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 label={Text(option,style=MaterialTheme.typography.labelSmall)})
                         }
                     }
-                    val reviewNeeded=transactions.filter { tx ->
-                        val isTransfer=VendorProfiles.isTransfer(tx.description,tx.category)
-                        val recipient=recipientPrefs.getString(tx.fingerprint,"").orEmpty()
-                        val parsed=TransactionPresentation.label(tx.description)
-                        val missingRecipient=isTransfer && recipient.isBlank() && !parsed.contains(" · ")
-                        val merchantUnverified=!isTransfer && VendorProfiles.get(context,tx.description)==null
-                        missingRecipient || merchantUnverified
-                    }
-                    LaunchedEffect(revision,recipientRevision,socialRevision) {
-                        reviewQueue.addTransactions(reviewNeeded)
-                        reviewQueueRevision++
-                    }
-                    val queuedReviews=remember(reviewQueueRevision) { reviewQueue.all() }
-                    var reviewInboxExpanded by remember { mutableStateOf(false) }
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                Text("Review queue",style=MaterialTheme.typography.titleMedium)
-                                TextButton(onClick={reviewInboxExpanded=!reviewInboxExpanded}) {
-                                    Text("${queuedReviews.count { it.status=="PENDING" }} pending")
-                                }
-                            }
-                            if(reviewInboxExpanded) {
-                                Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                                    listOf("PENDING","APPROVED","REJECTED","RESOLVED").forEach { state ->
-                                        FilterChip(selected=reviewStatusFilter==state,onClick={reviewStatusFilter=state},label={Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)})
-                                    }
-                                }
-                                queuedReviews.filter { it.status==reviewStatusFilter }.forEach { item ->
-                                    Column(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                                        Text(item.title,style=MaterialTheme.typography.bodyMedium)
-                                        Text(item.detail,style=MaterialTheme.typography.bodySmall)
-                                        if(item.txId>0) TextButton(onClick={selectedTransactionId=item.txId}) { Text("Open transaction") }
-                                        Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                                            listOf("PENDING","APPROVED","REJECTED","RESOLVED").filter { it!=item.status }.forEach { state ->
-                                                TextButton(onClick={reviewQueue.status(item.id,state);reviewQueueRevision++}) {
-                                                    Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)
-                                                }
-                                            }
-                                        }
-                                    }
-                                    HorizontalDivider()
-                                }
-                            }
-                        }
-                    }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Activity",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
                         TextButton(onClick={showAdvancedFilters=!showAdvancedFilters}) {
@@ -1020,6 +974,52 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Text("Keep the password safe. Encrypted backups cannot be restored without it. Existing JSON backups remain supported.",style=MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Cross-check CSV vs SMS") }
                                 OutlinedButton(onClick={receiptLauncher.launch("image/*")}) { Text("Scan receipt") }
+                            }
+                        }
+                    }
+                    val reviewNeeded=transactions.filter { tx ->
+                        val isTransfer=VendorProfiles.isTransfer(tx.description,tx.category)
+                        val recipient=recipientPrefs.getString(tx.fingerprint,"").orEmpty()
+                        val parsed=TransactionPresentation.label(tx.description)
+                        val missingRecipient=isTransfer && recipient.isBlank() && !parsed.contains(" · ")
+                        val merchantUnverified=!isTransfer && VendorProfiles.get(context,tx.description)==null
+                        missingRecipient || merchantUnverified
+                    }
+                    LaunchedEffect(revision,recipientRevision,socialRevision) {
+                        reviewQueue.addTransactions(reviewNeeded)
+                        reviewQueueRevision++
+                    }
+                    val queuedReviews=remember(reviewQueueRevision) { reviewQueue.all() }
+                    var reviewInboxExpanded by remember { mutableStateOf(false) }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text("Review queue",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={reviewInboxExpanded=!reviewInboxExpanded}) {
+                                    Text("${queuedReviews.count { it.status=="PENDING" }} pending")
+                                }
+                            }
+                            if(reviewInboxExpanded) {
+                                Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                    listOf("PENDING","APPROVED","REJECTED","RESOLVED").forEach { state ->
+                                        FilterChip(selected=reviewStatusFilter==state,onClick={reviewStatusFilter=state},label={Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)})
+                                    }
+                                }
+                                queuedReviews.filter { it.status==reviewStatusFilter }.forEach { item ->
+                                    Column(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                                        Text(item.title,style=MaterialTheme.typography.bodyMedium)
+                                        Text(item.detail,style=MaterialTheme.typography.bodySmall)
+                                        if(item.txId>0) TextButton(onClick={selectedTransactionId=item.txId}) { Text("Open transaction") }
+                                        Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                            listOf("PENDING","APPROVED","REJECTED","RESOLVED").filter { it!=item.status }.forEach { state ->
+                                                TextButton(onClick={reviewQueue.status(item.id,state);reviewQueueRevision++}) {
+                                                    Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    HorizontalDivider()
+                                }
                             }
                         }
                     }
