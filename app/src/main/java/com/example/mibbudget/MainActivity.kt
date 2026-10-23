@@ -122,20 +122,27 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     screenshotExtract=result.text.take(2000)
                     // MIB Account Details places the account balance above the Transactions heading.
                     // Never infer a balance from transaction amounts further down the screenshot.
+                    // Only consider text above the first transaction. Never use purchase amounts.
                     val lines=result.text.lines().map { it.trim() }.filter { it.isNotBlank() }
-                    val transactionsAt=lines.indexOfFirst { it.equals("Transactions",true) }
+                    val transactionsAt=lines.indexOfFirst { it.contains("Transactions",ignoreCase=true) }
                     val header=if(transactionsAt>=0) lines.take(transactionsAt) else lines.take(12)
-                    val amountPattern=Regex("""(?i)\\b(?:MVR|RF\\.?|MRF)\\s*([0-9][0-9,]*(?:\\.[0-9]{2}))\\b""")
-                    val candidate=header.firstOrNull { amountPattern.containsMatchIn(it) }
-                    val match=candidate?.let { amountPattern.find(it) }
-                    screenshotPending=match!=null
-                    if(match!=null) {
-                        balanceAmount=match.groupValues[1].replace(",","")
+                    val currency=Regex("""(?i)\b(?:MVR|MRF|RF)\s*([0-9][0-9,]*(?:\.[0-9]{2}))\b""")
+                    val amountOnly=Regex("""^\s*([0-9][0-9,]*\.[0-9]{2})\s*$""")
+                    val accountAt=header.indexOfFirst { it.contains("Account Details",ignoreCase=true) }
+                    val balanceLines=if(accountAt>=0) header.drop(accountAt+1).take(5) else header.take(6)
+                    val recognized=balanceLines.firstNotNullOfOrNull { line ->
+                        currency.find(line)?.groupValues?.get(1)
+                    } ?: balanceLines.firstNotNullOfOrNull { line ->
+                        amountOnly.find(line)?.groupValues?.get(1)
+                    }
+                    val valid=recognized?.replace(",","")?.let { Money.parseLaari(it) }
+                    screenshotPending=valid!=null
+                    if(valid!=null) {
+                        balanceAmount=recognized!!.replace(",","")
                         balanceDate=java.time.LocalDate.now().toString()
-                        notice="Balance found in screenshot. Verify amount and screenshot date before saving."
+                        notice="Detected MVR $balanceAmount. Confirm the amount and date, then tap Save verified balance."
                     } else {
-                        balanceAmount=""
-                        notice="Could not safely identify an account balance. No amount was selected."
+                        notice="Balance not detected. Enter the amount manually or try a clearer screenshot."
                     }
                 }.addOnFailureListener { notice="Could not read screenshot: ${it.message?.take(70)}" }
                     .addOnCompleteListener { recognizer.close() }
