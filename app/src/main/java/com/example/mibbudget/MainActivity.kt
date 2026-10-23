@@ -2,6 +2,8 @@ package com.example.mibbudget
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,6 +51,7 @@ class MainActivity : ComponentActivity() {
 fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("sms_settings", android.content.Context.MODE_PRIVATE) }
+    val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
     var monitoring by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         monitoring = granted
@@ -115,6 +118,9 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             if (tab == 0) {
                 OutlinedButton(onClick={showImportSettings = !showImportSettings}, modifier=Modifier.fillMaxWidth()) { Text(if(showImportSettings) "Hide bank import settings  ↑" else "Bank SMS & notification settings  ↓") }
                 if (showImportSettings) {
+                Text("Permissions & Android restricted settings",style=MaterialTheme.typography.titleMedium)
+                Text("If Android says Restricted setting, open App info, tap the three-dot menu, and choose Allow restricted settings if available. This is controlled by Android, not the app. Only enable access if you trust this APK.",style=MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick=openAppSettings) { Text("Open app info & permissions") }
                 Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
