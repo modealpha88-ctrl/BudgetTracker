@@ -513,8 +513,36 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text("Balance on a selected date",style=MaterialTheme.typography.titleMedium)
-                                OutlinedTextField(value=historicalBalanceDate,onValueChange={historicalBalanceDate=it},
-                                    label={Text("Date (YYYY-MM-DD)")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                                var calendarOpen by remember { mutableStateOf(false) }
+                                var calendarMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
+                                OutlinedButton(onClick={calendarOpen=!calendarOpen},modifier=Modifier.fillMaxWidth()) { Text("Select date: ${historicalBalanceDate}  ▾") }
+                                if(calendarOpen) {
+                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                        TextButton(onClick={calendarMonth=calendarMonth.minusMonths(1)}) { Text("‹") }
+                                        Text(calendarMonth.toString(),style=MaterialTheme.typography.titleMedium)
+                                        TextButton(onClick={calendarMonth=calendarMonth.plusMonths(1)}) { Text("›") }
+                                    }
+                                    val offset=calendarMonth.atDay(1).dayOfWeek.value-1
+                                    val count=calendarMonth.lengthOfMonth()
+                                    repeat((offset+count+6)/7) { week ->
+                                        Row(Modifier.fillMaxWidth()) {
+                                            repeat(7) { weekday ->
+                                                val day=week*7+weekday-offset+1
+                                                if(day in 1..count) {
+                                                    val date=calendarMonth.atDay(day).toString()
+                                                    val daily=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.startsWith(date) }
+                                                    val incoming=daily.any { it.amountLaari>=100000L }
+                                                    val outgoing=daily.any { it.amountLaari<=-100000L }
+                                                    Column(Modifier.weight(1f),horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {
+                                                        TextButton(onClick={historicalBalanceDate=date;calendarOpen=false},contentPadding=PaddingValues(0.dp)) { Text(day.toString()) }
+                                                        Text((if(incoming) "●" else "")+(if(outgoing) "●" else ""),color=if(outgoing) MaterialTheme.colorScheme.error else Color(0xFF15966C),style=MaterialTheme.typography.labelSmall)
+                                                    }
+                                                } else Spacer(Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                    Text("● Large incoming / outgoing transactions (MVR 1,000+).",style=MaterialTheme.typography.bodySmall)
+                                }
                                 val key=accountChoice.lowercase(java.util.Locale.ROOT)
                                 val anchorAmount=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
                                 val anchorDate=balancePrefs.getString("${key}_date","").orEmpty()
