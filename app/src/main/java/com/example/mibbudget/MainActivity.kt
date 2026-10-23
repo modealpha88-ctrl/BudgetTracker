@@ -374,6 +374,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         }
         return
     }
+    val mainScrollState = rememberScrollState()
     Scaffold(floatingActionButton = {
         if(tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
     }, bottomBar = {
@@ -383,7 +384,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             }
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(if (tab == 0 || tab == 1 || tab == 2) Modifier.verticalScroll(mainScrollState) else Modifier).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if(tab==0) {
             Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -991,6 +992,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     val queuedReviews=remember(reviewQueueRevision) { reviewQueue.all() }
                     var reviewInboxExpanded by remember { mutableStateOf(false) }
+                    var reviewPageSize by remember { mutableIntStateOf(5) }
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
@@ -1005,7 +1007,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         FilterChip(selected=reviewStatusFilter==state,onClick={reviewStatusFilter=state},label={Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)})
                                     }
                                 }
-                                queuedReviews.filter { it.status==reviewStatusFilter }.forEach { item ->
+                                val visibleReviews=queuedReviews.filter { it.status==reviewStatusFilter }
+                                visibleReviews.take(reviewPageSize).forEach { item ->
                                     Column(Modifier.fillMaxWidth().padding(vertical=5.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                                         Text(item.title,style=MaterialTheme.typography.bodyMedium)
                                         Text(item.detail,style=MaterialTheme.typography.bodySmall)
@@ -1019,6 +1022,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         }
                                     }
                                     HorizontalDivider()
+                                }
+                                if(visibleReviews.size>reviewPageSize) {
+                                    TextButton(onClick={reviewPageSize+=5}) {
+                                        Text("Show 5 more · ${visibleReviews.size-reviewPageSize} remaining")
+                                    }
                                 }
                             }
                         }
