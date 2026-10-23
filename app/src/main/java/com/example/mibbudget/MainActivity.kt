@@ -140,6 +140,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
+    var input by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    var income by remember { mutableStateOf(false) }
     var receiptPreview by remember { mutableStateOf("") }
     var receiptPending by remember { mutableStateOf(false) }
     val receiptLauncher=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -262,10 +265,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             finally { importingHistory = false }
         }
     }
-    var input by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Food") }
-    var income by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     var importCategory by remember { mutableStateOf("Other") }
     var importExpanded by remember { mutableStateOf(false) }
