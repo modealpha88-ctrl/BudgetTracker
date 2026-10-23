@@ -1341,25 +1341,73 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 3 -> {
-                    Text("Set monthly category limits (MVR)",style=MaterialTheme.typography.titleMedium)
-                    Column {
-                        categories.filter { it!="Income" }.forEach { cat ->
-                            var limitText by remember(cat,revision) { mutableStateOf(budgets[cat]?.let { "${it/100}.${(it%100).toString().padStart(2,'0')}" } ?: "") }
-                            val spent=monthlyTransactions.filter { it.category==cat && it.amountLaari<0 }.sumOf { -it.amountLaari }
-                            val limit=budgets[cat] ?: 0L
-                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                Box(contentAlignment=androidx.compose.ui.Alignment.Center,modifier=Modifier.size(56.dp)) {
-                                    CircularProgressIndicator(progress={if(limit>0) (spent.toFloat()/limit).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxSize(),strokeWidth=6.dp)
-                                    Text(if(limit>0) "${spent*100/limit}%" else "—",style=MaterialTheme.typography.labelSmall)
-                                }
-                                Column {
-                                    Text(cat,style=MaterialTheme.typography.titleMedium)
-                                    Text("${Money.format(spent)} spent"+if(limit>0) " / ${Money.format(limit)}" else " • No limit",style=MaterialTheme.typography.bodySmall)
-                                }
+                    Text("Monthly budgets",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                    val budgetCategories=categories.filter { it!="Income" }
+                    val totalLimit=budgetCategories.sumOf { budgets[it] ?: 0L }
+                    val totalSpent=monthlyTransactions.filter { it.amountLaari<0 && it.category in budgetCategories }
+                        .sumOf { -it.amountLaari }
+                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("This month's spending",style=MaterialTheme.typography.titleMedium)
+                            Text(Money.format(totalSpent),style=MaterialTheme.typography.headlineMedium)
+                            Text(if(totalLimit>0) "Combined category limits: ${Money.format(totalLimit)}" else "No category limits set yet",
+                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            if(totalLimit>0) {
+                                LinearProgressIndicator(progress={ (totalSpent.toFloat()/totalLimit).coerceIn(0f,1f) },
+                                    modifier=Modifier.fillMaxWidth())
+                                if(totalSpent>totalLimit) Text("Over combined limits by ${Money.format(totalSpent-totalLimit)}",
+                                    color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                             }
-                            Row { OutlinedTextField(value=limitText,onValueChange={limitText=it},label={Text("Limit MVR")},modifier=Modifier.weight(1f),singleLine=true)
-                                Spacer(Modifier.width(8.dp))
-                                Button(onClick={val v=Money.parseLaari(limitText);if(v!=null&&v>0){store.setBudget(cat,v);revision++;notice="$cat budget saved"}else notice="Invalid limit"}) { Text("Save") }
+                        }
+                    }
+                    var editingBudgetCategory by remember { mutableStateOf<String?>(null) }
+                    var editingBudgetValue by remember { mutableStateOf("") }
+                    budgetCategories.forEach { cat ->
+                        val spent=monthlyTransactions.filter { it.category==cat && it.amountLaari<0 }.sumOf { -it.amountLaari }
+                        val limit=budgets[cat] ?: 0L
+                        Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp)) {
+                            Column(Modifier.padding(horizontal=14.dp,vertical=12.dp),
+                                verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                    horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                    Box(contentAlignment=androidx.compose.ui.Alignment.Center,modifier=Modifier.size(42.dp)) {
+                                        CircularProgressIndicator(progress={if(limit>0) (spent.toFloat()/limit).coerceIn(0f,1f) else 0f},
+                                            modifier=Modifier.fillMaxSize(),strokeWidth=4.dp)
+                                        Text(if(limit>0) "${spent*100/limit}%" else "—",style=MaterialTheme.typography.labelSmall)
+                                    }
+                                    Column(Modifier.weight(1f)) {
+                                        Text(cat,style=MaterialTheme.typography.titleMedium)
+                                        Text("${Money.format(spent)} spent",style=MaterialTheme.typography.bodySmall)
+                                        Text(if(limit>0) "${Money.format(limit)} limit" else "No budget set",
+                                            style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    TextButton(onClick={
+                                        editingBudgetCategory=if(editingBudgetCategory==cat) null else cat
+                                        editingBudgetValue=if(limit>0) "${limit/100}.${(limit%100).toString().padStart(2,'0')}" else ""
+                                    }) { Text(if(editingBudgetCategory==cat) "Cancel" else if(limit>0) "Edit" else "Set limit") }
+                                }
+                                if(limit>0) LinearProgressIndicator(
+                                    progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },
+                                    modifier=Modifier.fillMaxWidth())
+                                if(limit>0 && spent>limit) Text("Over budget by ${Money.format(spent-limit)}",
+                                    color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                                if(editingBudgetCategory==cat) {
+                                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                        horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                        OutlinedTextField(value=editingBudgetValue,onValueChange={editingBudgetValue=it},
+                                            label={Text("Monthly limit (MVR)")},singleLine=true,
+                                            modifier=Modifier.weight(1f))
+                                        Button(onClick={
+                                            val amount=Money.parseLaari(editingBudgetValue)
+                                            if(amount!=null && amount>0) {
+                                                store.setBudget(cat,amount)
+                                                revision++
+                                                editingBudgetCategory=null
+                                                notice="$cat budget saved"
+                                            } else notice="Enter a valid amount greater than zero"
+                                        }) { Text("Save") }
+                                    }
+                                }
                             }
                         }
                     }
