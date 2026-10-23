@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() { store.close(); super.onDestroy() }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDarkTheme: (Boolean)->Unit, clearShared: () -> Unit) {
     val context = LocalContext.current
@@ -87,6 +88,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
 
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
     var monitoring by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
+    var permissionRefresh by remember { mutableIntStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         monitoring = granted
         prefs.edit().putBoolean("enabled", granted).apply()
@@ -276,7 +278,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) revision++
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) { revision++; permissionRefresh++ }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -307,6 +309,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Text("Permissions & Android restricted settings",style=MaterialTheme.typography.titleMedium)
                 Text("If Android says Restricted setting, open App info, tap the three-dot menu, and choose Allow restricted settings if available. This is controlled by Android, not the app. Only enable access if you trust this APK.",style=MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick=openAppSettings) { Text("Open app info & permissions") }
+                val smsReceiveGranted = remember(permissionRefresh) { context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED }
+                val smsHistoryGranted = remember(permissionRefresh) { context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED }
+                val listenerGranted = remember(permissionRefresh) {
+                    val enabled=Settings.Secure.getString(context.contentResolver,"enabled_notification_listeners").orEmpty()
+                    enabled.split(":").any { it.substringBefore("/")==context.packageName }
+                }
+                Card(modifier=Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                        Text("Import access status",style=MaterialTheme.typography.titleMedium)
+                        Text("Incoming SMS: "+if(smsReceiveGranted) "Allowed" else "Not allowed")
+                        Text("SMS history: "+if(smsHistoryGranted) "Allowed" else "Not allowed")
+                        Text("Notification listener: "+if(listenerGranted) "Enabled" else "Not enabled")
+                        Text("Android may restrict SMS and notification access for sideloaded apps. Permissions must be approved in Android Settings.",style=MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick={permissionRefresh++}) { Text("Refresh access status") }
+                    }
+                }
                 Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
@@ -338,7 +356,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }) { Text(if(importingHistory) "Importing…" else "Import previous SMS") }
                 Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
                 Text("Notification access is broad. This app filters only BML Favara received messages, storing amount and time for your review.", style=MaterialTheme.typography.bodySmall)
-                Button(onClick={ context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) }) { Text("Manage notification access") }
+                Button(onClick={ context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) { Text("Manage notification access") }
                 Button(onClick={
                     val imported = BmlNotificationListener.importVisible()
                     notice = if (imported == null) "Enable notification access first, then reopen the app."
