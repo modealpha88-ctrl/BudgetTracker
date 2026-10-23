@@ -72,6 +72,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var editingCategory by remember { mutableStateOf("Other") }
     var deletingId by remember { mutableStateOf<Long?>(null) }
     var accountFilter by remember { mutableStateOf("All accounts") }
+    var accountExpanded by remember { mutableStateOf(false) }
     var goalName by remember { mutableStateOf("") }
     var goalTarget by remember { mutableStateOf("") }
     var goalSaved by remember { mutableStateOf("") }
@@ -233,6 +234,49 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth().height(8.dp),strokeCap=androidx.compose.ui.graphics.StrokeCap.Round); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
                     }
                     if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
+                    Text("Monthly spending overview",style=MaterialTheme.typography.titleMedium)
+                    val totalSpent=grouped.values.flatten().sumOf { -it.amountLaari }
+                    grouped.forEach { (cat,txs) ->
+                        val spent=txs.sumOf { -it.amountLaari }
+                        Text("$cat  ${if(totalSpent>0) (spent*100/totalSpent) else 0}%")
+                        LinearProgressIndicator(progress={if(totalSpent>0) spent.toFloat()/totalSpent else 0f},modifier=Modifier.fillMaxWidth())
+                    }
+                    budgets.forEach { (cat,limit) ->
+                        val spent=grouped[cat]?.sumOf { -it.amountLaari } ?: 0L
+                        if(spent>=limit*8/10) Text("Budget alert: $cat is at ${if(limit>0) spent*100/limit else 0}% of limit",color=MaterialTheme.colorScheme.error)
+                    }
+                    HorizontalDivider()
+                    Text("Savings goals",style=MaterialTheme.typography.titleMedium)
+                    store.goals().forEach { (name,target,saved) ->
+                        Text("$name: ${Money.format(saved)} / ${Money.format(target)}")
+                        LinearProgressIndicator(progress={(saved.toFloat()/target).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
+                    }
+                    OutlinedTextField(value=goalName,onValueChange={goalName=it},label={Text("Goal name")})
+                    OutlinedTextField(value=goalTarget,onValueChange={goalTarget=it},label={Text("Target MVR")})
+                    OutlinedTextField(value=goalSaved,onValueChange={goalSaved=it},label={Text("Saved MVR")})
+                    OutlinedButton(onClick={
+                        val target=Money.parseLaari(goalTarget);val saved=Money.parseLaari(goalSaved)
+                        if(goalName.isNotBlank() && target!=null && target>0 && saved!=null) {store.setGoal(goalName,target,saved);revision++;goalName="";goalTarget="";goalSaved=""} else notice="Invalid goal"
+                    }) { Text("Save goal") }
+                    HorizontalDivider()
+                    Text("Recurring expense templates",style=MaterialTheme.typography.titleMedium)
+                    Text("Templates only; no automatic charges or duplicate entries.")
+                    store.recurring().forEach { (name,value,cat) ->
+                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                            Text("$name: ${Money.format(value)}",modifier=Modifier.weight(1f))
+                            TextButton(onClick={store.add(-value,cat,name);revision++}) { Text("Record now") }
+                        }
+                    }
+                    OutlinedTextField(value=recurringName,onValueChange={recurringName=it},label={Text("Recurring name")})
+                    OutlinedTextField(value=recurringAmount,onValueChange={recurringAmount=it},label={Text("Monthly amount MVR")})
+                    OutlinedButton(onClick={
+                        val v=Money.parseLaari(recurringAmount)
+                        if(recurringName.isNotBlank() && v!=null && v>0) {store.setRecurring(recurringName,v,"Bills");revision++;recurringName="";recurringAmount=""} else notice="Invalid recurring amount"
+                    }) { Text("Save recurring template") }
+                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Dark theme",modifier=Modifier.weight(1f))
+                        Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
+                    }
                 }
                 1 -> {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -248,6 +292,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     Text("${transactions.size} saved MVR transactions",color=Color(0xFFB8BDD4),style=MaterialTheme.typography.bodySmall)
                     OutlinedTextField(value=searchText,onValueChange={searchText=it},label={Text("Search transactions")},modifier=Modifier.fillMaxWidth(),singleLine=true,colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedLabelColor=Color.White,unfocusedLabelColor=Color.LightGray))
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Box {
+                            OutlinedButton(onClick={accountExpanded=true}) { Text(accountFilter) }
+                            DropdownMenu(expanded=accountExpanded,onDismissRequest={accountExpanded=false}) {
+                                (listOf("All accounts","Unassigned","MIB","BML","Cash","Other")).forEach { label ->
+                                    DropdownMenuItem(text={Text(label)},onClick={accountFilter=label;accountExpanded=false})
+                                }
+                            }
+                        }
+                    }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick={backupLauncher.launch("mib-budget-backup.json")}) { Text("Export backup") }
                         OutlinedButton(onClick={restoreLauncher.launch(arrayOf("application/json","text/plain"))}) { Text("Restore") }
@@ -276,6 +330,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text(t.description,color=Color.White,style=MaterialTheme.typography.bodyMedium)
                                     Text("${t.category}  •  ${t.timestamp.take(10)}",color=Color(0xFFADB2CC),style=MaterialTheme.typography.bodySmall)
                                     Row {
+                                        TextButton(onClick={store.setAccount(t.fingerprint,if((accountLabels[t.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB");revision++}) { Text(accountLabels[t.fingerprint] ?: "Set MIB/BML") }
                                         TextButton(onClick={editingId=t.id;editingAmount=Money.format(kotlin.math.abs(t.amountLaari)).removePrefix("MVR ").replace(",","");editingDescription=t.description;editingCategory=t.category}) { Text("Edit") }
                                         TextButton(onClick={deletingId=t.id}) { Text("Delete",color=Color(0xFFFF6B77)) }
                                     }
