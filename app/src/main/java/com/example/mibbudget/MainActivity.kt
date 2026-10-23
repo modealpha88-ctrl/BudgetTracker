@@ -128,7 +128,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     val header=if(transactionsAt>=0) lines.take(transactionsAt) else lines.take(18)
                     val accountAt=header.indexOfFirst { it.contains("Account Details",true) }
-                    val card=if(accountAt>=0) header.drop(accountAt+1) else header
+                    val card=if(accountAt>=0) header.take(accountAt) else header
                     val currencyAmount=Regex("""(?i)\b(?:MVR|MRF|RF)\s*[:.]?\s*([0-9][0-9,]*\.[0-9]{2})\b""")
                     val standaloneAmount=Regex("""^\s*([0-9][0-9,]*\.[0-9]{2})\s*$""")
                     val currencyOnly=Regex("""(?i)^(?:MVR|MRF|RF)\s*[:.]?$""")
