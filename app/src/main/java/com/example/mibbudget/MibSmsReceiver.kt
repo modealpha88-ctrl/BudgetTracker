@@ -20,6 +20,11 @@ class MibSmsReceiver : BroadcastReceiver() {
         TransactionStore(context).use { store ->
             for ((_, parts) in grouped) {
                 val body = parts.joinToString("") { it.messageBody.orEmpty() }
+                val declined = BankSmsParser.parseDeclined(body)
+                if (declined != null) {
+                    store.addDeclined(declined)
+                    continue
+                }
                 val bmlCard = BankSmsParser.parseBmlCard(body)
                 if (bmlCard != null) { store.addForeign(bmlCard); continue }
                 val candidate = BankSmsParser.parse(body) ?: continue
