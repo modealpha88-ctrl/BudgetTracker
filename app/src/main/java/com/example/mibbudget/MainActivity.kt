@@ -104,6 +104,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var csvText by remember { mutableStateOf<String?>(null) }
     var confirmMissingImport by remember { mutableStateOf(false) }
     var csvReviewFilter by remember { mutableStateOf("MISSING") }
+    var encryptedBackupPassword by remember { mutableStateOf("") }
+    var useEncryptedBackup by remember { mutableStateOf(true) }
+    var restoreBackupPassword by remember { mutableStateOf("") }
     var showDataReset by remember { mutableStateOf(false) }
     var resetDate by remember { mutableStateOf(java.time.LocalDate.now().toString()) }
     var resetPhrase by remember { mutableStateOf("") }
@@ -275,11 +278,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             notice="Statement checked. No transactions were imported. Review the results below."
         } catch(e:Exception) { csvReview=null;csvText=null;notice="CSV comparison failed: ${e.message?.take(100)}" }
     }
-    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if(uri!=null) try { context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().toByteArray(Charsets.UTF_8)) }; notice="Backup exported. Keep the file private." } catch(e:Exception) { notice="Export failed: ${e.javaClass.simpleName}" }
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if(uri!=null) try {
+            val data=if(useEncryptedBackup) SecureBackup.encrypt(store.exportJson(),encryptedBackupPassword) else store.exportJson()
+            context.contentResolver.openOutputStream(uri)?.use { it.write(data.toByteArray(Charsets.UTF_8)) } ?: error("Cannot write backup")
+            notice=if(useEncryptedBackup) "Encrypted backup saved. Keep your password safe: it cannot be recovered." else "Unencrypted backup saved. Keep it private."
+        } catch(e:Exception) { notice="Backup failed: ${e.message?.take(90)}" }
     }
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if(uri!=null) try { val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read file"); val count=store.restoreJson(data);revision++;notice="Restored $count new records. Existing records kept." } catch(e:Exception) { notice="Restore failed: ${e.message?.take(90)}" }
+        if(uri!=null) try {
+            val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read file")
+            val json=if(data.startsWith("MIB-ENC-V1:")) SecureBackup.decrypt(data,restoreBackupPassword) else data
+            val count=store.restoreJson(json)
+            revision++
+            notice="Restored $count new records. Existing records kept."
+        } catch(e:Exception) { notice="Restore failed. Check password and file: ${e.message?.take(75)}" }
     }
     LaunchedEffect(historyRequested) {
         if (historyRequested) {
