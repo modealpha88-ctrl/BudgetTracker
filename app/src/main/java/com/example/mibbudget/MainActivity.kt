@@ -89,6 +89,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
     var monitoring by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
     var permissionRefresh by remember { mutableIntStateOf(0) }
+    var showAccessHelp by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         monitoring = granted
         prefs.edit().putBoolean("enabled", granted).apply()
@@ -323,6 +324,33 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("Notification listener: "+if(listenerGranted) "Enabled" else "Not enabled")
                         Text("Android may restrict SMS and notification access for sideloaded apps. Permissions must be approved in Android Settings.",style=MaterialTheme.typography.bodySmall)
                         OutlinedButton(onClick={permissionRefresh++}) { Text("Refresh access status") }
+                    }
+                }
+                val canPostNotifications = android.os.Build.VERSION.SDK_INT<33 || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    permissionRefresh++
+                    notice=if(granted) "App notifications allowed." else "App notifications not allowed. Bank notification reading is a separate permission."
+                }
+                OutlinedButton(onClick={showAccessHelp=!showAccessHelp},modifier=Modifier.fillMaxWidth()) {
+                    Text(if(showAccessHelp) "Hide access setup guide" else "Set up SMS & notification access")
+                }
+                if(showAccessHelp) {
+                    Card(modifier=Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Text("OnePlus / Android access setup",style=MaterialTheme.typography.titleMedium)
+                            Text("1. Open App info. If Android marks this APK as restricted, use the three-dot menu → Allow restricted settings, when available.")
+                            OutlinedButton(onClick=openAppSettings) { Text("Open app info") }
+                            Text("2. Allow SMS permission for automatic imports. Historical inbox imports also need Read SMS.")
+                            OutlinedButton(onClick={permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)}) { Text("Request incoming SMS access") }
+                            OutlinedButton(onClick={historyLauncher.launch(Manifest.permission.READ_SMS)}) { Text("Request SMS history access") }
+                            Text("3. Enable Notification access to read supported BML alerts. This is separate from the ordinary notification toggle.")
+                            OutlinedButton(onClick={context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))}) { Text("Open notification access") }
+                            Text("4. Optional: enable app notifications for future reminders. This is not needed to read BML notifications.")
+                            if(android.os.Build.VERSION.SDK_INT>=33 && !canPostNotifications) {
+                                OutlinedButton(onClick={notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)}) { Text("Request app notification permission") }
+                            } else Text(if(canPostNotifications) "App notification permission available." else "Notification permission unavailable.")
+                            Text("Android controls restricted settings. The app cannot override them. Never uninstall to fix permissions without first exporting a backup.",style=MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
                 Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
