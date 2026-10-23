@@ -103,25 +103,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
             Text("Offline • MVR • Prototype",style=MaterialTheme.typography.labelMedium)
             if(notice.isNotBlank()) Text(notice,color=MaterialTheme.colorScheme.primary)
             if (tab == 0) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Automatically detect new MIB SMS", style=MaterialTheme.typography.titleSmall)
-                        Text("Optional • new incoming messages", style=MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(checked=monitoring, onCheckedChange={ enabled ->
-                        if (!enabled) { monitoring=false; prefs.edit().putBoolean("enabled", false).apply() }
-                        else if (context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
-                            monitoring=true; prefs.edit().putBoolean("enabled", true).apply()
-                        } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
-                    })
-                }
-                Text("Only the two sample MIB debit formats are recognized. Review imported entries; SMS senders can be spoofed.", style=MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                Button(enabled=!importingHistory, onClick={
-                    if(context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED) historyRequested=true
-                    else historyLauncher.launch(Manifest.permission.READ_SMS)
-                }) { Text(if(importingHistory) "Importing…" else "Import previous 1 month of SMS") }
-                Text("Scans inbox from one calendar month ago through today, once when you tap. Only recognized transactions are saved. READ_SMS permission required.",style=MaterialTheme.typography.bodySmall)
+                Text("Privacy mode: no SMS inbox access. Share or paste transaction messages using Import SMS.", style=MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(14.dp))
             when(tab) {
