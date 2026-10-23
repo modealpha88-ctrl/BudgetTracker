@@ -1056,6 +1056,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         TextButton(onClick={tab=2}) { Text("Import") }
                     }
+                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp),
+                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Text("Transactions",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                            Text("Search, select and organize your money",
+                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick={tab=0},modifier=Modifier.weight(1f)) { Text("Overview") }
+                                Button(onClick={showTransactionForm=true},modifier=Modifier.weight(1f)) { Text("+ Add") }
+                            }
+                        }
+                    }
                     OutlinedTextField(value=searchText,onValueChange={searchText=it},
                         placeholder={Text("Search merchant, amount or date")},
                         leadingIcon={Text("⌕")},modifier=Modifier.fillMaxWidth(),singleLine=true,
