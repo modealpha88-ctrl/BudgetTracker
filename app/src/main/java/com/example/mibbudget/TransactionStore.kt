@@ -491,6 +491,10 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         readableDatabase.rawQuery("SELECT category,limit_laari FROM budgets",null).use { c -> while(c.moveToNext()) result[c.getString(0)] = c.getLong(1) }
         return result
     }
+    fun setTransactionCategory(id: Long, category: String) {
+        require(category.isNotBlank())
+        writableDatabase.execSQL("UPDATE transactions SET category=? WHERE id=?",arrayOf(category,id))
+    }
     fun markInternal(id: Long) { writableDatabase.execSQL("UPDATE transactions SET category=? WHERE id=?", arrayOf("Internal Transfer", id)) }
     fun setBudget(category: String, limit: Long) {
         require(limit > 0)
