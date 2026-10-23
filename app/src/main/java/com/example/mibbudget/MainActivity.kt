@@ -813,8 +813,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     Text(merchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
-                                    val timePart=t.timestamp.substringAfter(" ",t.timestamp.substringAfter("T","")).take(5)
-                                    Text(if(timePart.matches(Regex("\\d{2}:\\d{2}"))) timePart else "Time unavailable",
+                                    val storedTime=t.timestamp.substringAfter("T",t.timestamp.substringAfter(" ","")).take(5)
+                                    val sourceTime=Regex("""\\b\\d{2}-\\d{2}-\\d{4}\\s+(\\d{2})-(\\d{2})-\\d{2}\\b""").find(t.description)
+                                    val bankTime=sourceTime?.let { match ->
+                                        val hour=match.groupValues[1].toIntOrNull()
+                                        val minute=match.groupValues[2].toIntOrNull()
+                                        if(hour!=null && hour in 0..23 && minute!=null && minute in 0..59) "%02d:%02d".format(hour,minute) else null
+                                    }
+                                    val displayTime=bankTime ?: storedTime.takeIf { it.matches(Regex("""\\d{2}:\\d{2}""")) && it!="00:00" }
+                                    Text(displayTime ?: "Time not recorded",
                                         style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                                 }
                                 Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),
