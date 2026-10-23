@@ -136,6 +136,54 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             results.count { it.status=="POSSIBLE" },results.count { it.status=="MISSING" },ignored)
     }
 
+
+    /** Only inserts records still classified MISSING at commit time. Never imports POSSIBLE. */
+    fun importMissingCsv(text: String): Pair<Int,Int> {
+        val db=writableDatabase
+        var added=0
+        var excluded=0
+        db.beginTransaction()
+        try {
+            // Reconcile again under the write transaction so prior imports are respected.
+            val review=reviewCsv(text)
+            val rows=review.matches.filter { it.status=="MISSING" }
+            excluded=review.matches.size-rows.size
+            val records=parseCsvRecords(text.removePrefix("\uFEFF"))
+            val header=records.first().map { it.trim().uppercase(Locale.ROOT) }
+            val mib=header.firstOrNull()=="POSTED DATE"
+            val already=mutableSetOf<String>()
+            rows.forEach { row ->
+                val cols=records[row.line-1]
+                val canonical=if(mib) listOf(cols[0].trim(),cols[2].trim(),cols[3].trim(),cols[4].trim(),cols[5].trim().replace(",","")).joinToString("|")
+                    else cols.joinToString("|") { it.trim() }
+                val hash=MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+                val fingerprint="csv-"+hash
+                if(!already.add(fingerprint)) { excluded++;return@forEach }
+                val type=if(mib) cols[2].trim() else ""
+                val category=if(!mib) cols[3].trim().ifBlank { "Other" }.take(40)
+                    else when {
+                        row.amountLaari>0 -> "Income"
+                        type.contains("POS",true) -> "Shopping"
+                        type.contains("ATM",true) -> "Cash"
+                        type.contains("Favara",true) || type.contains("transfer",true) -> "Transfers"
+                        else -> "Other"
+                    }
+                val timestamp=if(mib) cols[0].trim().replace(' ','T') else row.date+"T12:00:00"
+                val v=ContentValues().apply {
+                    put("amount_laari",row.amountLaari);put("category",category)
+                    put("description",row.description);put("created_at",timestamp);put("fingerprint",fingerprint)
+                }
+                if(db.insertWithOnConflict("transactions",null,v,SQLiteDatabase.CONFLICT_IGNORE)!=-1L) {
+                    added++
+                    val label=ContentValues().apply { put("fingerprint",fingerprint);put("label",if(mib) "MIB" else cols[4].trim().take(40)) }
+                    db.insertWithOnConflict("account_labels",null,label,SQLiteDatabase.CONFLICT_REPLACE)
+                } else excluded++
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return added to excluded
+    }
+
     fun importCsv(text: String): Pair<Int,Int> {
         require(text.length<=5_000_000) { "CSV too large" }
         val records=parseCsvRecords(text.removePrefix("\uFEFF"))
