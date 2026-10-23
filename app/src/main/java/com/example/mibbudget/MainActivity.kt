@@ -61,6 +61,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
     var revision by remember { mutableIntStateOf(0) }
     val transactions = remember(revision) { store.all() }
     val declinedTransactions = remember(revision) { store.declined() }
+    val foreignTransactions = remember(revision) { store.foreign() }
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
@@ -192,6 +193,10 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     }) { Text("Add transaction") }
                     HorizontalDivider(Modifier.padding(vertical=12.dp))
                     Text("Transaction history (all dates)",style=MaterialTheme.typography.titleMedium)
+                    Text("Foreign currency purchases (excluded from MVR totals)", style=MaterialTheme.typography.titleMedium)
+                    foreignTransactions.forEach { t ->
+                        ListItem(headlineContent={Text("BML: ${t.merchant}")}, supportingContent={Text(t.timestamp.take(16))}, trailingContent={Text("${t.currency} ${Money.format(t.amountMinor).removePrefix("MVR ")}")})
+                    }
                     Text("Declined card attempts (not counted as spending)",style=MaterialTheme.typography.titleMedium)
                     declinedTransactions.forEach { d ->
                         ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${Money.format(d.amountLaari).removePrefix("MVR ")}")})
@@ -206,6 +211,7 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                     OutlinedTextField(value=input,onValueChange={input=it},label={Text("Bank SMS text")},modifier=Modifier.fillMaxWidth().height(160.dp))
                     val candidate = remember(input) { BankSmsParser.parse(input) }
                     val declinedCandidate = remember(input) { BankSmsParser.parseDeclined(input) }
+                    val bmlCard = remember(input) { BankSmsParser.parseBmlCard(input) }
                     LaunchedEffect(candidate?.fingerprint) { importCategory = candidate?.category ?: "Other" }
                     if (declinedCandidate != null) {
                         Text("Declined card attempt — NOT a completed expense", color=MaterialTheme.colorScheme.error)
@@ -217,6 +223,16 @@ fun BudgetApp(store: TransactionStore, shared: String, clearShared: () -> Unit) 
                             if(inserted) revision++
                             input="";clearShared()
                         }) { Text("Save declined attempt") }
+                    } else if (bmlCard != null) {
+                        Text("BML card purchase: ${bmlCard.currency} ${Money.format(bmlCard.amountMinor).removePrefix("MVR ")}")
+                        Text("${bmlCard.merchant} • ${bmlCard.transactionTime}")
+                        Text("Excluded from MVR budget totals until converted with a verified rate.")
+                        Button(onClick={
+                            val inserted = store.addForeign(bmlCard)
+                            notice = if(inserted) "BML purchase saved" else "Duplicate ignored"
+                            if(inserted) revision++
+                            input="";clearShared()
+                        }) { Text("Save BML purchase") }
                     } else if(candidate==null) Text("Unrecognized SMS. Only supported transaction formats can be imported.")
                     else {
                         Text("Detected: ${if(candidate.amountLaari>0) "Credit" else "Debit"} ${Money.format(candidate.amountLaari)}")
