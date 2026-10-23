@@ -120,13 +120,23 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
                 recognizer.process(image).addOnSuccessListener { result ->
                     screenshotExtract=result.text.take(2000)
-                    val lines=result.text.lines()
-                    val candidate=lines.firstOrNull { it.contains("available balance",true) || it.contains("account balance",true) }
-                    val match=Regex("""(?:MVR|Rf\\.?|\\b)([0-9][0-9,]*\\.[0-9]{2})""").find(candidate ?: "")
-                    if(match!=null) balanceAmount=match.groupValues[1].replace(",","")
-                    balanceDate=java.time.LocalDate.now().toString()
-                    screenshotPending=true
-                    notice="Check the amount carefully before saving; OCR can be wrong."
+                    // MIB Account Details places the account balance above the Transactions heading.
+                    // Never infer a balance from transaction amounts further down the screenshot.
+                    val lines=result.text.lines().map { it.trim() }.filter { it.isNotBlank() }
+                    val transactionsAt=lines.indexOfFirst { it.equals("Transactions",true) }
+                    val header=if(transactionsAt>=0) lines.take(transactionsAt) else lines.take(12)
+                    val amountPattern=Regex("""(?i)\\b(?:MVR|RF\\.?|MRF)\\s*([0-9][0-9,]*(?:\\.[0-9]{2}))\\b""")
+                    val candidate=header.firstOrNull { amountPattern.containsMatchIn(it) }
+                    val match=candidate?.let { amountPattern.find(it) }
+                    screenshotPending=match!=null
+                    if(match!=null) {
+                        balanceAmount=match.groupValues[1].replace(",","")
+                        balanceDate=java.time.LocalDate.now().toString()
+                        notice="Balance found in screenshot. Verify amount and screenshot date before saving."
+                    } else {
+                        balanceAmount=""
+                        notice="Could not safely identify an account balance. No amount was selected."
+                    }
                 }.addOnFailureListener { notice="Could not read screenshot: ${it.message?.take(70)}" }
                     .addOnCompleteListener { recognizer.close() }
             } catch(e:Exception) { notice="Screenshot failed: ${e.message?.take(80)}" }
@@ -290,7 +300,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("Upload an MIB CSV in Transactions to automatically use its closing running balance. You can also enter a manual balance below.",style=MaterialTheme.typography.bodySmall)
                         OutlinedButton(onClick={screenshotLauncher.launch("image/*")}) { Text("Use MIB bank screenshot") }
                         if(screenshotPending) {
-                            Text("Screenshot recognized. Confirm that this is the MIB available balance, not a transaction amount, before saving.",style=MaterialTheme.typography.bodySmall)
+                            Text("Balance detected above transaction list. Confirm this is your MIB account balance and correct the date if the screenshot is older.",style=MaterialTheme.typography.bodySmall)
                             Text("Recognized text: ${screenshotExtract.take(300)}",style=MaterialTheme.typography.bodySmall)
                         }
                         OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
