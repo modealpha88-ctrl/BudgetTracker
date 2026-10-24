@@ -458,19 +458,88 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     if(lockEnabled && !unlocked) {
-        Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.Center) {
-            Text("MIB Budget Tracker is locked",style=MaterialTheme.typography.headlineSmall)
-            Text("Authentication diagnostics · build fix 2",style=MaterialTheme.typography.bodySmall)
-            Button(onClick={
-                lockError = "Biometric button pressed — checking Android authentication…"
-                authenticate()
-            }) { Text("Unlock with biometrics") }
-            TextButton(onClick={
-                lockError = "Screen lock button pressed — requesting Android confirmation…"
-                unlockWithDeviceCredential()
-            }) { Text("Use screen lock instead") }
-            Text(lockError.ifBlank { "Tap either button to see its authentication status." },
-                style=MaterialTheme.typography.bodySmall)
+        val landingAccent = Color(0xFFB5A0FF)
+        Column(
+            modifier = Modifier.fillMaxSize()
+                .background(Color(0xFF08090F))
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 28.dp, vertical = 36.dp),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            ) {
+                Spacer(Modifier.height(32.dp))
+                Box(
+                    modifier = Modifier.size(92.dp)
+                        .background(Color(0xFF211B36), RoundedCornerShape(28.dp)),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    Text("M", style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold, color = landingAccent)
+                }
+                Spacer(Modifier.height(24.dp))
+                Text("MIB", style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold, color = Color.White)
+                Text("BUDGET TRACKER", style = MaterialTheme.typography.labelLarge,
+                    color = landingAccent)
+                Spacer(Modifier.height(28.dp))
+                Text("Your money. In focus.",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold, color = Color.White)
+                Spacer(Modifier.height(10.dp))
+                Text("Track your spending, manage your accounts and stay on top of your budget.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFB7B8C6),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(vertical = 28.dp)
+                    .background(Color(0xFF151621), RoundedCornerShape(24.dp))
+                    .padding(22.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            ) {
+                Text("Welcome back", style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold, color = Color.White)
+                Spacer(Modifier.height(8.dp))
+                Text("Unlock to view your private financial dashboard",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFB7B8C6),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        lockError = ""
+                        authenticate()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = landingAccent,
+                        contentColor = Color(0xFF111018)),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("Unlock with biometrics", fontWeight = FontWeight.SemiBold) }
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        lockError = ""
+                        unlockWithDeviceCredential()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("Use device PIN or screen lock", color = Color.White) }
+                if(lockError.isNotBlank()) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(lockError, style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFFFC4C4),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            }
+            Text("Protected by your device's authentication",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF9395A8),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         return
     }
