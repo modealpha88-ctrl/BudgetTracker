@@ -1231,9 +1231,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text("Recurring expense templates",style=MaterialTheme.typography.titleMedium)
                     Text("Templates only; no automatic charges or duplicate entries.")
                     store.recurring().forEach { (name,value,cat) ->
+                        val recordedThisMonth = monthlyTransactions.count { tx ->
+                            tx.amountLaari == -value && tx.category == cat &&
+                                tx.description.equals(name, ignoreCase = true)
+                        }
                         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                             Text("$name: ${Money.format(value)}",modifier=Modifier.weight(1f))
-                            TextButton(onClick={store.add(-value,cat,name);revision++}) { Text("Record now") }
+                            TextButton(onClick={
+                                if (recordedThisMonth > 0) {
+                                    notice = "This recurring payment was already recorded in the selected month."
+                                } else {
+                                    store.add(-value,cat,name)
+                                    revision++
+                                    notice = "Recurring payment recorded"
+                                }
+                            }) { Text(if(recordedThisMonth>0) "Already recorded" else "Record now") }
                         }
                     }
                     OutlinedTextField(value=recurringName,onValueChange={recurringName=it},label={Text("Recurring name")})
