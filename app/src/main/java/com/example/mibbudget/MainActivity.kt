@@ -1285,8 +1285,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         !it.category.contains("Internal Transfer",ignoreCase=true) }
                     val rankingGroups = if(rankingMode=="Recipients")
                         rankedExpenses.groupBy { tx ->
-                            recipientPrefs.getString(tx.fingerprint,null)?.takeIf { it.isNotBlank() }
-                                ?: TransactionPresentation.label(tx.description).trim().ifBlank { "Unknown recipient" }
+                            (recipientPrefs.getString(tx.fingerprint,null)?.takeIf { it.isNotBlank() }
+                                ?: TransactionPresentation.label(tx.description).trim().ifBlank { "Unknown recipient" })
+                                .trim().uppercase(java.util.Locale.ROOT)
                         }
                     else rankedExpenses.groupBy { it.timestamp.take(10) }
                     val rankedTotals = rankingGroups.map { (name, entries) ->
