@@ -1993,15 +1993,25 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         selectedTransactionId=null
                                     }) { Text("Edit") }
                                 }
-                                if(selectedTransaction.category=="Shopping" || selectedTransaction.category=="Food") {
-                                    val destination=if(selectedTransaction.category=="Shopping") "Food" else "Shopping"
-                                    OutlinedButton(onClick={
-                                        store.setTransactionCategory(selectedTransaction.id,destination)
-                                        revision++
-                                        selectedTransactionId=null
-                                        notice="Moved transaction to $destination"
-                                    },modifier=Modifier.fillMaxWidth()) {
-                                        Text("Move to $destination")
+                                run {
+                                    var showCategoryChoices by remember(selectedTransaction.id) { mutableStateOf(false) }
+                                    val availableCategories = (listOf("Food","Fast Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Internal Transfer","Other","Income") +
+                                        transactions.map { it.category }).filter { it.isNotBlank() }.distinct().filter { it != selectedTransaction.category }
+                                    Box(Modifier.fillMaxWidth()) {
+                                        OutlinedButton(onClick={showCategoryChoices=true},modifier=Modifier.fillMaxWidth()) {
+                                            Text("Change category (currently ${selectedTransaction.category})")
+                                        }
+                                        DropdownMenu(expanded=showCategoryChoices,onDismissRequest={showCategoryChoices=false}) {
+                                            availableCategories.forEach { destination ->
+                                                DropdownMenuItem(text={Text(destination)},onClick={
+                                                    showCategoryChoices=false
+                                                    store.setTransactionCategory(selectedTransaction.id,destination)
+                                                    revision++
+                                                    selectedTransactionId=null
+                                                    notice="Moved transaction to $destination"
+                                                })
+                                            }
+                                        }
                                     }
                                 }
                                 if(selectedTransaction.category.contains("Transfer",true))
