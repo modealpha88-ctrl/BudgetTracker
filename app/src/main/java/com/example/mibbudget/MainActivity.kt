@@ -1261,7 +1261,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val dueThisMonth=dueDay?.let { day ->
                             today.withDayOfMonth(day.coerceAtMost(today.lengthOfMonth()))
                         }
-                        if(dueThisMonth!=null && recordedThisMonth==0) {
+                        val recordedCurrentMonth=transactions.any { tx ->
+                            tx.timestamp.startsWith(java.time.YearMonth.now().toString()) &&
+                                tx.amountLaari == -value && tx.category == cat &&
+                                tx.description.equals(name,ignoreCase=true)
+                        }
+                        if(dueThisMonth!=null && !recordedCurrentMonth) {
                             Text("$name · " + when {
                                 today.isAfter(dueThisMonth) -> "Overdue since $dueThisMonth"
                                 today==dueThisMonth -> "Due today"
