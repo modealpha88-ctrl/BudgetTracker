@@ -20,6 +20,14 @@
 - **Monthly PDF report:** export category spending, income, net cash flow, previous-month comparisons, forecast, busiest spending day and transactions; share the exported PDF only when you explicitly choose to.
 - Planning preferences, spending targets, saved pots, and highlight preferences are included in full backups. Biometric/device-lock state is intentionally **not** transferred between devices.
 
+## Financial integrity and recovery
+- **Account-specific balance estimates:** MIB, BML and Cash snapshots are adjusted by signed transactions assigned to the account, including internal transfers. Those transfers are excluded from spending/income totals but **not** from account movements. Missing labels and same-day snapshot activity can still cause discrepancies.
+- **Manual statement reconciliation:** Home > Account balance includes a per-account comparison between a saved earlier balance and a later statement closing balance. Save discrepancy reports to local reconciliation history; comparisons do not alter source transactions or overwrite bank snapshots. MIB CSV row matching remains available separately.
+- **BML approval safeguards:** Approval checks the pending fingerprint and original amount/time, records incoming own transfers as BML account movements, and avoids re-queuing notifications already approved in the ledger. Review the resulting account balances against the actual bank statement.
+- **Transaction change journal:** SQLite records additions, edits, category changes and deletions from the time the v8 database migration is applied. Transactions > Edit history allows an individual change to be undone only when no later conflicting change prevents a safe reversal. Earlier edits cannot be retroactively reconstructed.
+- **Restore preview:** Validate selected encrypted or JSON backups, see prospective new and existing transaction counts, then explicitly confirm. Existing transactions are not overwritten, but restored non-security preferences may replace current preferences. Reconciliation and edit history are included in compatible full backups; biometric settings remain device-specific.
+- **Limits:** This is an offline personal ledger, not a real-time bank connection. A successful Android build and unit tests do not verify bank balances, notifications, SMS parsing, or device behavior; independently reconcile financial figures.
+
 ## Build and run
 1. Open this folder in Android Studio with JDK 17 and Android SDK 35; allow Gradle sync.
 2. Connect Android 8+ device with USB debugging or use an SMS-capable emulator. Click Run.
