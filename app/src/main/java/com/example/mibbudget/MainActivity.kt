@@ -1292,9 +1292,26 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val rankedTotals = rankingGroups.map { (name, entries) ->
                         name to entries.sumOf { kotlin.math.abs(it.amountLaari) }
                     }.sortedByDescending { it.second }
+                    val monthSpend = rankedExpenses.sumOf { kotlin.math.abs(it.amountLaari) }
+                    val dailySpend = rankedExpenses.groupBy { it.timestamp.take(10) }
+                        .mapValues { (_, entries) -> entries.sumOf { kotlin.math.abs(it.amountLaari) } }
+                    val highestDay = dailySpend.maxByOrNull { it.value }
+                    val monthBudget = budgets.values.sum()
+                    val monthBudgetRemaining = monthBudget - monthSpend
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text("Spending rankings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                            Text("Total spent: ${Money.format(monthSpend)} · ${rankedExpenses.size} transactions",
+                                style=MaterialTheme.typography.bodyMedium)
+                            if(highestDay!=null) Text("Highest spending day: ${highestDay.key} · ${Money.format(highestDay.value)}",
+                                style=MaterialTheme.typography.bodySmall)
+                            if(monthBudget>0L) {
+                                Text("Combined category budgets: ${Money.format(monthBudget)} · ${if(monthBudgetRemaining>=0) "Remaining" else "Over budget"}: ${Money.format(kotlin.math.abs(monthBudgetRemaining))}",
+                                    style=MaterialTheme.typography.bodySmall)
+                                LinearProgressIndicator(
+                                    progress={ (monthSpend.toFloat()/monthBudget.toFloat()).coerceIn(0f,1f) },
+                                    modifier=Modifier.fillMaxWidth())
+                            }
                             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick={rankingMode="Recipients"}) { Text("Recipients") }
                                 OutlinedButton(onClick={rankingMode="Days"}) { Text("Highest days") }
