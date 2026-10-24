@@ -421,25 +421,56 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         }
         return result
     }
+    /**
+     * Resolve once, atomically. An approved own-bank transfer is still a BML
+     * balance movement; Internal Transfer excludes it from spending, not balances.
+     */
     fun resolveBml(tx: PendingBml, approve: Boolean, internalTransfer: Boolean = false): Boolean {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            val pendingExists = db.rawQuery("SELECT 1 FROM bml_pending WHERE id=? AND fingerprint=?",
-                arrayOf(tx.id.toString(),tx.fingerprint)).use { it.moveToFirst() }
-            if(!pendingExists) return false
-            if (approve && !internalTransfer) {
-                val v = android.content.ContentValues().apply {
-                    put("amount_laari", tx.amountLaari); put("category", "Incoming Transfer")
-                    put("description", "BML Favara funds received"); put("created_at", tx.timestamp)
-                    put("fingerprint", tx.fingerprint)
+            val pending = db.rawQuery(
+                "SELECT amount_laari,occurred_at FROM bml_pending WHERE id=? AND fingerprint=?",
+                arrayOf(tx.id.toString(), tx.fingerprint)
+            ).use { c ->
+                if (c.moveToFirst()) c.getLong(0) to c.getString(1) else null
+            } ?: return false
+            if (pending.first != tx.amountLaari || pending.second != tx.timestamp) return false
+
+            if (approve) {
+                val existing = db.rawQuery(
+                    "SELECT amount_laari FROM transactions WHERE fingerprint=?",
+                    arrayOf(tx.fingerprint)
+                ).use { c -> if (c.moveToFirst()) c.getLong(0) else null }
+                if (existing != null && existing != tx.amountLaari) return false
+                if (existing == null) {
+                    val row = ContentValues().apply {
+                        put("amount_laari", tx.amountLaari)
+                        put("category", if (internalTransfer) "Internal Transfer" else "Incoming Transfer")
+                        put("description", "BML Favara funds received")
+                        put("created_at", tx.timestamp)
+                        put("fingerprint", tx.fingerprint)
+                    }
+                    if (db.insertWithOnConflict(
+                            "transactions", null, row, SQLiteDatabase.CONFLICT_IGNORE
+                        ) == -1L) return false
                 }
-                db.insertWithOnConflict("transactions", null, v, SQLiteDatabase.CONFLICT_IGNORE)
+                // Keep an existing explicit account label if one was already assigned.
+                val label = ContentValues().apply {
+                    put("fingerprint", tx.fingerprint)
+                    put("label", "BML")
+                }
+                db.insertWithOnConflict("account_labels", null, label, SQLiteDatabase.CONFLICT_IGNORE)
             }
-            val removed = db.delete("bml_pending", "id=?", arrayOf(tx.id.toString())) > 0
-            db.setTransactionSuccessful()
+            val removed = db.delete(
+                "bml_pending", "id=? AND fingerprint=?",
+                arrayOf(tx.id.toString(), tx.fingerprint)
+            ) == 1
+            if (removed) db.setTransactionSuccessful()
             return removed
-        } finally { db.endTransaction() }
+        } finally {
+            db.endTransaction()
+        }
     }
     fun addForeign(tx: BankSmsParser.ForeignPurchase): Boolean {
         val v = android.content.ContentValues().apply {
