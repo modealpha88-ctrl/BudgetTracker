@@ -1874,7 +1874,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Button(onClick={
                             val inserted = store.addDeclined(declinedCandidate)
                             notice = if(inserted) "Declined attempt saved (not counted as spending)" else "Duplicate declined attempt ignored"
-                            if(inserted) revision++
+                            if(inserted) { store.setAccount(candidate.fingerprint,"MIB"); revision++ }
                             input="";clearShared()
                         }) { Text("Save declined attempt") }
                     } else if (bmlCard != null) {
