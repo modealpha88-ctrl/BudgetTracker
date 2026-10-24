@@ -20,18 +20,20 @@ data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String,
 
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 6) {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 7) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE IF NOT EXISTS recurring_expenses(name TEXT PRIMARY KEY, amount_laari INTEGER NOT NULL, category TEXT NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS account_labels(fingerprint TEXT PRIMARY KEY, label TEXT NOT NULL)")
         db.execSQL("CREATE TABLE budgets(category TEXT PRIMARY KEY, limit_laari INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS merchant_category_rules(merchant_key TEXT PRIMARY KEY, category TEXT NOT NULL)")
         db.execSQL("CREATE TABLE declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 7) db.execSQL("CREATE TABLE IF NOT EXISTS merchant_category_rules(merchant_key TEXT PRIMARY KEY, category TEXT NOT NULL)")
         if (oldVersion < 6) {
             db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
             db.execSQL("CREATE TABLE IF NOT EXISTS recurring_expenses(name TEXT PRIMARY KEY, amount_laari INTEGER NOT NULL, category TEXT NOT NULL)")
@@ -474,7 +476,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                     amountLaari,description,transactionTime,it.amountLaari,it.description,it.timestamp) }) return false
         }
         val values = android.content.ContentValues().apply {
-            put("amount_laari", amountLaari); put("category", category.take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
+            put("amount_laari", amountLaari); put("category", (merchantCategoryRule(description) ?: category).take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
         }
         val inserted=db.insertWithOnConflict("transactions", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
         if(inserted && fingerprint.startsWith("mib-",ignoreCase=true)) {
@@ -496,6 +498,42 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         readableDatabase.rawQuery("SELECT category,limit_laari FROM budgets",null).use { c -> while(c.moveToNext()) result[c.getString(0)] = c.getLong(1) }
         return result
     }
+    private fun merchantCategoryRule(description: String): String? {
+        val key = VendorProfiles.key(description)
+        if (key.isBlank()) return null
+        readableDatabase.rawQuery(
+            "SELECT category FROM merchant_category_rules WHERE merchant_key=?",
+            arrayOf(key)
+        ).use { cursor -> return if(cursor.moveToFirst()) cursor.getString(0) else null }
+    }
+
+    /** Explicit opt-in merchant rule; updates prior matching transactions atomically. */
+    fun reclassifyMerchant(description: String, category: String): Int {
+        require(category.isNotBlank() && category.length <= 40)
+        val key = VendorProfiles.key(description)
+        require(key.isNotBlank()) { "Merchant name is missing" }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val rule = ContentValues().apply {
+                put("merchant_key", key)
+                put("category", category)
+            }
+            db.insertWithOnConflict("merchant_category_rules", null, rule, SQLiteDatabase.CONFLICT_REPLACE)
+            var changed = 0
+            val candidates = mutableListOf<Pair<Long,String>>()
+            db.rawQuery("SELECT id,description FROM transactions", null).use { cursor ->
+                while(cursor.moveToNext()) candidates.add(cursor.getLong(0) to cursor.getString(1))
+            }
+            candidates.filter { VendorProfiles.key(it.second) == key }.forEach { (id, _) ->
+                val values = ContentValues().apply { put("category", category) }
+                changed += db.update("transactions", values, "id=?", arrayOf(id.toString()))
+            }
+            db.setTransactionSuccessful()
+            return changed
+        } finally { db.endTransaction() }
+    }
+
     fun setTransactionCategory(id: Long, category: String) {
         require(category.isNotBlank())
         writableDatabase.execSQL("UPDATE transactions SET category=? WHERE id=?",arrayOf(category,id))
