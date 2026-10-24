@@ -25,7 +25,7 @@ object BudgetPdfReport {
             y+=19f
         }
         try {
-            line("MIB Budget Tracker - Monthly Report: $month")
+            line("Budget Tracker - Monthly Report: $month")
             line("Generated from locally saved transactions; not a bank statement.")
             val monthTx=transactions.filter { it.timestamp.startsWith(month.toString()) }
             val income=monthTx.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }
@@ -33,6 +33,16 @@ object BudgetPdfReport {
             line("Income: ${Money.format(income)}")
             line("Expenses: ${Money.format(expenses)}")
             line("Net: ${Money.format(income-expenses)}")
+            val previous=FinanceCalculations.monthExpenses(transactions,month.minusMonths(1))
+            line("Previous month expenses: ${Money.format(previous)}")
+            line("Expense change: ${Money.format(expenses-previous)}")
+            val highestDay=monthTx.filter(FinanceCalculations::isExpense)
+                .groupBy { it.timestamp.take(10) }
+                .mapValues { (_,rows) -> rows.sumOf { -it.amountLaari } }
+                .maxByOrNull { it.value }
+            if(highestDay!=null) line("Highest spending day: ${highestDay.key} - ${Money.format(highestDay.value)}")
+            val forecast=FinanceCalculations.spendingForecast(transactions,month,java.time.LocalDate.now())
+            line("Estimated month-end expense: ${Money.format(forecast)}")
             line("Spending by category")
             monthTx.filter { it.amountLaari<0 && it.category!="Internal Transfer" }.groupBy { it.category }.toSortedMap().forEach { (cat,rows) ->
                 val spent=rows.sumOf { -it.amountLaari }
