@@ -1,4 +1,4 @@
-# MIB Budget Tracker — monthly budgets + one-month inbox import
+# Budget Tracker — personal finance and spending management
 
 ## Features
 - Monthly dashboard and category budget progress, using the SMS transaction date, with previous/next month navigation.
