@@ -210,6 +210,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var duplicateReviewOnly by remember { mutableStateOf(false) }
     var showMonthlyComparison by remember { mutableStateOf(false) }
     var undoCategory by remember { mutableStateOf<Pair<Long,String>?>(null) }
+    var splitTransactionId by remember { mutableStateOf<Long?>(null) }
+    var splitAmount by remember { mutableStateOf("") }
+    var splitCategory by remember { mutableStateOf("Food") }
+    val splitPrefs=remember { context.getSharedPreferences("transaction_category_splits",android.content.Context.MODE_PRIVATE) }
+    val editHistoryPrefs=remember { context.getSharedPreferences("transaction_edit_history",android.content.Context.MODE_PRIVATE) }
+    var historyRevision by remember { mutableIntStateOf(0) }
+    var showEditHistory by remember { mutableStateOf(false) }
+    fun recordEdit(message:String) {
+        val prior=editHistoryPrefs.getString("events","") ?: ""
+        editHistoryPrefs.edit().putString("events",(java.time.LocalDateTime.now().toString()+" | "+message+"\n"+prior).take(20000)).apply()
+        historyRevision++
+    }
     var transactionMonthFilter by remember { mutableStateOf<YearMonth?>(null) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var categoryFilterExpanded by remember { mutableStateOf(false) }
@@ -1087,7 +1099,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     budgets.forEach { (cat,limit) ->
                         val spent=grouped[cat]?.sumOf { -it.amountLaari } ?: 0L
-                        if(spent>=limit*8/10) Text("Budget alert: $cat is at ${if(limit>0) spent*100/limit else 0}% of limit",color=MaterialTheme.colorScheme.error)
+                        if(limit>0 && spent>=limit*8/10) TextButton(onClick={
+                            categoryFilter=cat;transactionFilter="Expenses";transactionMonthFilter=selectedMonth
+                            accountFilter="All accounts";merchantFilter="";tab=1
+                        }) { Text("Budget alert: $cat is at ${spent*100/limit}% of limit  ›",color=MaterialTheme.colorScheme.error) }
                     }
                     HorizontalDivider()
                     Text("Savings goals",style=MaterialTheme.typography.titleMedium)
@@ -1511,7 +1526,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                     Button(enabled=categorySelectedIds.isNotEmpty(),onClick={
                                         transactions.filter { it.id in categorySelectedIds && it.category==categoryFilter }
-                                            .forEach { store.setTransactionCategory(it.id,targetCategory) }
+                                            .forEach { recordEdit("Reclassified #${it.id}: ${it.category} -> $targetCategory");store.setTransactionCategory(it.id,targetCategory) }
                                         val changed=categorySelectedIds.size
                                         categorySelectedIds=emptySet()
                                         categorySelectionMode=false
@@ -1569,6 +1584,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                     if(filteredTransactions.size>150) Text("Showing first 150 of ${filteredTransactions.size} results. Narrow your search to see more.",style=MaterialTheme.typography.bodySmall)
+                    TextButton(onClick={showEditHistory=!showEditHistory}) { Text(if(showEditHistory) "Hide edit history" else "View edit history") }
+                    if(showEditHistory) {
+                        val events=remember(historyRevision) { editHistoryPrefs.getString("events","") ?: "" }
+                        Text(if(events.isBlank()) "No edits recorded yet." else events.take(4000),style=MaterialTheme.typography.bodySmall)
+                    }
                     if(editingId!=null) {
                         AlertDialog(onDismissRequest={editingId=null},title={Text("Edit transaction")},text={
                             Column {
@@ -1588,9 +1608,34 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         },confirmButton={TextButton(onClick={
                             val original=transactions.firstOrNull { it.id==editingId }
                             val v=Money.parseLaari(editingAmount)
-                            if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { revision++;notice="Transaction updated";editingId=null }
+                            if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { recordEdit("Edited #${original.id}: ${original.category} ${Money.format(original.amountLaari)} -> $editingCategory ${Money.format(if(original.amountLaari>0) v else -v)}");revision++;notice="Transaction updated";editingId=null }
                             else notice="Enter a valid amount and description"
                         }) { Text("Save") }},dismissButton={TextButton(onClick={editingId=null}) { Text("Cancel") }})
+                    }
+                    if(splitTransactionId!=null) {
+                        val source=transactions.firstOrNull { it.id==splitTransactionId }
+                        AlertDialog(onDismissRequest={splitTransactionId=null},title={Text("Split spending category")},text={
+                            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Keep the original bank transaction intact. Allocate part of its value to another category.")
+                                Text("Original: ${source?.let { Money.format(kotlin.math.abs(it.amountLaari)) } ?: ""}")
+                                OutlinedTextField(value=splitAmount,onValueChange={splitAmount=it},label={Text("Amount to allocate (MVR)")})
+                                categories.filter { it!="Income" }.forEach { cat ->
+                                    if(cat==splitCategory) Text("Selected: $cat")
+                                }
+                                Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                    listOf("Food","Shopping","Transport").forEach { cat ->
+                                        FilterChip(selected=splitCategory==cat,onClick={splitCategory=cat},label={Text(cat)})
+                                    }
+                                }
+                            }
+                        },confirmButton={TextButton(onClick={
+                            val allocation=Money.parseLaari(splitAmount)
+                            if(source!=null && allocation!=null && allocation>0 && allocation<kotlin.math.abs(source.amountLaari) && splitCategory!=source.category) {
+                                splitPrefs.edit().putString(source.fingerprint,"${splitCategory}|${allocation}").apply()
+                                recordEdit("Split allocation #${source.id}: ${Money.format(allocation)} to $splitCategory")
+                                splitTransactionId=null;revision++;notice="Category allocation saved; bank transaction unchanged"
+                            } else notice="Choose a different category and an amount smaller than the transaction"
+                        }) { Text("Save allocation") }},dismissButton={TextButton(onClick={splitTransactionId=null}) { Text("Cancel") }})
                     }
                     if(deletingId!=null) {
                         AlertDialog(onDismissRequest={deletingId=null},title={Text("Delete transaction?")},text={Text("This permanently deletes the selected record. Export a backup first if needed.")},confirmButton={TextButton(onClick={deletingId?.let { store.deleteTransaction(it) };deletingId=null;revision++}) { Text("Delete") }},dismissButton={TextButton(onClick={deletingId=null}) { Text("Cancel") }})
@@ -2069,10 +2114,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         selectedTransactionId=null
                                     }) { Text("Edit") }
                                 }
+                                OutlinedButton(onClick={splitTransactionId=selectedTransaction.id;splitAmount="";splitCategory="Food";selectedTransactionId=null},modifier=Modifier.fillMaxWidth()) { Text("Split into categories") }
                                 if(selectedTransaction.category=="Shopping" || selectedTransaction.category=="Food") {
                                     val destination=if(selectedTransaction.category=="Shopping") "Food" else "Shopping"
                                     OutlinedButton(onClick={
                                         undoCategory=selectedTransaction.id to selectedTransaction.category
+                                        recordEdit("Reclassified #${selectedTransaction.id}: ${selectedTransaction.category} -> $destination")
                                         store.setTransactionCategory(selectedTransaction.id,destination)
                                         revision++
                                         selectedTransactionId=null
