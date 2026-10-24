@@ -312,6 +312,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var filterExpanded by remember { mutableStateOf(false) }
     var showAdvancedFilters by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
+    fun clearTransactionFilters() {
+        accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories"
+        transactionMonthFilter=null;merchantFilter="";transactionFilter="All";searchText=""
+        transactionMinAmount="";transactionMaxAmount="";duplicateReviewOnly=false
+        categorySelectionMode=false;categorySelectedIds=emptySet()
+        internalSelectionMode=false;selectedInternalIds=emptySet();owedSelectionMode=false
+    }
+    fun openCategorySpending(category: String, month: YearMonth) {
+        clearTransactionFilters()
+        categoryFilter=category;transactionMonthFilter=month;transactionFilter="Expenses"
+        showAdvancedFilters=false;tab=1
+    }
+
     val balancePrefs=remember { context.getSharedPreferences("balance_anchor",android.content.Context.MODE_PRIVATE) }
     var dashboardView by remember { mutableStateOf("Cash flow") }
     val dashboardPrefs=remember { context.getSharedPreferences("dashboard_layout",android.content.Context.MODE_PRIVATE) }
@@ -345,6 +358,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val foreignTransactions = remember(revision) { store.foreign() }
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
+    fun allocations(tx: Tx): Map<String,Long> = CategorySpending.allocations(tx.amountLaari,tx.category,splitPrefs.getString(tx.fingerprint,null))
+    val monthlyCategorySpending=remember(revision,splitRevision,selectedMonth) {
+        val totals=mutableMapOf<String,Long>()
+        monthlyTransactions.forEach { tx -> allocations(tx).forEach { (category,value) ->
+            totals[category]=(totals[category] ?: 0L)+value
+        } }
+        totals.toMap()
+    }
     val budgets = remember(revision) { store.budgets() }
     var input by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
@@ -1022,13 +1043,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
                             HorizontalDivider()
                             Text("Top spending categories",style=MaterialTheme.typography.titleSmall)
-                            val topCategories=monthExpenses.groupBy { it.category }.mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
+                            val topCategories=monthlyCategorySpending
                                 .toList().sortedByDescending { it.second }.take(5)
                             if(topCategories.isEmpty()) Text("No recorded expenses for this month.",style=MaterialTheme.typography.bodySmall)
                             topCategories.forEach { (category,total) ->
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text(category,style=MaterialTheme.typography.bodySmall)
-                                    Text(displayMoney(total),style=MaterialTheme.typography.bodySmall)
+                                TextButton(onClick={openCategorySpending(category,selectedMonth)},modifier=Modifier.fillMaxWidth()) {
+                                    Text(category,modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
+                                    Text(displayMoney(total)+" ›",style=MaterialTheme.typography.bodySmall)
                                 }
                                 LinearProgressIndicator(progress={if(monthOut>0L) (total.toFloat()/monthOut).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
                             }
@@ -1266,38 +1287,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("${selectedMonth.minusMonths(1)}: ${displayMoney(previousTotal)}")
                             Text("$selectedMonth: ${displayMoney(currentTotal)}")
                             Text("Difference: ${displayMoney(currentTotal-previousTotal)}")
-                            TextButton(onClick={transactionMonthFilter=selectedMonth.minusMonths(1);categoryFilter="All categories";transactionFilter="Expenses";tab=1}) { Text("View previous month transactions") }
+                            TextButton(onClick={clearTransactionFilters();transactionMonthFilter=selectedMonth.minusMonths(1);transactionFilter="Expenses";tab=1}) { Text("View previous month transactions") }
                         } }
                     }
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
-                    val categorySpend=remember(revision,splitRevision,selectedMonth) {
-                        val totals=mutableMapOf<String,Long>()
-                        monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }.forEach { tx ->
-                            val original=-tx.amountLaari
-                            val allocation=splitPrefs.getString(tx.fingerprint,null)?.split("|")
-                            val target=allocation?.getOrNull(0)
-                            val value=allocation?.getOrNull(1)?.toLongOrNull()
-                            if(target!=null && value!=null && value>0 && value<original && target!=tx.category) {
-                                totals[tx.category]=(totals[tx.category] ?: 0L)+(original-value)
-                                totals[target]=(totals[target] ?: 0L)+value
-                            } else totals[tx.category]=(totals[tx.category] ?: 0L)+original
-                        }
-                        totals
-                    }
+                    val categorySpend=monthlyCategorySpending
                     categorySpend.forEach { (cat,spent) ->
                         Card(onClick={
-                            categoryFilter=cat
-                            transactionMonthFilter=selectedMonth
-                            merchantFilter=""
-                            transactionFilter="Expenses"
-                            accountFilter="All accounts"
-                            counterpartyFilter="All types"
-                            searchText=""
-                            transactionMinAmount=""
-                            transactionMaxAmount=""
-                            showAdvancedFilters=true
-                            tab=1
+                            openCategorySpending(cat,selectedMonth)
                         },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) {
                             Row(Modifier.fillMaxWidth().padding(14.dp),horizontalArrangement=Arrangement.SpaceBetween) {
                                 Text(cat,fontWeight=FontWeight.Medium)
@@ -1313,17 +1311,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val totalSpent=categorySpend.values.sum()
                     categorySpend.forEach { (cat,spent) ->
                         TextButton(onClick={
-                            categoryFilter=cat
-                            transactionMonthFilter=selectedMonth
-                            merchantFilter=""
-                            transactionFilter="Expenses"
-                            accountFilter="All accounts"
-                            counterpartyFilter="All types"
-                            searchText=""
-                            transactionMinAmount=""
-                            transactionMaxAmount=""
-                            showAdvancedFilters=true
-                            tab=1
+                            openCategorySpending(cat,selectedMonth)
                         },modifier=Modifier.fillMaxWidth()) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                                 Text(cat)
@@ -1335,8 +1323,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     budgets.forEach { (cat,limit) ->
                         val spent=categorySpend[cat] ?: 0L
                         if(limit>0 && spent>=limit*8/10) TextButton(onClick={
-                            categoryFilter=cat;transactionFilter="Expenses";transactionMonthFilter=selectedMonth
-                            accountFilter="All accounts";merchantFilter="";tab=1
+                            openCategorySpending(cat,selectedMonth)
                         }) { Text("Budget alert: $cat is at ${spent*100/limit}% of limit  ›",color=MaterialTheme.colorScheme.error) }
                     }
                     HorizontalDivider()
@@ -1476,7 +1463,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     OutlinedButton(onClick={categoryFilterExpanded=true}) { Text(categoryFilter) }
                                     DropdownMenu(expanded=categoryFilterExpanded,onDismissRequest={categoryFilterExpanded=false}) {
                                         (listOf("All categories")+categories).forEach { option ->
-                                            DropdownMenuItem(text={Text(option)},onClick={categoryFilter=option;categoryFilterExpanded=false})
+                                            DropdownMenuItem(text={Text(option)},onClick={categoryFilter=option;duplicateReviewOnly=false;categoryFilterExpanded=false})
                                         }
                                     }
                                 }
@@ -1571,7 +1558,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=transactionMaxAmount,onValueChange={transactionMaxAmount=it},
                             label={Text("Max MVR")},singleLine=true,modifier=Modifier.weight(1f))
                     }
-                    if(categoryFilter!="All categories" && splitPrefs.all.isNotEmpty()) Text("Split transactions may appear in both allocated categories. Displayed amounts are original bank amounts.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if(categoryFilter!="All categories" && splitPrefs.all.isNotEmpty()) Text("Split transactions appear in each allocated category. The spending total uses only that category’s allocation; bank amounts remain unchanged.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     val possibleDuplicateIds=remember(transactions) {
                         transactions.groupBy { Triple(it.timestamp.take(16),it.amountLaari,VendorProfiles.key(it.description)) }
                             .values.filter { it.size>1 }.flatten().map { it.id }.toSet()
@@ -1585,15 +1572,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         };undoEdit=null
                     }) { Text("Undo transaction edit") }
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        FilterChip(selected=duplicateReviewOnly,onClick={duplicateReviewOnly=!duplicateReviewOnly},label={Text("Possible duplicates (${possibleDuplicateIds.size})")})
+                        FilterChip(selected=duplicateReviewOnly,onClick={duplicateReviewOnly=!duplicateReviewOnly},label={Text(if(duplicateReviewOnly) "Duplicates only · ON (${possibleDuplicateIds.size})" else "Possible duplicates (${possibleDuplicateIds.size})")})
                         if(undoCategory!=null) TextButton(onClick={
                             undoCategory?.let { (id,old) -> store.setTransactionCategory(id,old);recordEdit("Undid category change #$id");revision++ }
                             undoCategory=null
                         }) { Text("Undo category change") }
                     }
                     val filteredTransactions = transactions.filter { t ->
-                        val splitTarget=splitPrefs.getString(t.fingerprint,null)?.substringBefore("|")
-                        val matchesCategory=categoryFilter=="All categories" || t.category==categoryFilter || splitTarget==categoryFilter || (categoryFilter=="Fast Food" && t.description.contains("fast food",true))
+                        val matchesCategory=categoryFilter=="All categories" || (if(t.amountLaari<0 && t.category!="Internal Transfer") (allocations(t)[categoryFilter] ?: 0L)>0L else t.category==categoryFilter)
                         (!duplicateReviewOnly || t.id in possibleDuplicateIds) &&
                         (transactionMonthFilter==null || t.timestamp.startsWith(transactionMonthFilter.toString())) &&
                         (merchantFilter.isBlank() || VendorProfiles.key(t.description)==merchantFilter) &&
@@ -1604,7 +1590,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         matchesCategory &&
                         (counterpartyFilter=="All types" || (counterpartyPrefs.getString(t.fingerprint,"Unclassified") ?: "Unclassified")==counterpartyFilter) &&
                         when(transactionFilter) {
-                            "Expenses" -> t.amountLaari < 0
+                            "Expenses" -> t.amountLaari < 0 && t.category!="Internal Transfer"
                             "Income" -> t.amountLaari > 0
                             "Transfers" -> t.category.contains("Transfer",ignoreCase=true)
                             else -> true
@@ -1802,7 +1788,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     }
                     Text("Swipe right to edit · left for category and more actions",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    if(orderedTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    val visibleSpending=filteredTransactions.sumOf { tx ->
+                        if(categoryFilter=="All categories") allocations(tx).values.sum() else allocations(tx)[categoryFilter] ?: 0L
+                    }
+                    Text("${filteredTransactions.size} matching transactions · Spending: ${displayMoney(visibleSpending)}",
+                        style=MaterialTheme.typography.titleSmall)
+                    if(duplicateReviewOnly) TextButton(onClick={duplicateReviewOnly=false}) { Text("Show all matching transactions (turn off duplicates only)") }
+                    if(orderedTransactions.isEmpty()) {
+                        Text("No transactions match the active filters.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick={
+                            val month=transactionMonthFilter;val category=categoryFilter
+                            clearTransactionFilters();transactionMonthFilter=month;categoryFilter=category;transactionFilter="Expenses"
+                        }) { Text("Keep month and category only") }
+                    }
                     var lastTransactionDay = ""
                     orderedTransactions.take(150).forEach { t ->
                         val day=t.timestamp.take(10)
@@ -1855,9 +1853,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text(displayTime ?: "Time not recorded",
                                         style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                                 }
+                                Column(horizontalAlignment=androidx.compose.ui.Alignment.End) {
+                                if(categoryFilter!="All categories" && t.amountLaari<0) {
+                                    val allocated=allocations(t)[categoryFilter]
+                                    if(allocated!=null && allocated != -t.amountLaari) Text("${displayMoney(allocated)} in $categoryFilter",style=MaterialTheme.typography.labelSmall)
+                                }
                                 Text((if(t.amountLaari>0) "+" else "")+displayMoney(t.amountLaari),
                                     style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,
                                     color=if(t.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                }
                             }
                         }
                     }
@@ -2174,7 +2178,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     var editingBudgetCategory by remember { mutableStateOf<String?>(null) }
                     var editingBudgetValue by remember { mutableStateOf("") }
                     budgetCategories.forEach { cat ->
-                        val spent=monthlyTransactions.filter { it.category==cat && it.amountLaari<0 }.sumOf { -it.amountLaari }
+                        val spent=monthlyCategorySpending[cat] ?: 0L
                         val limit=budgets[cat] ?: 0L
                         Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp)) {
                             Column(Modifier.padding(horizontal=14.dp,vertical=12.dp),
@@ -2337,6 +2341,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
                                 TextButton(onClick={
+                                    clearTransactionFilters()
                                     merchantFilter=VendorProfiles.key(selectedTransaction.description)
                                     transactionMonthFilter=null
                                     categoryFilter="All categories"
@@ -2348,6 +2353,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }) { Text("View all transactions from this merchant") }
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
                                 TextButton(onClick={
+                                    clearTransactionFilters()
                                     accountFilter=accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"
                                     merchantFilter=""
                                     categoryFilter="All categories"
