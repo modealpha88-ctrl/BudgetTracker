@@ -1254,6 +1254,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val v=Money.parseLaari(recurringAmount)
                         if(recurringName.isNotBlank() && v!=null && v>0) {store.setRecurring(recurringName,v,"Bills");revision++;recurringName="";recurringAmount=""} else notice="Invalid recurring amount"
                     }) { Text("Save recurring template") }
+                    Text("Security & privacy",style=MaterialTheme.typography.titleMedium,
+                        fontWeight=FontWeight.Bold)
+                    Text("App lock is optional. When enabled, your device verifies your fingerprint or screen lock. Financial data stays on this device.",
+                        style=MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Biometric app lock",modifier=Modifier.weight(1f))
                         Switch(checked=lockEnabled,onCheckedChange={ enabled ->
