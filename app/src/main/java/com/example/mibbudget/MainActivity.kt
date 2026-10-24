@@ -82,24 +82,81 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
 
     var unlocked by remember { mutableStateOf(!lockEnabled) }
     var lockError by remember { mutableStateOf("") }
-    val authenticate = {
-        if(android.os.Build.VERSION.SDK_INT>=29) {
-            val manager=context.getSystemService(android.content.Context.BIOMETRIC_SERVICE) as android.hardware.biometrics.BiometricManager
-            if(manager.canAuthenticate()==android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS) {
-                android.hardware.biometrics.BiometricPrompt.Builder(context)
-                    .setTitle("Unlock MIB Budget Tracker")
-                    .setSubtitle("Confirm your fingerprint or face")
-                    .setNegativeButton("Cancel",context.mainExecutor,{ _,_ -> lockError="Authentication cancelled" })
-                    .build()
-                    .authenticate(android.os.CancellationSignal(),context.mainExecutor,object:android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationSucceeded(result:android.hardware.biometrics.BiometricPrompt.AuthenticationResult) {
-                            unlocked=true
-                            lockError=""
+    var authenticating by remember { mutableStateOf(false) }
+    val authenticationSignal = remember { mutableStateOf<android.os.CancellationSignal?>(null) }
+    val keyguard = remember { context.getSystemService(android.app.KeyguardManager::class.java) }
+    val credentialLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        authenticating=false
+        if(result.resultCode==android.app.Activity.RESULT_OK) {
+            unlocked=true
+            lockError=""
+        } else lockError="Unlock cancelled. Your app remains locked. Try again."
+    }
+    val authenticateWithCredential: () -> Unit = {
+        if(!authenticating) {
+            try {
+                val intent=keyguard.createConfirmDeviceCredentialIntent("Unlock MIB Budget Tracker","Confirm your device PIN, pattern or password")
+                if(intent==null) lockError="Set up a device PIN, pattern or password in Android security settings first."
+                else {
+                    lockError=""
+                    authenticating=true
+                    credentialLauncher.launch(intent)
+                }
+            } catch(e:Exception) {
+                authenticating=false
+                lockError="Could not open device authentication. Try again or check Android security settings."
+            }
+        }
+    }
+    val authenticate: () -> Unit = {
+        if(!authenticating) {
+            lockError=""
+            try {
+                if(android.os.Build.VERSION.SDK_INT>=29) {
+                    val manager=context.getSystemService(android.hardware.biometrics.BiometricManager::class.java)
+                    val status=manager.canAuthenticate()
+                    if(status==android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS) {
+                        val signal=android.os.CancellationSignal()
+                        authenticationSignal.value=signal
+                        authenticating=true
+                        android.hardware.biometrics.BiometricPrompt.Builder(context)
+                            .setTitle("Unlock MIB Budget Tracker")
+                            .setSubtitle("Confirm your fingerprint or face")
+                            .setNegativeButton("Cancel",context.mainExecutor,{ _,_ ->
+                                authenticating=false
+                                lockError="Unlock cancelled. You can also use your device PIN or password."
+                            })
+                            .build()
+                            .authenticate(signal,context.mainExecutor,object:android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                                override fun onAuthenticationSucceeded(result:android.hardware.biometrics.BiometricPrompt.AuthenticationResult) {
+                                    authenticating=false
+                                    unlocked=true
+                                    lockError=""
+                                }
+                                override fun onAuthenticationFailed() {
+                                    lockError="Fingerprint or face not recognised. Try again in the Android prompt."
+                                }
+                                override fun onAuthenticationError(errorCode:Int,errString:CharSequence) {
+                                    authenticating=false
+                                    lockError=errString.toString()+". Try again or use your device PIN/password."
+                                }
+                            })
+                    } else {
+                        lockError=when(status) {
+                            android.hardware.biometrics.BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "No fingerprint or face is enrolled. Use your device PIN/password or set up biometrics."
+                            android.hardware.biometrics.BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> "Biometric hardware is temporarily unavailable. Try again or use your device PIN/password."
+                            else -> "Biometrics are unavailable on this device. Use your device PIN/password."
                         }
-                        override fun onAuthenticationError(errorCode:Int,errString:CharSequence) { lockError=errString.toString() }
-                    })
-            } else lockError="Set up fingerprint or face unlock in Android Settings first."
-        } else lockError="Biometric lock requires Android 10 or later."
+                    }
+                } else authenticateWithCredential()
+            } catch(e:Exception) {
+                authenticating=false
+                lockError="Could not open biometric authentication. Use your device PIN/password, or retry after updating the app."
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { authenticationSignal.value?.cancel() }
     }
 
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
@@ -443,10 +500,32 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     if(lockEnabled && !unlocked) {
-        Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.Center) {
-            Text("MIB Budget Tracker is locked",style=MaterialTheme.typography.headlineSmall)
-            Button(onClick={authenticate}) { Text("Unlock with biometrics") }
-            if(lockError.isNotBlank()) Text(lockError)
+        Surface(modifier=Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background,contentColor=MaterialTheme.colorScheme.onBackground) {
+            Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
+                verticalArrangement=Arrangement.Center,horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {
+                Text("MIB",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(16.dp))
+                Text("Your budget is locked",style=MaterialTheme.typography.headlineSmall)
+                Text("Authenticate to view your accounts and transactions.",modifier=Modifier.padding(vertical=12.dp),
+                    style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick=authenticate,enabled=!authenticating,modifier=Modifier.fillMaxWidth()) {
+                    Text(if(authenticating) "Waiting for Android…" else if(android.os.Build.VERSION.SDK_INT>=29) "Unlock with biometrics" else "Unlock with device credentials")
+                }
+                OutlinedButton(onClick=authenticateWithCredential,enabled=!authenticating,modifier=Modifier.fillMaxWidth()) {
+                    Text("Use device PIN / password")
+                }
+                if(lockError.isNotBlank()) Text(lockError,modifier=Modifier.padding(top=12.dp),color=MaterialTheme.colorScheme.error,
+                    style=MaterialTheme.typography.bodyMedium)
+                if(authenticating) TextButton(onClick={
+                    authenticationSignal.value?.cancel()
+                    authenticating=false
+                    lockError="Unlock cancelled. Try again when ready."
+                }) { Text("Cancel and retry") }
+                TextButton(onClick={
+                    try { context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS)) }
+                    catch(e:Exception) { lockError="Open Android Settings → Security to check your screen lock." }
+                }) { Text("Android security settings") }
+            }
         }
         return
     }
@@ -1289,16 +1368,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         if(recurringName.isNotBlank() && v!=null && v>0) {store.setRecurring(recurringName,v,"Bills");revision++;recurringName="";recurringAmount=""} else notice="Invalid recurring amount"
                     }) { Text("Save recurring template") }
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Biometric app lock",modifier=Modifier.weight(1f))
+                        Text("App lock (biometrics or device PIN)",modifier=Modifier.weight(1f))
                         Switch(checked=lockEnabled,onCheckedChange={ enabled ->
-                            if(!enabled || android.os.Build.VERSION.SDK_INT>=28) {
+                            if(!enabled || keyguard.isDeviceSecure) {
                                 lockEnabled=enabled
                                 securityPrefs.edit().putBoolean("biometric_lock",enabled).apply()
                                 unlocked=true
-                            } else notice="Biometric lock requires Android 9 or later"
+                            } else notice="Set up a device PIN, pattern or password in Android Settings before enabling app lock"
                         })
                     }
-                    Text("Uses Android biometric enrollment. Keep a device backup before enabling.",style=MaterialTheme.typography.bodySmall)
+                    Text("Unlock with enrolled biometrics or your Android device PIN, pattern or password.",style=MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Hide app from screenshots and screen recording",modifier=Modifier.weight(1f))
                         Switch(checked=screenshotPrivacy,onCheckedChange={
