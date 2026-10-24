@@ -67,17 +67,25 @@ object FinanceCalculations {
         labels[tx.fingerprint]?.takeIf { it.isNotBlank() }
             ?: if (tx.fingerprint.startsWith("mib-", ignoreCase = true)) "MIB" else "Unassigned"
 
-    /** An estimated snapshot + subsequent labeled movements, NOT a live bank balance. */
+    /**
+     * A saved bank snapshot plus subsequent movements assigned to that account.
+     * Internal transfers ARE account movements even though they are not spending.
+     * The date bound is inclusive; no transaction on the snapshot's reference day is replayed.
+     */
     fun projectedBalance(
         account: String, anchorMinor: Long, anchorDate: String,
-        entries: List<Tx>, labels: Map<String, String>
+        entries: List<Tx>, labels: Map<String, String>,
+        throughDate: LocalDate? = null
     ): Long? {
-        if (anchorMinor == Long.MIN_VALUE || runCatching { LocalDate.parse(anchorDate) }.isFailure)
-            return null
+        val anchor = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
+        if (anchorMinor == Long.MIN_VALUE || anchor == null ||
+            (throughDate != null && throughDate.isBefore(anchor))) return null
         val movements = entries.filter { tx ->
-            assignedAccount(tx, labels).equals(account, ignoreCase = true) &&
-                tx.timestamp.take(10) > anchorDate && tx.category != "Internal Transfer"
+            val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
+            date != null && date.isAfter(anchor) &&
+                (throughDate == null || !date.isAfter(throughDate)) &&
+                assignedAccount(tx, labels).equals(account, ignoreCase = true)
         }.sumOf { it.amountLaari }
-        return anchorMinor + movements
+        return runCatching { Math.addExact(anchorMinor, movements) }.getOrNull()
     }
 }
