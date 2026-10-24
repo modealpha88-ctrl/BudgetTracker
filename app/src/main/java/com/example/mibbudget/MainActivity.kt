@@ -1151,20 +1151,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     var transferThreshold by remember { mutableStateOf("1000") }
                     val thresholdMinor=Money.parseLaari(transferThreshold) ?: 100000L
                     var transferDirection by remember { mutableStateOf("Both") }
+                    val reviewedTransferPrefs=remember { context.getSharedPreferences("reviewed_large_transfers",android.content.Context.MODE_PRIVATE) }
                     val largeTransfers=monthlyTransactions.filter { tx ->
+                        !reviewedTransferPrefs.getBoolean(tx.id.toString(),false) &&
                         VendorProfiles.isTransfer(tx.description,tx.category) &&
                         kotlin.math.abs(tx.amountLaari)>=thresholdMinor &&
                         (transferDirection=="Both" || (transferDirection=="Incoming" && tx.amountLaari>0) ||
                             (transferDirection=="Outgoing" && tx.amountLaari<0))
                     }.sortedByDescending { kotlin.math.abs(it.amountLaari) }
-                    val incomingTransferCount=monthlyTransactions.count { tx ->
+                    val incomingTransferCount=largeTransfers.count { tx ->
                         VendorProfiles.isTransfer(tx.description,tx.category) && tx.amountLaari>=thresholdMinor
                     }
-                    val outgoingTransferCount=monthlyTransactions.count { tx ->
+                    val outgoingTransferCount=largeTransfers.count { tx ->
                         VendorProfiles.isTransfer(tx.description,tx.category) && tx.amountLaari<=-thresholdMinor
                     }
                     val originalTransferPrefs=remember { context.getSharedPreferences("internal_transfer_original_categories",android.content.Context.MODE_PRIVATE) }
-                    Card(Modifier.fillMaxWidth()) {
+                    if(largeTransfers.isNotEmpty()) Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
                                 verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -1204,10 +1206,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                                 OutlinedButton(onClick={
                                                     originalTransferPrefs.edit().putString(tx.id.toString(),tx.category).apply()
                                                     store.markInternal(tx.id)
+                                                    reviewedTransferPrefs.edit().putBoolean(tx.id.toString(),true).apply()
                                                     revision++
                                                     notice="Marked internal; transaction retained"
                                                 }) { Text("Mark internal") }
                                             }
+                                            TextButton(onClick={
+                                                reviewedTransferPrefs.edit().putBoolean(tx.id.toString(),true).apply()
+                                                revision++
+                                            }) { Text("Reviewed") }
                                             TextButton(onClick={selectedTransactionId=tx.id}) { Text("Details") }
                                         }
                                         HorizontalDivider()
@@ -1233,7 +1240,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     val suggestedPairs=FinanceInsights.suggestedInternalPairs(monthlyTransactions,accountLabels)
                     var showSuggestedPairs by remember { mutableStateOf(false) }
-                    Card(Modifier.fillMaxWidth()) {
+                    if(suggestedPairs.isNotEmpty()) Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                                 Text("Possible internal transfers",style=MaterialTheme.typography.titleMedium)
@@ -1272,12 +1279,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                     val scheduledPayments=remember(revision) { store.recurring() }
-                    if(scheduledPayments.isNotEmpty()) Card(Modifier.fillMaxWidth()) {
+                    val pendingPayments=scheduledPayments.filter { (name,expected,category) ->
+                        monthlyTransactions.none { tx ->
+                            tx.amountLaari<0 && tx.category!="Internal Transfer" &&
+                            -tx.amountLaari==expected &&
+                            (tx.description.contains(name,true) || tx.category==category)
+                        }
+                    }
+                    if(pendingPayments.isNotEmpty()) Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                             Text("Recurring payment review",style=MaterialTheme.typography.titleMedium)
                             Text("Check scheduled payments against the selected month. Missing matches are reminders, not confirmed missed payments.",
                                 style=MaterialTheme.typography.bodySmall)
-                            scheduledPayments.forEach { (name,expected,category) ->
+                            pendingPayments.forEach { (name,expected,category) ->
                                 val matches=monthlyTransactions.filter { tx ->
                                     tx.amountLaari<0 && tx.category!="Internal Transfer" &&
                                     -tx.amountLaari==expected &&
@@ -1285,8 +1299,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                                     Text(name,modifier=Modifier.weight(1f))
-                                    Text(if(matches.isNotEmpty()) "Recorded" else "Check payment",
-                                        color=if(matches.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                                    TextButton(onClick={
+                                        categoryFilter="All"
+                                        categoryDrilldownMonth=selectedMonth
+                                        transactionFilter="Expenses"
+                                        accountFilter="All accounts"
+                                        counterpartyFilter="All types"
+                                        searchText=name
+                                        transactionMinAmount=""
+                                        transactionMaxAmount=""
+                                        showAdvancedFilters=true
+                                        tab=1
+                                    }) { Text("Check payment") }
                                 }
                             }
                         }
