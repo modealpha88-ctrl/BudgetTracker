@@ -863,11 +863,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) {
                                 Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                     Text("MIB ESTIMATED BALANCE",color=Color.White)
-                                    Text(Money.format(if(balanceSource.startsWith("MIB screenshot")) savedBalanceMinor else estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                                    Text(Money.format(estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
                                     Text("${balanceSource} at ${savedBalanceDate}: ${Money.format(savedBalanceMinor)}",color=Color.White)
                                     Text("MIB transactions after reference: ${later.size}",color=Color.White)
                                     if(balanceSource.startsWith("MIB screenshot") && later.isNotEmpty()) Text("Estimated after recorded transactions: ${Money.format(estimated)}",color=Color.White)
-                                    Text(if(balanceSource.startsWith("MIB screenshot")) "Latest user-confirmed screenshot balance (snapshot, not live). Later transactions are shown separately." else "Estimated from reference balance and later labeled MIB transactions; not a live bank balance.",color=Color.White)
+                                    Text(if(balanceSource.startsWith("MIB screenshot")) "Estimated from your confirmed screenshot balance plus subsequent MIB transactions (not a live bank balance)." else "Estimated from reference balance and later labeled MIB transactions; not a live bank balance.",color=Color.White)
                                 }
                             }
                             Text("Transactions affecting estimated balance",style=MaterialTheme.typography.titleMedium)
