@@ -1874,7 +1874,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Button(onClick={
                             val inserted = store.addDeclined(declinedCandidate)
                             notice = if(inserted) "Declined attempt saved (not counted as spending)" else "Duplicate declined attempt ignored"
-                            if(inserted) { store.setAccount(candidate.fingerprint,"MIB"); revision++ }
+                            if(inserted) revision++
                             input="";clearShared()
                         }) { Text("Save declined attempt") }
                     } else if (bmlCard != null) {
@@ -1899,7 +1899,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         Button(onClick={
                             val inserted=store.add(candidate.amountLaari,importCategory,candidate.description,candidate.fingerprint,candidate.transactionTime)
-                            notice=if(inserted) "Transaction imported" else "Duplicate transaction ignored"
+                            if(inserted) store.setAccount(candidate.fingerprint,"MIB")
+                            notice=if(inserted) "Transaction imported to MIB" else "Duplicate transaction ignored"
                             if(inserted) revision++
                             input="";clearShared()
                         }) { Text("Confirm and save") }
