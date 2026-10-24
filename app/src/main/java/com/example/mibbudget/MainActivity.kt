@@ -204,6 +204,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var transactionFilter by remember { mutableStateOf("All") }
     var counterpartyFilter by remember { mutableStateOf("All types") }
     var categoryFilter by remember { mutableStateOf("All categories") }
+    var merchantFilter by remember { mutableStateOf("") }
+    var transactionMonthFilter by remember { mutableStateOf<YearMonth?>(null) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var categoryFilterExpanded by remember { mutableStateOf(false) }
     val counterpartyPrefs=remember { context.getSharedPreferences("transaction_counterparty",android.content.Context.MODE_PRIVATE) }
@@ -1020,6 +1022,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val spent=txs.sumOf{-it.amountLaari}
                         Card(onClick={
                             categoryFilter=cat
+                            transactionMonthFilter=selectedMonth
+                            merchantFilter=""
                             transactionFilter="Expenses"
                             accountFilter="All accounts"
                             counterpartyFilter="All types"
@@ -1045,6 +1049,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val spent=txs.sumOf { -it.amountLaari }
                         TextButton(onClick={
                             categoryFilter=cat
+                            transactionMonthFilter=selectedMonth
+                            merchantFilter=""
                             transactionFilter="Expenses"
                             accountFilter="All accounts"
                             counterpartyFilter="All types"
@@ -1137,6 +1143,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    if(transactionMonthFilter!=null || merchantFilter.isNotBlank()) {
+                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                            Text(listOfNotNull(transactionMonthFilter?.toString(),merchantFilter.takeIf { it.isNotBlank() }?.let { "Merchant: $it" }).joinToString(" · "),modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
+                            TextButton(onClick={transactionMonthFilter=null;merchantFilter=""}) { Text("Clear drill-down") }
+                        }
+                    }
                     OutlinedTextField(value=searchText,onValueChange={searchText=it},
                         placeholder={Text("Search merchant, amount or date")},
                         leadingIcon={Text("⌕")},modifier=Modifier.fillMaxWidth(),singleLine=true,
@@ -1183,7 +1195,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 Text("Classify a business or individual from transaction details.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";transactionFilter="All";searchText=""}) { Text("Clear all filters") }
+                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";transactionMonthFilter=null;merchantFilter="";transactionFilter="All";searchText=""}) { Text("Clear all filters") }
                             }
                         }
                     }
@@ -1274,6 +1286,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             label={Text("Max MVR")},singleLine=true,modifier=Modifier.weight(1f))
                     }
                     val filteredTransactions = transactions.filter { t ->
+                        (transactionMonthFilter==null || t.timestamp.startsWith(transactionMonthFilter.toString())) &&
+                        (merchantFilter.isBlank() || VendorProfiles.key(t.description)==merchantFilter) &&
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
                         (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
@@ -1965,6 +1979,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
+                                TextButton(onClick={
+                                    merchantFilter=VendorProfiles.key(selectedTransaction.description)
+                                    transactionMonthFilter=null
+                                    categoryFilter="All categories"
+                                    accountFilter="All accounts"
+                                    transactionFilter="All"
+                                    searchText=""
+                                    selectedTransactionId=null
+                                    tab=1
+                                }) { Text("View all transactions from this merchant") }
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
                                 Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,"Unclassified")}",style=MaterialTheme.typography.bodyMedium)
                                 Box {
