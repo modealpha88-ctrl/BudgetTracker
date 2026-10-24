@@ -575,7 +575,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                     amountLaari,description,transactionTime,it.amountLaari,it.description,it.timestamp) }) return false
         }
         val values = android.content.ContentValues().apply {
-            put("amount_laari", amountLaari); put("category", (merchantCategoryRule(description) ?: category).take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
+            put("amount_laari", amountLaari); put("category", (if(amountLaari < 0L && category != "Internal Transfer") (merchantCategoryRule(description) ?: category) else category).take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
         }
         val inserted=db.insertWithOnConflict("transactions", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
         if(inserted && fingerprint.startsWith("mib-",ignoreCase=true)) {
@@ -621,7 +621,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             db.insertWithOnConflict("merchant_category_rules", null, rule, SQLiteDatabase.CONFLICT_REPLACE)
             var changed = 0
             val candidates = mutableListOf<Pair<Long,String>>()
-            db.rawQuery("SELECT id,description FROM transactions", null).use { cursor ->
+            db.rawQuery("SELECT id,description FROM transactions WHERE amount_laari<0 AND category!='Internal Transfer'", null).use { cursor ->
                 while(cursor.moveToNext()) candidates.add(cursor.getLong(0) to cursor.getString(1))
             }
             candidates.filter { VendorProfiles.key(it.second) == key }.forEach { (id, _) ->
