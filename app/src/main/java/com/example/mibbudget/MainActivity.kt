@@ -953,12 +953,24 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             val later=transactions.filter { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint]=="MIB" && it.category!="Internal Transfer" }
                             val unlabeled=transactions.count { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint].isNullOrBlank() }
                             val estimated=savedBalanceMinor+later.sumOf { it.amountLaari }
+                            val referenceDayTransactions=transactions.filter {
+                                it.timestamp.take(10)==savedBalanceDate &&
+                                accountLabels[it.fingerprint]=="MIB" &&
+                                it.category!="Internal Transfer"
+                            }
+                            val referenceDateWarning=referenceDayTransactions.isNotEmpty()
                             Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) {
                                 Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                     Text("MIB ESTIMATED BALANCE",color=Color.White)
                                     Text(Money.format(estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
                                     Text("${balanceSource} at ${savedBalanceDate}: ${Money.format(savedBalanceMinor)}",color=Color.White)
                                     Text("MIB transactions after reference: ${later.size}",color=Color.White)
+                                    if(referenceDateWarning) Text(
+                                        "${referenceDayTransactions.size} MIB transactions occurred on the reference date and are excluded. Use an end-of-day bank balance for accurate reconciliation.",
+                                        color=Color.White)
+                                    if(unlabeled>0) Text(
+                                        "$unlabeled later transactions have no account label and are excluded from the MIB estimate.",
+                                        color=Color.White)
                                     if(balanceSource.startsWith("MIB screenshot") && later.isNotEmpty()) Text("Estimated after recorded transactions: ${Money.format(estimated)}",color=Color.White)
                                     Text(if(balanceSource.startsWith("MIB screenshot")) "Estimated from your confirmed screenshot balance plus subsequent MIB transactions (not a live bank balance)." else "Estimated from reference balance and later labeled MIB transactions; not a live bank balance.",color=Color.White)
                                 }
