@@ -180,6 +180,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var confirmReset by remember { mutableStateOf(false) }
     var searchText by remember { mutableStateOf("") }
     var rankedRecipientFilter by remember { mutableStateOf<String?>(null) }
+    var rankedRecipientMonth by remember { mutableStateOf<String?>(null) }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var editingAmount by remember { mutableStateOf("") }
     var editingDescription by remember { mutableStateOf("") }
@@ -1225,6 +1226,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     if(rankingMode=="Recipients") {
                                         TextButton(onClick={
                                             rankedRecipientFilter=item.first
+                                            rankedRecipientMonth=rankingMonth
                                             tab=1
                                             searchText=""
                                             accountFilter="All accounts"
@@ -1288,7 +1290,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 Text("Classify a business or individual from transaction details.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";categoryDrilldownMonth=null;transactionFilter="All";searchText="";rankedRecipientFilter=null}) { Text("Clear all filters") }
+                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";categoryDrilldownMonth=null;transactionFilter="All";searchText="";rankedRecipientFilter=null;rankedRecipientMonth=null}) { Text("Clear all filters") }
                             }
                         }
                     }
@@ -1354,7 +1356,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         if(item.txId>0) TextButton(onClick={selectedTransactionId=item.txId}) { Text("Open transaction") }
                                         Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                                             listOf("PENDING","APPROVED","REJECTED","RESOLVED").filter { it!=item.status }.forEach { state ->
-                                                TextButton(onClick={reviewQueue.status(item.id,state);reviewQueueRevision++}) {
+                                                TextButton(onClick={reviewQueue.status(item.id,state);reviewQueueRevision++;if(state=="APPROVED") notice="Review marked approved. Existing transactions are not added again."}) {
                                                     Text(state.lowercase().replaceFirstChar { it.uppercase() },style=MaterialTheme.typography.labelSmall)
                                                 }
                                             }
@@ -1381,7 +1383,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     if(rankedRecipientFilter!=null) {
                         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                             Text("Recipient: $rankedRecipientFilter",modifier=Modifier.weight(1f))
-                            TextButton(onClick={rankedRecipientFilter=null}) { Text("Clear") }
+                            TextButton(onClick={rankedRecipientFilter=null;rankedRecipientMonth=null}) { Text("Clear") }
                         }
                     }
                     val filteredTransactions = transactions.filter { t ->
@@ -1389,7 +1391,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             (recipientPrefs.getString(t.fingerprint,null)?.takeIf { it.isNotBlank() }
                                 ?: TransactionPresentation.label(t.description).trim().ifBlank { "Unknown recipient" })
                                 .equals(rankedRecipientFilter,ignoreCase=true) &&
-                            t.timestamp.startsWith(rankingMonth))) &&
+                            t.timestamp.startsWith(rankedRecipientMonth ?: rankingMonth))) &&
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
                         (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
