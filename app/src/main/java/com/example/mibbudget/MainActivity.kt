@@ -78,24 +78,45 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
 
     var unlocked by remember { mutableStateOf(!lockEnabled) }
     var lockError by remember { mutableStateOf("") }
+    // Keep a device PIN/password fallback so unsupported or unavailable biometrics never lock out the owner.
+    val credentialLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if(result.resultCode==android.app.Activity.RESULT_OK) {
+            unlocked=true
+            lockError=""
+        } else lockError="Device authentication cancelled. Try again."
+    }
+    val unlockWithDeviceCredential = {
+        val keyguard=context.getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+        if(keyguard.isDeviceSecure) {
+            val intent=keyguard.createConfirmDeviceCredentialIntent("Unlock MIB Budget Tracker","Confirm your screen lock")
+            if(intent!=null) credentialLauncher.launch(intent)
+            else lockError="Unable to open screen lock. Check your device security settings."
+        } else lockError="Set up a screen lock in Android Settings to unlock."
+    }
     val authenticate = {
-        if(android.os.Build.VERSION.SDK_INT>=29) {
+        lockError=""
+        if(android.os.Build.VERSION.SDK_INT>=28) {
             val manager=context.getSystemService(android.content.Context.BIOMETRIC_SERVICE) as android.hardware.biometrics.BiometricManager
             if(manager.canAuthenticate()==android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS) {
                 android.hardware.biometrics.BiometricPrompt.Builder(context)
                     .setTitle("Unlock MIB Budget Tracker")
                     .setSubtitle("Confirm your fingerprint or face")
-                    .setNegativeButton("Cancel",context.mainExecutor,{ _,_ -> lockError="Authentication cancelled" })
+                    .setNegativeButton("Use screen lock",context.mainExecutor,{ _,_ -> unlockWithDeviceCredential() })
                     .build()
                     .authenticate(android.os.CancellationSignal(),context.mainExecutor,object:android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result:android.hardware.biometrics.BiometricPrompt.AuthenticationResult) {
                             unlocked=true
                             lockError=""
                         }
-                        override fun onAuthenticationError(errorCode:Int,errString:CharSequence) { lockError=errString.toString() }
+                        override fun onAuthenticationError(errorCode:Int,errString:CharSequence) {
+                            lockError=errString.toString()
+                        }
+                        override fun onAuthenticationFailed() {
+                            lockError="Biometric not recognized. Try again or use your screen lock."
+                        }
                     })
-            } else lockError="Set up fingerprint or face unlock in Android Settings first."
-        } else lockError="Biometric lock requires Android 10 or later."
+            } else unlockWithDeviceCredential()
+        } else unlockWithDeviceCredential()
     }
 
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
@@ -405,6 +426,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.Center) {
             Text("MIB Budget Tracker is locked",style=MaterialTheme.typography.headlineSmall)
             Button(onClick={authenticate}) { Text("Unlock with biometrics") }
+            TextButton(onClick={unlockWithDeviceCredential}) { Text("Use screen lock instead") }
             if(lockError.isNotBlank()) Text(lockError)
         }
         return
