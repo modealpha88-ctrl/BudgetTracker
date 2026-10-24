@@ -62,4 +62,29 @@ class FinanceCalculationsTest {
         assertNull(FinanceCalculations.projectedBalance(
             "MIB",Long.MIN_VALUE,"2026-10-01",entries,labels))
     }
+    @Test fun internalTransfersChangeOnlyTheAssignedAccountBalance() {
+        val entries = listOf(
+            tx(-2500L,"Internal Transfer","2026-10-02",1,"source"),
+            tx(2500L,"Internal Transfer","2026-10-02",2,"destination"),
+            tx(-1000L,"Food","2026-10-03",3,"source")
+        )
+        val labels=mapOf("source" to "MIB","destination" to "BML")
+        assertEquals(96500L,FinanceCalculations.projectedBalance(
+            "MIB",100000L,"2026-10-01",entries,labels))
+        assertEquals(52500L,FinanceCalculations.projectedBalance(
+            "BML",50000L,"2026-10-01",entries,labels))
+        assertEquals(1000L,FinanceCalculations.expenseTotal(entries))
+        assertEquals(97500L,FinanceCalculations.projectedBalance(
+            "MIB",100000L,"2026-10-01",entries,labels,LocalDate.of(2026,10,2)))
+    }
+
+    @Test fun balanceComparisonRejectsDatesBeforeSnapshotAndOverflow() {
+        val entries=listOf(tx(1000L,"Income","2026-10-02",1,"mib-one"))
+        assertNull(FinanceCalculations.projectedBalance(
+            "MIB",100000L,"2026-10-03",entries,emptyMap(),LocalDate.of(2026,10,2)))
+        assertNull(FinanceCalculations.projectedBalance(
+            "MIB",Long.MAX_VALUE,"2026-10-01",entries,emptyMap()))
+    }
+
+
 }
