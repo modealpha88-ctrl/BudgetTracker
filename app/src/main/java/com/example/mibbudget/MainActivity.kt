@@ -1301,6 +1301,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val budgetedSpend = rankedExpenses.filter { budgets.containsKey(it.category) }
                         .sumOf { kotlin.math.abs(it.amountLaari) }
                     val monthBudgetRemaining = monthBudget - budgetedSpend
+                    // Flag possible duplicates for review; never delete repeated purchases automatically.
+                    val duplicateCandidates = rankedExpenses.groupBy { tx ->
+                        Triple(tx.timestamp.take(10), VendorProfiles.key(tx.description), tx.amountLaari)
+                    }.values.filter { group -> group.size > 1 && group.first().fingerprint != "" }
                     val categoryBudgetUsage = budgets.entries.map { (category, limit) ->
                         Triple(category, limit, rankedExpenses.filter { it.category==category }
                             .sumOf { kotlin.math.abs(it.amountLaari) })
@@ -1312,6 +1316,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 style=MaterialTheme.typography.bodyMedium)
                             if(highestDay!=null) Text("Highest spending day: ${highestDay.key} · ${Money.format(highestDay.value)}",
                                 style=MaterialTheme.typography.bodySmall)
+                            if(duplicateCandidates.isNotEmpty()) {
+                                Text("${duplicateCandidates.sumOf { it.size }} transactions in ${duplicateCandidates.size} possible duplicate groups (same day, merchant and amount). Review before deleting.",
+                                    style=MaterialTheme.typography.bodySmall)
+                            }
                             if(monthBudget>0L) {
                                 Text("Combined category budgets: ${Money.format(monthBudget)} · ${if(monthBudgetRemaining>=0) "Remaining" else "Over budget"}: ${Money.format(kotlin.math.abs(monthBudgetRemaining))}",
                                     style=MaterialTheme.typography.bodySmall)
