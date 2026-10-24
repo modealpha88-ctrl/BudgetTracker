@@ -182,7 +182,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 val category=if(!mib) cols[3].trim().ifBlank { "Other" }.take(40)
                     else when {
                         row.amountLaari>0 -> "Income"
-                        type.contains("POS",true) -> "Shopping"
+                        type.contains("POS",true) -> MerchantCategories.classify(row.description).takeUnless { it=="Other" } ?: "Shopping"
                         type.contains("ATM",true) -> "Cash"
                         type.contains("Favara",true) || type.contains("transfer",true) -> "Transfers"
                         else -> "Other"
