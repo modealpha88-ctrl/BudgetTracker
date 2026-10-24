@@ -2057,10 +2057,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                             availableCategories.forEach { destination ->
                                                 DropdownMenuItem(text={Text(destination)},onClick={
                                                     showCategoryChoices=false
-                                                    store.setTransactionCategory(selectedTransaction.id,destination)
+                                                    val recipient = TransactionPresentation.label(selectedTransaction.description).trim()
+                                                     val matching = transactions.filter { tx ->
+                                                         tx.amountLaari < 0 &&
+                                                         TransactionPresentation.label(tx.description).trim().equals(recipient, ignoreCase=true)
+                                                     }
+                                                     matching.forEach { tx -> store.setTransactionCategory(tx.id,destination) }
                                                     revision++
                                                     selectedTransactionId=null
-                                                    notice="Moved transaction to $destination"
+                                                    notice="Reclassified ${matching.size} transactions from $recipient to $destination"
                                                 })
                                             }
                                         }
