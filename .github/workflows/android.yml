@@ -53,7 +53,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: MIBBudgetTracker-release-apk
+          name: BudgetTracker-release-apk
           path: app/build/outputs/apk/release/*-release.apk
 
       - name: Publish installable APK release
@@ -61,8 +61,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk MIBBudgetTracker.apk
-          gh release create "build-${GITHUB_RUN_NUMBER}" MIBBudgetTracker.apk \
-            --title "MIB Budget Tracker build ${GITHUB_RUN_NUMBER}" \
+          cp app/build/outputs/apk/release/app-release.apk BudgetTracker.apk
+          gh release create "build-${GITHUB_RUN_NUMBER}" BudgetTracker.apk \
+            --title "Budget Tracker build ${GITHUB_RUN_NUMBER}" \
             --notes "Install this APK over the previous version. Keep the existing app installed to preserve local data." \
             --latest
