@@ -64,12 +64,12 @@ jobs:
           new = "app/build/outputs/apk/release/app-release.apk"
           def inspect(path):
               signature = subprocess.check_output([tools, "verify", "--print-certs", path], text=True)
-              certs = re.findall(r"Signer #\d+ certificate SHA-256 digest: (\S+)", signature)
+              certs = re.findall(r"certificate SHA-256 digest:\s*([0-9a-fA-F]{64})", signature)
               assert certs, "No signing certificate found"
               info = subprocess.check_output([aapt, "dump", "badging", path], text=True)
               package = re.search(r"package: name='([^']+)' versionCode='(\d+)'", info)
               assert package, "No package metadata found"
-              return sorted(certs), package.group(1), int(package.group(2))
+              return sorted(set(certs)), package.group(1), int(package.group(2))
           old_cert, old_package, old_version = inspect(old)
           new_cert, new_package, new_version = inspect(new)
           assert old_cert == new_cert, "Signing certificates differ; do not distribute this APK as an update"
