@@ -866,7 +866,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     FilterChip(selected=spendingChartStyle=="Sunburst",onClick={spendingChartStyle="Sunburst";dashboardPrefs.edit().putString("spending_chart_style","Sunburst").apply()},label={Text("Sunburst")})
                                     Spacer(Modifier.width(6.dp))
                                     FilterChip(selected=spendingChartStyle=="List",onClick={spendingChartStyle="List";dashboardPrefs.edit().putString("spending_chart_style","List").apply()},label={Text("List")})
-                                }
                             }
                             val categoryTotals=monthExpenses.groupBy { it.category }
                                 .mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
