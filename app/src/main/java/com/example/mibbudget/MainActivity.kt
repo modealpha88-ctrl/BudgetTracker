@@ -1442,13 +1442,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }) { Text("Confirm ${selectedInternalIds.size}") }},
                         dismissButton={TextButton(onClick={confirmInternalSelection=false}) { Text("Cancel") }}
                     )
-                    if(categoryFilter=="Shopping" || categoryFilter=="Food") {
+                    if(categoryFilter!="All categories") {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text("Reclassify $categoryFilter transactions",style=MaterialTheme.typography.titleMedium)
-                                val targetCategory=if(categoryFilter=="Shopping") "Food" else "Shopping"
-                                Text("Tap individual transactions for Move to $targetCategory, or select several below.",
-                                    style=MaterialTheme.typography.bodySmall)
+                                var bulkDestination by remember(categoryFilter) { mutableStateOf("Other") }
+                                var bulkDestinationExpanded by remember { mutableStateOf(false) }
+                                Text("Select transactions from this filtered list, then choose their new category.",style=MaterialTheme.typography.bodySmall)
                                 TextButton(onClick={
                                     categorySelectionMode=!categorySelectionMode
                                     categorySelectedIds=emptySet()
@@ -1456,26 +1456,34 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         owedSelectionMode=false
                                         internalSelectionMode=false
                                     }
-                                }) { Text(if(categorySelectionMode) "Cancel category selection" else "Select transactions") }
+                                }) { Text(if(categorySelectionMode) "Cancel selection" else "Select transactions") }
                                 if(categorySelectionMode) {
                                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                         TextButton(onClick={
-                                            categorySelectedIds=categorySelectedIds+
-                                                orderedTransactions.filter { it.category==categoryFilter }.map { it.id }
+                                            categorySelectedIds=categorySelectedIds+orderedTransactions.map { it.id }
                                         }) { Text("Select all matching") }
                                         TextButton(onClick={categorySelectedIds=emptySet()}) { Text("Clear") }
                                     }
-                                    Button(enabled=categorySelectedIds.isNotEmpty(),onClick={
-                                        transactions.filter { it.id in categorySelectedIds && it.category==categoryFilter }
-                                            .forEach { store.setTransactionCategory(it.id,targetCategory) }
-                                        val changed=categorySelectedIds.size
+                                    Box {
+                                        OutlinedButton(onClick={bulkDestinationExpanded=true}) { Text("Move to: $bulkDestination") }
+                                        DropdownMenu(expanded=bulkDestinationExpanded,onDismissRequest={bulkDestinationExpanded=false}) {
+                                            (categories+transactions.map { it.category }).distinct().filter { it.isNotBlank() && it!=categoryFilter }.forEach { destination ->
+                                                DropdownMenuItem(text={Text(destination)},onClick={
+                                                    bulkDestination=destination
+                                                    bulkDestinationExpanded=false
+                                                })
+                                            }
+                                        }
+                                    }
+                                    Button(enabled=categorySelectedIds.isNotEmpty() && bulkDestination!=categoryFilter,onClick={
+                                        val matching=transactions.filter { it.id in categorySelectedIds && it.category==categoryFilter }
+                                        matching.forEach { store.setTransactionCategory(it.id,bulkDestination) }
+                                        val changed=matching.size
                                         categorySelectedIds=emptySet()
                                         categorySelectionMode=false
                                         revision++
-                                        notice="Reclassified $changed transactions to $targetCategory"
-                                    },modifier=Modifier.fillMaxWidth()) {
-                                        Text("Move ${categorySelectedIds.size} to $targetCategory")
-                                    }
+                                        notice="Reclassified $changed transactions to $bulkDestination"
+                                    },modifier=Modifier.fillMaxWidth()) { Text("Move ${categorySelectedIds.size} to $bulkDestination") }
                                 }
                             }
                         }
