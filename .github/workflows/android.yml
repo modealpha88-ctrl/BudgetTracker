@@ -2,7 +2,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/transaction-drilldowns-20261024]
     paths:
       - 'app/**'
       - '*.gradle.kts'
@@ -50,11 +50,39 @@ jobs:
           MIB_RELEASE_KEY_ALIAS: ${{ secrets.MIB_RELEASE_KEY_ALIAS }}
           MIB_RELEASE_KEY_PASSWORD: ${{ secrets.MIB_RELEASE_KEY_PASSWORD }}
         run: gradle :app:assembleRelease --stacktrace
+      - name: Verify update compatibility with previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/previous-release"
+          gh release download build-171 --repo "$GITHUB_REPOSITORY" --pattern MIBBudgetTracker.apk --dir "$RUNNER_TEMP/previous-release"
+          python3 - <<'PY'
+          import glob, os, re, subprocess
+          tools = sorted(glob.glob(os.path.join(os.environ["ANDROID_HOME"], "build-tools", "*", "apksigner")))[-1]
+          aapt = os.path.join(os.path.dirname(tools), "aapt")
+          old = os.path.join(os.environ["RUNNER_TEMP"], "previous-release", "MIBBudgetTracker.apk")
+          new = "app/build/outputs/apk/release/app-release.apk"
+          def inspect(path):
+              signature = subprocess.check_output([tools, "verify", "--print-certs", path], text=True)
+              certs = re.findall(r"Signer #\d+ certificate SHA-256 digest: (\S+)", signature)
+              assert certs, "No signing certificate found"
+              info = subprocess.check_output([aapt, "dump", "badging", path], text=True)
+              package = re.search(r"package: name='([^']+)' versionCode='(\d+)'", info)
+              assert package, "No package metadata found"
+              return sorted(certs), package.group(1), int(package.group(2))
+          old_cert, old_package, old_version = inspect(old)
+          new_cert, new_package, new_version = inspect(new)
+          assert old_cert == new_cert, "Signing certificates differ; do not distribute this APK as an update"
+          assert old_package == new_package == "com.example.mibbudget", "Package identity changed"
+          assert new_version > old_version, "Update version must exceed previous release"
+          print(f"Verified matching release certificate and package; version {old_version} -> {new_version}")
+          PY
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/MIBBudgetTracker-update.apk
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: MIBBudgetTracker-release-apk
-          path: app/build/outputs/apk/release/*-release.apk
+          name: MIBBudgetTracker-signed-update
+          path: app/build/outputs/apk/release/MIBBudgetTracker-update.apk
 
       - name: Publish installable APK release
         if: success() && github.ref == 'refs/heads/main'
