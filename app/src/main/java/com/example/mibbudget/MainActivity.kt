@@ -12,6 +12,8 @@ import android.os.Bundle
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
@@ -213,6 +215,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var splitTransactionId by remember { mutableStateOf<Long?>(null) }
     var splitAmount by remember { mutableStateOf("") }
     var splitCategory by remember { mutableStateOf("Food") }
+    var splitRevision by remember { mutableIntStateOf(0) }
     val splitPrefs=remember { context.getSharedPreferences("transaction_category_splits",android.content.Context.MODE_PRIVATE) }
     val editHistoryPrefs=remember { context.getSharedPreferences("transaction_edit_history",android.content.Context.MODE_PRIVATE) }
     var historyRevision by remember { mutableIntStateOf(0) }
@@ -1048,8 +1051,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
-                    grouped.forEach { (cat,txs) ->
-                        val spent=txs.sumOf{-it.amountLaari}
+                    val categorySpend=remember(revision,splitRevision,selectedMonth) {
+                        val totals=mutableMapOf<String,Long>()
+                        monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }.forEach { tx ->
+                            val original=-tx.amountLaari
+                            val allocation=splitPrefs.getString(tx.fingerprint,null)?.split("|")
+                            val target=allocation?.getOrNull(0)
+                            val value=allocation?.getOrNull(1)?.toLongOrNull()
+                            if(target!=null && value!=null && value>0 && value<original && target!=tx.category) {
+                                totals[tx.category]=(totals[tx.category] ?: 0L)+(original-value)
+                                totals[target]=(totals[target] ?: 0L)+value
+                            } else totals[tx.category]=(totals[tx.category] ?: 0L)+original
+                        }
+                        totals
+                    }
+                    categorySpend.forEach { (cat,spent) ->
                         Card(onClick={
                             categoryFilter=cat
                             transactionMonthFilter=selectedMonth
@@ -1071,12 +1087,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val limit=budgets[cat]
                         if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth().height(8.dp),strokeCap=androidx.compose.ui.graphics.StrokeCap.Round); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
                     }
-                    if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
+                    if(categorySpend.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
                     OutlinedButton(onClick={pdfLauncher.launch("MIB-Report-${selectedMonth}.pdf")},modifier=Modifier.fillMaxWidth()) { Text("Export monthly PDF report") }
                     Text("Monthly spending overview",style=MaterialTheme.typography.titleMedium)
-                    val totalSpent=grouped.values.flatten().sumOf { -it.amountLaari }
-                    grouped.forEach { (cat,txs) ->
-                        val spent=txs.sumOf { -it.amountLaari }
+                    val totalSpent=categorySpend.values.sum()
+                    categorySpend.forEach { (cat,spent) ->
                         TextButton(onClick={
                             categoryFilter=cat
                             transactionMonthFilter=selectedMonth
@@ -1098,7 +1113,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         LinearProgressIndicator(progress={if(totalSpent>0) spent.toFloat()/totalSpent else 0f},modifier=Modifier.fillMaxWidth())
                     }
                     budgets.forEach { (cat,limit) ->
-                        val spent=grouped[cat]?.sumOf { -it.amountLaari } ?: 0L
+                        val spent=categorySpend[cat] ?: 0L
                         if(limit>0 && spent>=limit*8/10) TextButton(onClick={
                             categoryFilter=cat;transactionFilter="Expenses";transactionMonthFilter=selectedMonth
                             accountFilter="All accounts";merchantFilter="";tab=1
@@ -1553,7 +1568,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else if(owedSelectionMode) owedSelectedIds=if(t.id in owedSelectedIds) owedSelectedIds-t.id else owedSelectedIds+t.id
                             else if(internalSelectionMode) selectedInternalIds=if(t.id in selectedInternalIds) selectedInternalIds-t.id else selectedInternalIds+t.id
                             else selectedTransactionId=t.id
-                        },modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
+                        },modifier=Modifier.fillMaxWidth().padding(vertical=2.dp).pointerInput(t.id,categorySelectionMode,owedSelectionMode,internalSelectionMode) {
+                            var dragged=0f
+                            detectHorizontalDragGestures(onDragEnd={
+                                if(kotlin.math.abs(dragged)>90f && !categorySelectionMode && !owedSelectionMode && !internalSelectionMode) selectedTransactionId=t.id
+                                dragged=0f
+                            }) { change,delta ->
+                                dragged+=delta
+                                if(kotlin.math.abs(dragged)>12f) change.consume()
+                            }
+                        },shape=RoundedCornerShape(16.dp),
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 if(owedSelectionMode) Checkbox(checked=t.id in owedSelectedIds,onCheckedChange={ checked ->
@@ -1633,7 +1657,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             if(source!=null && allocation!=null && allocation>0 && allocation<kotlin.math.abs(source.amountLaari) && splitCategory!=source.category) {
                                 splitPrefs.edit().putString(source.fingerprint,"${splitCategory}|${allocation}").apply()
                                 recordEdit("Split allocation #${source.id}: ${Money.format(allocation)} to $splitCategory")
-                                splitTransactionId=null;revision++;notice="Category allocation saved; bank transaction unchanged"
+                                splitTransactionId=null;splitRevision++;revision++;notice="Category allocation saved; bank transaction unchanged"
                             } else notice="Choose a different category and an amount smaller than the transaction"
                         }) { Text("Save allocation") }},dismissButton={TextButton(onClick={splitTransactionId=null}) { Text("Cancel") }})
                     }
@@ -2115,6 +2139,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }) { Text("Edit") }
                                 }
                                 OutlinedButton(onClick={splitTransactionId=selectedTransaction.id;splitAmount="";splitCategory="Food";selectedTransactionId=null},modifier=Modifier.fillMaxWidth()) { Text("Split into categories") }
+                                if(splitPrefs.contains(selectedTransaction.fingerprint)) TextButton(onClick={
+                                    splitPrefs.edit().remove(selectedTransaction.fingerprint).apply()
+                                    recordEdit("Removed split allocation #${selectedTransaction.id}")
+                                    splitRevision++;revision++;selectedTransactionId=null
+                                }) { Text("Remove category split") }
                                 if(selectedTransaction.category=="Shopping" || selectedTransaction.category=="Food") {
                                     val destination=if(selectedTransaction.category=="Shopping") "Food" else "Shopping"
                                     OutlinedButton(onClick={
