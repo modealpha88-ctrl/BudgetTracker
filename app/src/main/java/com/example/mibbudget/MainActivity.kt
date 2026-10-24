@@ -1350,8 +1350,26 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             if(highestDay!=null) Text("Highest spending day: ${highestDay.key} · ${Money.format(highestDay.value)}",
                                 style=MaterialTheme.typography.bodySmall)
                             if(duplicateCandidates.isNotEmpty()) {
+                                var showDuplicateDetails by remember(rankingMonth) { mutableStateOf(false) }
                                 Text("${duplicateCandidates.sumOf { it.size }} transactions in ${duplicateCandidates.size} possible duplicate groups (same day, merchant and amount). Review before deleting.",
                                     style=MaterialTheme.typography.bodySmall)
+                                TextButton(onClick={showDuplicateDetails=!showDuplicateDetails}) {
+                                    Text(if(showDuplicateDetails) "Hide duplicate review" else "Review possible duplicates")
+                                }
+                                if(showDuplicateDetails) {
+                                    duplicateCandidates.take(20).forEach { group ->
+                                        val first=group.first()
+                                        Text("${first.timestamp.take(10)} · ${TransactionPresentation.label(first.description)} · ${Money.format(kotlin.math.abs(first.amountLaari))}",
+                                            style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold)
+                                        group.forEach { candidate ->
+                                            Text("ID ${candidate.id} · ${candidate.timestamp} · ${candidate.category} · ${candidate.description}",
+                                                style=MaterialTheme.typography.bodySmall)
+                                        }
+                                        HorizontalDivider()
+                                    }
+                                    Text("These are possible matches, not confirmed duplicates. No transactions are automatically removed.",
+                                        style=MaterialTheme.typography.bodySmall)
+                                }
                             }
                             if(monthBudget>0L) {
                                 Text("Combined category budgets: ${Money.format(monthBudget)} · ${if(monthBudgetRemaining>=0) "Remaining" else "Over budget"}: ${Money.format(kotlin.math.abs(monthBudgetRemaining))}",
