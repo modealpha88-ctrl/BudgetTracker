@@ -31,7 +31,41 @@ object FullBackup {
         root.put("backup_schema",2)
         return root.toString(2)
     }
+    data class Preview(
+        val database: TransactionStore.BackupPreview,
+        val settingsToRestore: Int
+    )
+
+    /** Checks the encrypted/decrypted payload with no database or preference writes. */
+    fun preview(context: Context, store: TransactionStore, text: String): Preview {
+        val database=store.previewJson(text)
+        val root=JSONObject(text)
+        require(!root.has("preferences") || root.optJSONObject("preferences")!=null) {
+            "Invalid backup preferences"
+        }
+        val prefs=root.optJSONObject("preferences")
+        var settingCount=0
+        if(prefs!=null) {
+            require(prefs.toString().length<2_000_000) { "Settings backup too large" }
+            for(name in preferenceFiles) {
+                if(name=="app_security" || name=="vendor_avatar_files") continue
+                val obj=prefs.optJSONObject(name) ?: continue
+                for(key in obj.keys()) {
+                    require(key.length<=200 && !key.contains("password",true) &&
+                        !key.contains("token",true)) { "Unsafe preference name" }
+                    val value=obj.get(key)
+                    require(value is Boolean || value is Number || value is String) {
+                        "Unsupported setting in backup"
+                    }
+                    settingCount++
+                }
+            }
+        }
+        return Preview(database,settingCount)
+    }
+
     fun restore(context: Context, store: TransactionStore, text: String): Int {
+        preview(context,store,text)
         val root=JSONObject(text)
         val prefs=root.optJSONObject("preferences")
         // Validate preference values before touching the database. Never erase existing settings.
