@@ -41,6 +41,10 @@ class FinanceCalculationsTest {
         val entries = listOf(tx(-3000L,"Food","2026-09-12"))
         assertEquals(7000L, FinanceCalculations.rollover(
             "Food",YearMonth.of(2026,10),10000L,entries))
+        assertEquals(17000L, FinanceCalculations.effectiveLimit(
+            "Food",YearMonth.of(2026,10),10000L,entries,true))
+        assertEquals(10000L, FinanceCalculations.effectiveLimit(
+            "Food",YearMonth.of(2026,10),10000L,entries,false))
         assertEquals(0L, FinanceCalculations.rollover(
             "Shopping",YearMonth.of(2026,10),10000L,
             listOf(tx(-15000L,"Shopping","2026-09-12"))))
