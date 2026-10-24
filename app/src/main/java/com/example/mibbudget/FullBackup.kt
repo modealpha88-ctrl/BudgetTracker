@@ -10,7 +10,7 @@ object FullBackup {
         "sms_settings","appearance","balance_settings","csv_import_history",
         "counterparty_classification","account_settings","app_security",
         "internal_transfer_original_categories","debt_tracker","dashboard_layout","balance_anchor",
-        "debt_ledgers"
+        "debt_ledgers","recurring_due_dates"
     )
     fun export(context: Context, store: TransactionStore): String {
         val root=JSONObject(store.exportJson())
