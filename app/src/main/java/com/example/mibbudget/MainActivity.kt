@@ -869,7 +869,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val accountMonthTransactions=monthlyTransactions.filter {
                             FinanceCalculations.assignedAccount(it,accountLabels)=="MIB"
                         }
-                        val unassignedMonth=monthlyTransactions.filter { (accountLabels[it.fingerprint] ?: "Unassigned")=="Unassigned" }
+                        val unassignedMonth=monthlyTransactions.filter { FinanceCalculations.assignedAccount(it,accountLabels)=="Unassigned" }
                         val monthNet=accountMonthTransactions.sumOf { it.amountLaari }
                         val monthStart=selectedMonth.atDay(1).toString()
                         val monthEnd=selectedMonth.atEndOfMonth().toString()
@@ -959,7 +959,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                                 val day=week*7+weekday-offset+1
                                                 if(day in 1..count) {
                                                     val date=calendarMonth.atDay(day).toString()
-                                                    val daily=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.startsWith(date) }
+                                                    val daily=transactions.filter { FinanceCalculations.assignedAccount(it,accountLabels)==accountChoice && it.timestamp.startsWith(date) }
                                                     val incoming=daily.any { it.amountLaari>=thresholdMinor }
                                                     val outgoing=daily.any { it.amountLaari<=-thresholdMinor }
                                                     Column(Modifier.weight(1f),horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally) {
@@ -977,7 +977,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         Text("● Incoming",color=Color(0xFF15966C),style=MaterialTheme.typography.labelSmall)
                                         Text("● Outgoing",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
                                     }
-                                    val selectedDay=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.startsWith(historicalBalanceDate) }
+                                    val selectedDay=transactions.filter { FinanceCalculations.assignedAccount(it,accountLabels)==accountChoice && it.timestamp.startsWith(historicalBalanceDate) }
                                     Text("${selectedDay.size} transactions on selected date · Net ${Money.format(selectedDay.sumOf { it.amountLaari })}",style=MaterialTheme.typography.bodySmall)
                                 }
                                 val key=accountChoice.lowercase(java.util.Locale.ROOT)
@@ -996,7 +996,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }.sumOf { it.amountLaari }
                                     val estimate=if(requested.isAfter(anchorDay)) anchorAmount+movement else anchorAmount-movement
                                     val affected=transactions.count { tx ->
-                                        accountLabels[tx.fingerprint]==accountChoice &&
+                                        FinanceCalculations.assignedAccount(tx,accountLabels)==accountChoice &&
                                         (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
                                          else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
                                     }
@@ -1020,7 +1020,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     TextButton(onClick={revision++}) { Text("Refresh") }
                                 }
                                 Text("Recorded app transactions, not a live bank feed. Only assigned ${accountChoice} transactions are included.",style=MaterialTheme.typography.bodySmall)
-                                val accountActivity=transactions.filter { accountLabels[it.fingerprint]==accountChoice }.sortedByDescending { it.timestamp }
+                                val accountActivity=transactions.filter { FinanceCalculations.assignedAccount(it,accountLabels)==accountChoice }.sortedByDescending { it.timestamp }
                                 if(accountActivity.isEmpty()) Text("No assigned transactions yet. Assign accounts in Transactions.")
                                 accountActivity.take(15).forEach { tx ->
                                     ListItem(headlineContent={Text(tx.description.take(50),maxLines=1)},
@@ -1260,7 +1260,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    val accountGroups=monthlyTransactions.groupBy { accountLabels[it.fingerprint] ?: "Unassigned" }
+                    val accountGroups=monthlyTransactions.groupBy { FinanceCalculations.assignedAccount(it,accountLabels) }
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                             Text("Account activity (selected month)",style=MaterialTheme.typography.titleMedium)
