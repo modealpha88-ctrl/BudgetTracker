@@ -71,7 +71,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val prefs = remember { context.getSharedPreferences("sms_settings", android.content.Context.MODE_PRIVATE) }
     val securityPrefs=remember { context.getSharedPreferences("app_security",android.content.Context.MODE_PRIVATE) }
     var lockEnabled by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { securityPrefs.edit().putBoolean("biometric_lock", false).apply() }
+    // Startup remains unlocked; do not silently overwrite the user's saved lock preference.
     var screenshotPrivacy by remember { mutableStateOf(securityPrefs.getBoolean("screenshot_privacy",false)) }
     DisposableEffect(screenshotPrivacy) {
         val activity=context as? android.app.Activity
@@ -1225,6 +1225,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     if(rankingMode=="Recipients") {
                                         TextButton(onClick={
                                             rankedRecipientFilter=item.first
+                                            tab=1
                                             searchText=""
                                             accountFilter="All accounts"
                                             categoryFilter="All categories"
@@ -1287,7 +1288,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 Text("Classify a business or individual from transaction details.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";categoryDrilldownMonth=null;transactionFilter="All";searchText=""}) { Text("Clear all filters") }
+                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";categoryDrilldownMonth=null;transactionFilter="All";searchText="";rankedRecipientFilter=null}) { Text("Clear all filters") }
                             }
                         }
                     }
@@ -2131,9 +2132,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                                 DropdownMenuItem(text={Text(destination)},onClick={
                                                     showCategoryChoices=false
                                                     val recipient = TransactionPresentation.label(selectedTransaction.description).trim()
+                                                     val savedRecipient=recipientPrefs.getString(selectedTransaction.fingerprint,null)?.trim().orEmpty()
                                                      val matching = transactions.filter { tx ->
-                                                         tx.amountLaari < 0 &&
-                                                         TransactionPresentation.label(tx.description).trim().equals(recipient, ignoreCase=true)
+                                                         val candidate=recipientPrefs.getString(tx.fingerprint,null)?.trim().orEmpty()
+                                                             .ifBlank { TransactionPresentation.label(tx.description).trim() }
+                                                         tx.amountLaari < 0 && candidate.equals(savedRecipient.ifBlank { recipient }, ignoreCase=true)
                                                      }
                                                      matching.forEach { tx -> store.setTransactionCategory(tx.id,destination) }
                                                     revision++
