@@ -29,6 +29,14 @@ class FinanceCalculationsTest {
             FinanceCalculations.cycleStart(LocalDate.of(2026,10,25),20))
     }
 
+    @Test fun lastDayPaydaysDoNotDriftAcrossFebruary() {
+        val start=FinanceCalculations.cycleStart(LocalDate.of(2027,3,1),31)
+        assertEquals(LocalDate.of(2027,2,28),start)
+        assertEquals(LocalDate.of(2027,3,31),FinanceCalculations.cycleEnd(start,31))
+        assertEquals(LocalDate.of(2027,3,31),
+            FinanceCalculations.cycleStart(LocalDate.of(2027,3,31),31))
+    }
+
     @Test fun unusedBudgetCarriesOnlyOneMonth() {
         val entries = listOf(tx(-3000L,"Food","2026-09-12"))
         assertEquals(7000L, FinanceCalculations.rollover(
