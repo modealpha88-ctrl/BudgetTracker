@@ -1080,11 +1080,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             if(storedMinor!=Long.MIN_VALUE) {
                                 Text("Verified ${accountChoice} balance: ${Money.format(storedMinor)}",style=MaterialTheme.typography.headlineSmall)
                                 Text("Reference date: $storedDate")
-                                val related=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.take(10)>storedDate }
-                                Text("Recorded transactions after reference: ${related.size}")
-                                Text("Shown balance is the verified snapshot; later transactions are not silently added.")
+                                val related=transactions.filter {
+                                    FinanceCalculations.assignedAccount(it,accountLabels)==accountChoice &&
+                                        it.timestamp.take(10)>storedDate
+                                }
+                                Text("Recorded account movements after reference: ${related.size}")
+                                val projected=FinanceCalculations.projectedBalance(
+                                    accountChoice,storedMinor,storedDate,transactions,accountLabels)
+                                if(projected!=null) Text("Estimated current ${accountChoice} balance: ${Money.format(projected)}",
+                                    style=MaterialTheme.typography.titleMedium)
+                                else Text("Account estimate unavailable. Check snapshot date and transaction values.")
+                                Text("This is a projection, not a live bank balance; internal transfers change account balances but not spending.")
                             }
                         }
+                    }
+                    ReconciliationPanel(context,accountChoice,transactions,accountLabels) {
+                        notice=it
                     }
                     Spacer(Modifier.height(20.dp))
                     var largeTransfersExpanded by remember { mutableStateOf(false) }
