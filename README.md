@@ -7,6 +7,19 @@
 - New incoming SMS automatic capture remains opt-in through `RECEIVE_SMS`.
 - Offline local SQLite storage, manual entry, manual SMS paste/share, category budgets.
 
+## Financial planning (Plan tab)
+- **Safe to spend:** combines saved dated MIB, BML and Cash balance snapshots, then subtracts virtual savings-pot allocations and current-month recurring templates not matched to recorded payments. These are estimates, not live balances; unassigned/missing transactions and same-day movements may be excluded.
+- **Financial calendar:** select any recorded day to view that day's activity.
+- **Spending forecast and insights:** month-end expense projection from elapsed days, previous-month spending, biggest spending day, category changes and weekend activity.
+- **Cash wallet:** record cash receipts and purchases with account label Cash in the existing ledger. Set an opening Cash balance in Home > Account balance to estimate holdings. Record moves between your own accounts as internal transfers to avoid double counting.
+- **Salary-cycle planning:** select payday (1–31; dates beyond the month's length are clamped to the final day) and compare cycle spending with budgets.
+- **Budget rollover:** optional, one-month carryforward of unused category allowance. Rollover never creates money or modifies transaction records.
+- **Spending challenges:** category-level monthly spending targets, separate from existing category limits.
+- **Savings pots:** virtual reserved amounts for named goals. Allocations do not move any money. Do not count the same reserved amount twice outside the app.
+- **Home highlights:** show, hide and reorder Safe to spend, Forecast, Cash and Bills cards through Home > Customize. Existing account and spending-insight toggles remain available.
+- **Monthly PDF report:** export category spending, income, net cash flow, previous-month comparisons, forecast, busiest spending day and transactions; share the exported PDF only when you explicitly choose to.
+- Planning preferences, spending targets, saved pots, and highlight preferences are included in full backups. Biometric/device-lock state is intentionally **not** transferred between devices.
+
 ## Build and run
 1. Open this folder in Android Studio with JDK 17 and Android SDK 35; allow Gradle sync.
 2. Connect Android 8+ device with USB debugging or use an SMS-capable emulator. Click Run.
