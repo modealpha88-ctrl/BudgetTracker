@@ -276,6 +276,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var showAccountCards by remember { mutableStateOf(dashboardPrefs.getBoolean("accounts",true)) }
     var showSpendingInsights by remember { mutableStateOf(dashboardPrefs.getBoolean("insights",true)) }
     var showDashboardOptions by remember { mutableStateOf(false) }
+    var planningLayoutRevision by remember { mutableIntStateOf(0) }
     var balanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var balanceAmount by remember { mutableStateOf(balancePrefs.getString("mib_amount","") ?: "") }
     var savedBalanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
@@ -730,6 +731,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         } }
                     }
+                    if(showDashboardOptions) {
+                        HomePlanningControls(context) { planningLayoutRevision++ }
+                    }
+                    HomePlanningHighlights(context, transactions, accountLabels, store, planningLayoutRevision)
                     if(showAccountCards) {
                         Text("Account snapshots",style=MaterialTheme.typography.titleMedium)
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
