@@ -151,6 +151,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var owedSelectionMode by remember { mutableStateOf(false) }
     var owedSelectedIds by remember { mutableStateOf(setOf<Long>()) }
     var debtPersonName by remember { mutableStateOf("") }
+    var editingDebtKey by remember { mutableStateOf<String?>(null) }
     var debtRecordsRevision by remember { mutableIntStateOf(0) }
     val debtPrefs=remember { context.getSharedPreferences("debt_tracker",android.content.Context.MODE_PRIVATE) }
     var debtDirection by remember { mutableStateOf("Owed to me") }
@@ -1273,17 +1274,23 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 val debtBalance=if(debtDirection=="Owed to me") lent-repaid else repaid-lent
                                 Text("Outstanding for $debtDirection: ${Money.format(debtBalance)}",
                                     style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                                if(editingDebtKey!=null) TextButton(onClick={
+                                    editingDebtKey=null
+                                    owedSelectedIds=emptySet()
+                                    debtPersonName=""
+                                }) { Text("Start a new debt group") }
                                 Button(enabled=debtPersonName.isNotBlank() && owedSelectedIds.isNotEmpty(),
                                     onClick={
-                                        val key="debt_${java.util.UUID.randomUUID()}"
+                                        val key=editingDebtKey ?: "debt_${java.util.UUID.randomUUID()}"
                                         val record=org.json.JSONObject()
                                             .put("name",debtPersonName.trim())
                                             .put("direction",debtDirection)
                                             .put("ids",org.json.JSONArray(owedSelectedIds.toList()))
                                         debtPrefs.edit().putString(key,record.toString()).apply()
                                         debtRecordsRevision++
+                                        editingDebtKey=key
                                         notice="Debt group saved"
-                                    },modifier=Modifier.fillMaxWidth()) { Text("Save debt group") }
+                                    },modifier=Modifier.fillMaxWidth()) { Text(if(editingDebtKey==null) "Save new debt group" else "Update debt group") }
                                 Text("Raw outgoing minus incoming: ${Money.format(lent-repaid)}",
                                     style=MaterialTheme.typography.bodySmall)
                                 // Previous calculator display retained for comparison.
@@ -1323,6 +1330,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick={
                                         owedSelectedIds=chosenIds
+                                        editingDebtKey=key
                                         debtPersonName=record.optString("name")
                                         debtDirection=direction
                                         owedSelectionMode=true
@@ -1330,6 +1338,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }) { Text("Load") }
                                     TextButton(onClick={
                                         debtPrefs.edit().remove(key).apply()
+                                        if(editingDebtKey==key) editingDebtKey=null
                                         debtRecordsRevision++
                                     }) { Text("Remove group") }
                                 }
