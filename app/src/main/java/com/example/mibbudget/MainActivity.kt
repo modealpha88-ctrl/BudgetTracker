@@ -31,6 +31,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -53,7 +55,7 @@ class MainActivity : ComponentActivity() {
         store = TransactionStore(this)
         darkTheme = getSharedPreferences("appearance", MODE_PRIVATE).getBoolean("dark",true)
         sharedText = intent?.takeIf { it.action == Intent.ACTION_SEND && it.type == "text/plain" }?.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
-        setContent { MaterialTheme(colorScheme = (if(darkTheme) darkColorScheme(primary=Color(0xFFB5A0FF),secondary=Color(0xFF7DD3FC),background=Color(0xFF050507),surface=Color(0xFF101014),surfaceVariant=Color(0xFF202027),surfaceContainer=Color(0xFF14141A),surfaceContainerLow=Color(0xFF0D0D12),surfaceContainerHigh=Color(0xFF23232C),primaryContainer=Color(0xFF32234E),onPrimaryContainer=Color(0xFFEDE4FF)) else lightColorScheme(primary = Color(0xFF2563EB), secondary = Color(0xFF0D9488), background = Color(0xFFF6F8FC), surface = Color.White, surfaceVariant = Color(0xFFEAF0FA))), shapes = Shapes(medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp))) { BudgetApp(store, sharedText, darkTheme, { darkTheme = it; getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark",it).apply() }) { sharedText = "" } } }
+        setContent { MaterialTheme(colorScheme = (if(darkTheme) darkColorScheme(primary=Color(0xFFB5A0FF),secondary=Color(0xFF7DD3FC),background=Color.Black,surface=Color(0xFF101014),surfaceVariant=Color(0xFF202027),surfaceContainer=Color(0xFF14141A),surfaceContainerLow=Color(0xFF0D0D12),surfaceContainerHigh=Color(0xFF23232C),primaryContainer=Color(0xFF32234E),onPrimaryContainer=Color(0xFFEDE4FF)) else lightColorScheme(primary = Color(0xFF2563EB), secondary = Color(0xFF0D9488), background = Color(0xFFF6F8FC), surface = Color.White, surfaceVariant = Color(0xFFEAF0FA))), shapes = Shapes(medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp))) { BudgetApp(store, sharedText, darkTheme, { darkTheme = it; getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark",it).apply() }) { sharedText = "" } } }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -121,7 +123,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         permissionRefresh++
         notice=if(granted) "App notifications allowed." else "App notifications not allowed. Bank notification reading is a separate permission."
     }
-    var tab by remember { mutableStateOf(1) }
+    val homePrefs = remember { context.getSharedPreferences("home_presentation", android.content.Context.MODE_PRIVATE) }
+    var startTab by remember { mutableIntStateOf(homePrefs.getInt("start_tab", 1).takeIf { it in listOf(0,1,4) } ?: 1) }
+    var tab by rememberSaveable { mutableIntStateOf(startTab) }
+    var hideAmounts by remember { mutableStateOf(homePrefs.getBoolean("hide_amounts",false)) }
+    fun displayMoney(value: Long): String = if(hideAmounts) "••••" else Money.format(value)
+    val homeCardNames = listOf("Recent transactions", "Accounts", "Monthly insights")
+    var homeCardOrder by remember { mutableStateOf(
+        (homePrefs.getString("card_order", "")!!.split("|").filter { it in homeCardNames } + homeCardNames).distinct()
+    ) }
+    var hiddenHomeCards by remember { mutableStateOf(homePrefs.getStringSet("hidden_cards", emptySet())!!.toSet()) }
+    var walletAccount by rememberSaveable { mutableStateOf("All accounts") }
+    fun saveHomeLayout() {
+        homePrefs.edit().putString("card_order",homeCardOrder.joinToString("|"))
+            .putStringSet("hidden_cards",hiddenHomeCards).apply()
+    }
+
     var csvReview by remember { mutableStateOf<TransactionStore.CsvReview?>(null) }
     var csvText by remember { mutableStateOf<String?>(null) }
     var confirmMissingImport by remember { mutableStateOf(false) }
@@ -211,6 +228,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var merchantRulesRevision by remember { mutableIntStateOf(0) }
     var duplicateReviewOnly by remember { mutableStateOf(false) }
     var showMonthlyComparison by remember { mutableStateOf(false) }
+    var undoEdit by remember { mutableStateOf<Tx?>(null) }
     var undoCategory by remember { mutableStateOf<Pair<Long,String>?>(null) }
     var splitTransactionId by remember { mutableStateOf<Long?>(null) }
     var splitAmount by remember { mutableStateOf("") }
@@ -431,21 +449,32 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         }
         return
     }
+    val swipeThreshold=with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
     val mainScrollState = rememberScrollState()
-    Scaffold(floatingActionButton = {
+    LaunchedEffect(tab) { mainScrollState.scrollTo(0) }
+    Scaffold(topBar = {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal=18.dp),
+            horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+            Text("MIB",fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
+            TextButton(onClick={hideAmounts=!hideAmounts;homePrefs.edit().putBoolean("hide_amounts",hideAmounts).apply()}) {
+                Text(if(hideAmounts) "Show amounts" else "Hide amounts")
+            }
+        }
+    }, floatingActionButton = {
         if(tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
     }, bottomBar = {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
-            listOf("Home","Transactions","Import","Budgets").forEachIndexed { i, label ->
-                NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","⚙","◉")[i])},label={Text(label)})
+            listOf(0 to "Home",1 to "Transactions",4 to "Accounts",5 to "Money Owed",7 to "More").forEachIndexed { i, (destination,label) ->
+                NavigationBarItem(selected=tab==destination || (destination==7 && tab in listOf(2,3,6)) || (destination==4 && tab==8),
+                    onClick={tab=destination},icon={Text(listOf("⌂","⇄","▣","◎","⋯")[i])},
+                    label={Text(label,maxLines=1,style=MaterialTheme.typography.labelSmall)})
             }
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(Modifier.verticalScroll(mainScrollState)).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if(tab==0) {
-            Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/MIBBudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
+            Text("Your money",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+            Text("Your accounts and recent activity",color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(start=14.dp,end=6.dp,top=6.dp,bottom=6.dp),
@@ -554,7 +583,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 pendingBml.forEach { tx ->
                     Card(Modifier.fillMaxWidth().padding(vertical=4.dp)) {
                         Column(Modifier.padding(12.dp)) {
-                            Text("BML received: +${Money.format(tx.amountLaari)}")
+                            Text("BML received: +${displayMoney(tx.amountLaari)}")
                             Text(tx.timestamp.take(16), style=MaterialTheme.typography.bodySmall)
                             Text("For your own MIB-to-BML transfer, choose Own transfer to avoid double-counting.", style=MaterialTheme.typography.bodySmall)
                             Row {
@@ -570,139 +599,114 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             Spacer(Modifier.height(14.dp))
             when(tab) {
                 0 -> {
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Overview",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                        Text("Home",style=MaterialTheme.typography.titleLarge)
                         TextButton(onClick={showDashboardOptions=!showDashboardOptions}) { Text("Customize") }
                     }
-                    if(showDashboardOptions) {
-                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) {
-                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("Account cards",Modifier.weight(1f))
-                                Switch(checked=showAccountCards,onCheckedChange={showAccountCards=it;dashboardPrefs.edit().putBoolean("accounts",it).apply()})
+                    if(showDashboardOptions) Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("Open app to",style=MaterialTheme.typography.titleMedium)
+                            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                listOf(0 to "Home",1 to "Transactions",4 to "Accounts").forEach { (id,label) ->
+                                    FilterChip(selected=startTab==id,onClick={startTab=id;homePrefs.edit().putInt("start_tab",id).apply()},label={Text(label)})
+                                }
                             }
-                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("Spending insights",Modifier.weight(1f))
-                                Switch(checked=showSpendingInsights,onCheckedChange={showSpendingInsights=it;dashboardPrefs.edit().putBoolean("insights",it).apply()})
-                            }
-                        } }
-                    }
-                    if(showAccountCards) {
-                        Text("Account snapshots",style=MaterialTheme.typography.titleMedium)
-                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            listOf("MIB","BML","Cash").forEach { bank ->
-                                val key=bank.lowercase(java.util.Locale.ROOT)
-                                val minor=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
-                                Card(onClick={dashboardView="Account balance";accountChoice=bank},modifier=Modifier.weight(1f)) {
-                                    Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                                        Text(bank,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
-                                        Text(if(minor==Long.MIN_VALUE) "Not set" else Money.format(minor),style=MaterialTheme.typography.bodySmall,maxLines=2)
-                                        Text("Snapshot",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                            Text("Home cards · move up or down to reorder")
+                            homeCardOrder.forEachIndexed { index,name ->
+                                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                    Checkbox(checked=name !in hiddenHomeCards,onCheckedChange={ enabled ->
+                                        hiddenHomeCards=if(enabled) hiddenHomeCards-name else hiddenHomeCards+name;saveHomeLayout()
+                                    })
+                                    Text(name,Modifier.weight(1f))
+                                    TextButton(enabled=index>0,onClick={
+                                        homeCardOrder=homeCardOrder.toMutableList().apply { add(index-1,removeAt(index)) };saveHomeLayout()
+                                    }) { Text("↑") }
+                                    TextButton(enabled=index<homeCardOrder.lastIndex,onClick={
+                                        homeCardOrder=homeCardOrder.toMutableList().apply { add(index+1,removeAt(index)) };saveHomeLayout()
+                                    }) { Text("↓") }
                                 }
                             }
                         }
                     }
-                    if(showSpendingInsights) {
-                        val monthExpenses=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
-                        val monthIncome=monthlyTransactions.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }
-                        val monthOut=monthExpenses.sumOf { -it.amountLaari }
+                    homeCardOrder.filter { it !in hiddenHomeCards }.forEach { name ->
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Text("Monthly insights",style=MaterialTheme.typography.titleMedium)
-                            Text("Income: ${Money.format(monthIncome)}")
-                            Text("Expenses: ${Money.format(monthOut)}")
-                            LinearProgressIndicator(progress={if(monthIncome>0) (monthOut.toFloat()/monthIncome).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
-                            Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
-                            HorizontalDivider()
-                            Text("Top spending categories",style=MaterialTheme.typography.titleSmall)
-                            val topCategories=monthExpenses.groupBy { it.category }.mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
-                                .toList().sortedByDescending { it.second }.take(5)
-                            if(topCategories.isEmpty()) Text("No recorded expenses for this month.",style=MaterialTheme.typography.bodySmall)
-                            topCategories.forEach { (category,total) ->
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text(category,style=MaterialTheme.typography.bodySmall)
-                                    Text(Money.format(total),style=MaterialTheme.typography.bodySmall)
+                            Text(name,style=MaterialTheme.typography.titleMedium)
+                            when(name) {
+                                "Recent transactions" -> {
+                                    if(transactions.isEmpty()) Text("No transactions yet. Add one or import a statement.")
+                                    transactions.sortedByDescending { it.timestamp }.take(5).forEach { tx ->
+                                        TextButton(onClick={selectedTransactionId=tx.id},modifier=Modifier.fillMaxWidth()) {
+                                            Text(TransactionPresentation.label(tx.description),Modifier.weight(1f),maxLines=1)
+                                            Text(displayMoney(tx.amountLaari))
+                                        }
+                                    }
+                                    TextButton(onClick={tab=1}) { Text("View transactions →") }
                                 }
-                                LinearProgressIndicator(progress={if(monthOut>0L) (total.toFloat()/monthOut).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
+                                "Accounts" -> {
+                                    listOf("MIB","BML","Cash").forEach { bank ->
+                                        val minor=balancePrefs.getLong("${bank.lowercase(java.util.Locale.ROOT)}_minor",Long.MIN_VALUE)
+                                        TextButton(onClick={walletAccount=bank;tab=4},modifier=Modifier.fillMaxWidth()) {
+                                            Text(bank,Modifier.weight(1f));Text(if(minor==Long.MIN_VALUE) "Not set" else displayMoney(minor))
+                                        }
+                                    }
+                                    Text("Saved balance snapshots",style=MaterialTheme.typography.labelSmall)
+                                }
+                                "Monthly insights" -> {
+                                    Text(selectedMonth.toString())
+                                    val rows=monthlyTransactions.filter { it.category!="Internal Transfer" }
+                                    Text("Income: ${displayMoney(rows.filter { it.amountLaari>0 }.sumOf { it.amountLaari })}")
+                                    Text("Spending: ${displayMoney(rows.filter { it.amountLaari<0 }.sumOf { -it.amountLaari })}")
+                                    TextButton(onClick={tab=6}) { Text("Explore insights →") }
+                                }
                             }
-                            val net=monthIncome-monthOut
-                            Text("Net cash flow: ${Money.format(net)}",style=MaterialTheme.typography.titleSmall)
-                            Text("Based on recorded transactions; transfers and incomplete imports can affect totals.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         } }
                     }
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected=dashboardView=="Cash flow",onClick={dashboardView="Cash flow"},label={Text("Cash flow")})
-                        FilterChip(selected=dashboardView=="Account balance",onClick={dashboardView="Account balance"},label={Text("Account balance")})
-                    }
-                    if(dashboardView=="Cash flow") {
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                        TextButton(onClick={selectedMonth=selectedMonth.minusMonths(1)}) { Text("‹ Previous") }
-                        Text(selectedMonth.toString(),modifier=Modifier.padding(top=12.dp))
-                        TextButton(onClick={selectedMonth=selectedMonth.plusMonths(1)},enabled=selectedMonth<YearMonth.now()) { Text("Next ›") }
-                    }
-                    val cashflowTransactions = monthlyTransactions.filter { it.category != "Internal Transfer" }
-                    val incoming = cashflowTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
-                    val outgoing = cashflowTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
-                    Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(24.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) { Column(Modifier.padding(22.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Text("MONTHLY CASH FLOW", style=MaterialTheme.typography.labelLarge, color=Color.White.copy(alpha=0.8f))
-                        Text(Money.format(incoming-outgoing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
-                        Text("↑  Income   ${Money.format(incoming)}",color=Color.White)
-                        Text("↓  Expenses   ${Money.format(outgoing)}",color=Color.White)
-                        Text("Cash flow, not your bank balance",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
-                    } }
-                        val anchorDate=balancePrefs.getString("mib_date","").orEmpty()
-                        val anchorMinor=balancePrefs.getLong("mib_minor",Long.MIN_VALUE)
-                        val accountMonthTransactions=monthlyTransactions.filter { accountLabels[it.fingerprint]=="MIB" }
-                        val unassignedMonth=monthlyTransactions.filter { (accountLabels[it.fingerprint] ?: "Unassigned")=="Unassigned" }
-                        val monthNet=accountMonthTransactions.sumOf { it.amountLaari }
-                        val monthStart=selectedMonth.atDay(1).toString()
-                        val monthEnd=selectedMonth.atEndOfMonth().toString()
-                        var reconciliationExpanded by remember { mutableStateOf(false) }
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                    Text("MIB balance",style=MaterialTheme.typography.titleMedium)
-                                    TextButton(onClick={reconciliationExpanded=!reconciliationExpanded}) {
-                                        Text(if(reconciliationExpanded) "Less details ↑" else "Details ↓")
-                                    }
-                                }
-                                if(anchorMinor==Long.MIN_VALUE || anchorDate.isBlank()) {
-                                    Text("No bank balance saved",style=MaterialTheme.typography.titleLarge)
-                                    Text("Import a bank statement to compare cash flow with your balance.",style=MaterialTheme.typography.bodySmall)
-                                } else {
-                                    val anchorDay=runCatching { java.time.LocalDate.parse(anchorDate) }.getOrNull()
-                                    val startDay=selectedMonth.atDay(1)
-                                    val endDay=selectedMonth.atEndOfMonth()
-                                    val inMonth=anchorDay!=null && !anchorDay.isBefore(startDay) && !anchorDay.isAfter(endDay)
-                                    Text(Money.format(anchorMinor),style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                                    Text("Bank balance · $anchorDate",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if(inMonth) {
-                                        val movementToAnchor=accountMonthTransactions.filter { it.timestamp.take(10)<=anchorDate }.sumOf { it.amountLaari }
-                                        val opening=anchorMinor-movementToAnchor
-                                        val later=accountMonthTransactions.filter { it.timestamp.take(10)>anchorDate }.sumOf { it.amountLaari }
-                                        if(later!=0L) Text("After-statement activity: ${Money.format(later)}",style=MaterialTheme.typography.bodySmall)
-                                        if(reconciliationExpanded) {
-                                            HorizontalDivider()
-                                            Text("Opening balance: ${Money.format(opening)}")
-                                            Text("MIB movements: ${Money.format(monthNet)}")
-                                            Text("Estimated month-end: ${Money.format(opening+monthNet)}")
-                                            Text("Based on a saved statement balance, not independently verified against a second statement.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    } else if(reconciliationExpanded) {
-                                        Text("Select the month of the bank statement to see the balance calculation.",style=MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                                if(unassignedMonth.isNotEmpty()) {
-                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                        Text("${unassignedMonth.size} transactions need an account",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error,modifier=Modifier.weight(1f))
-                                        TextButton(onClick={tab=1;accountFilter="Unassigned";showAdvancedFilters=true}) { Text("Review →") }
-                                    }
-                                    if(reconciliationExpanded) Text("${Money.format(unassignedMonth.sumOf { it.amountLaari })} excluded from MIB movements",style=MaterialTheme.typography.bodySmall)
-                                } else {
-                                    Text("All recorded transactions are assigned",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if(hiddenHomeCards.containsAll(homeCardNames)) Text("Your home is clear. Use Customize to show cards.")
+                }
+                4 -> {
+                    Text("Accounts",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                    Text("Swipe through your accounts. Balances are saved snapshots.",style=MaterialTheme.typography.bodySmall)
+                    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                        listOf("All accounts","MIB","BML","Cash","Other","Unassigned").forEach { bank ->
+                            Card(onClick={walletAccount=bank},modifier=Modifier.width(240.dp),
+                                colors=CardDefaults.cardColors(containerColor=if(walletAccount==bank) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer)) {
+                                Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                                    Text(bank,style=MaterialTheme.typography.titleLarge)
+                                    val key=bank.lowercase(java.util.Locale.ROOT)
+                                    val minor=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
+                                    Text(if(bank=="All accounts") "Combined activity" else if(minor==Long.MIN_VALUE) "Balance not set" else displayMoney(minor),style=MaterialTheme.typography.titleMedium)
+                                    Text(if(bank=="All accounts") "All recorded transactions" else balancePrefs.getString("${key}_date","").orEmpty().ifBlank { "No saved reference date" },style=MaterialTheme.typography.bodySmall)
+                                    Text(if(walletAccount==bank) "Selected" else "Tap to select",style=MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
-                    } else {
+                    }
+                    if(walletAccount in listOf("MIB","BML","Cash")) OutlinedButton(onClick={accountChoice=walletAccount;tab=8}) { Text("Balance details & reconciliation") }
+                    val activity=transactions.filter { walletAccount=="All accounts" || (accountLabels[it.fingerprint] ?: "Unassigned")==walletAccount }.sortedByDescending { it.timestamp }
+                    Text("$walletAccount activity",style=MaterialTheme.typography.titleMedium)
+                    if(activity.isEmpty()) Text("No transactions assigned to this account.")
+                    activity.take(15).forEach { tx ->
+                        Card(onClick={selectedTransactionId=tx.id},modifier=Modifier.fillMaxWidth()) {
+                            ListItem(headlineContent={Text(TransactionPresentation.label(tx.description),maxLines=1)},
+                                supportingContent={Text("${tx.timestamp.take(10)} · ${tx.category}")},trailingContent={Text(displayMoney(tx.amountLaari))})
+                        }
+                    }
+                    Button(onClick={
+                        accountFilter=walletAccount;transactionMonthFilter=null;merchantFilter="";categoryFilter="All categories"
+                        searchText="";transactionFilter="All";counterpartyFilter="All types";transactionMinAmount="";transactionMaxAmount="";duplicateReviewOnly=false;tab=1
+                    }) { Text("View all ${activity.size} transactions") }
+                }
+                7 -> {
+                    Text("More",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                    listOf(6 to "Insights, planning & settings",3 to "Category budgets",2 to "Bank import & permissions").forEach { (id,label) ->
+                        OutlinedButton(onClick={tab=id},modifier=Modifier.fillMaxWidth()) { Text(label) }
+                    }
+                    OutlinedButton(onClick={tab=1;showTransactionTools=true},modifier=Modifier.fillMaxWidth()) { Text("Backup, restore & data tools") }
+                    OutlinedButton(onClick={tab=0;showDashboardOptions=true},modifier=Modifier.fillMaxWidth()) { Text("Customize Home & startup screen") }
+                    OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/MIBBudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
+                }
+                8 -> {
+                    TextButton(onClick={tab=4}) { Text("‹ Accounts") }
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             listOf("MIB","BML","Cash").forEach { bank ->
                                 FilterChip(selected=accountChoice==bank,onClick={
@@ -761,7 +765,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         Text("● Outgoing",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.labelSmall)
                                     }
                                     val selectedDay=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.startsWith(historicalBalanceDate) }
-                                    Text("${selectedDay.size} transactions on selected date · Net ${Money.format(selectedDay.sumOf { it.amountLaari })}",style=MaterialTheme.typography.bodySmall)
+                                    Text("${selectedDay.size} transactions on selected date · Net ${displayMoney(selectedDay.sumOf { it.amountLaari })}",style=MaterialTheme.typography.bodySmall)
                                 }
                                 val key=accountChoice.lowercase(java.util.Locale.ROOT)
                                 val anchorAmount=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
@@ -788,7 +792,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
                                          else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
                                     }
-                                    Text(Money.format(estimate),style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                                    Text(displayMoney(estimate),style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                                     Text("${affected} assigned transactions included · ${unassigned} unassigned records excluded",style=MaterialTheme.typography.bodySmall)
                                     if(unassigned>0) Text("Some transactions have no account assignment. The balance may be incomplete.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                     if(requested.isAfter(java.time.LocalDate.now())) Text("Future dates are projections, not verified balances.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
@@ -808,7 +812,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 accountActivity.take(15).forEach { tx ->
                                     ListItem(headlineContent={Text(tx.description.take(50),maxLines=1)},
                                         supportingContent={Text("${tx.timestamp.take(16)} • ${tx.category}")},
-                                        trailingContent={Text(Money.format(tx.amountLaari),color=if(tx.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)})
+                                        trailingContent={Text(displayMoney(tx.amountLaari),color=if(tx.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)})
                                 }
                                 if(accountActivity.size>15) Text("Showing 15 of ${accountActivity.size}. Open Transactions for the complete history.",style=MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick={tab=1;accountFilter=accountChoice},modifier=Modifier.fillMaxWidth()) { Text("View all ${accountChoice} transactions") }
@@ -823,7 +827,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("Recognized text: ${screenshotExtract.take(300)}",style=MaterialTheme.typography.bodySmall)
                         }
                         OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-                        OutlinedTextField(value=balanceAmount,onValueChange={balanceAmount=it},label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                        OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=balanceAmount,onValueChange={balanceAmount=it},label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         Button(onClick={
                             val date=runCatching { java.time.LocalDate.parse(balanceDate) }.getOrNull()
                             val amount=Money.parseLaari(balanceAmount)
@@ -844,10 +848,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) {
                                 Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                     Text("MIB ESTIMATED BALANCE",color=Color.White)
-                                    Text(Money.format(if(balanceSource.startsWith("MIB screenshot")) savedBalanceMinor else estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
-                                    Text("${balanceSource} at ${savedBalanceDate}: ${Money.format(savedBalanceMinor)}",color=Color.White)
+                                    Text(displayMoney(if(balanceSource.startsWith("MIB screenshot")) savedBalanceMinor else estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                                    Text("${balanceSource} at ${savedBalanceDate}: ${displayMoney(savedBalanceMinor)}",color=Color.White)
                                     Text("MIB transactions after reference: ${later.size}",color=Color.White)
-                                    if(balanceSource.startsWith("MIB screenshot") && later.isNotEmpty()) Text("Estimated after recorded transactions: ${Money.format(estimated)}",color=Color.White)
+                                    if(balanceSource.startsWith("MIB screenshot") && later.isNotEmpty()) Text("Estimated after recorded transactions: ${displayMoney(estimated)}",color=Color.White)
                                     Text(if(balanceSource.startsWith("MIB screenshot")) "Latest user-confirmed screenshot balance (snapshot, not live). Later transactions are shown separately." else "Estimated from reference balance and later labeled MIB transactions; not a live bank balance.",color=Color.White)
                                 }
                             }
@@ -859,7 +863,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         Text(tx.description.take(75))
                                         Text(tx.timestamp.take(16),style=MaterialTheme.typography.bodySmall)
                                     }
-                                    Text(Money.format(tx.amountLaari))
+                                    Text(displayMoney(tx.amountLaari))
                                 }
                                 HorizontalDivider()
                             }
@@ -873,7 +877,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("${accountChoice} balance",style=MaterialTheme.typography.titleMedium)
                             Text("Manual verified balance for this account. This is a snapshot, not live banking data.")
                             OutlinedTextField(value=otherBalanceDate,onValueChange={otherBalanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
-                            OutlinedTextField(value=otherBalanceAmount,onValueChange={otherBalanceAmount=it},label={Text("Balance (MVR)")},modifier=Modifier.fillMaxWidth())
+                            OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=otherBalanceAmount,onValueChange={otherBalanceAmount=it},label={Text("Balance (MVR)")},modifier=Modifier.fillMaxWidth())
                             Button(onClick={
                                 val date=runCatching { java.time.LocalDate.parse(otherBalanceDate) }.getOrNull()
                                 val value=Money.parseLaari(otherBalanceAmount)
@@ -884,11 +888,146 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                             }) { Text("Save ${accountChoice} balance") }
                             if(storedMinor!=Long.MIN_VALUE) {
-                                Text("Verified ${accountChoice} balance: ${Money.format(storedMinor)}",style=MaterialTheme.typography.headlineSmall)
+                                Text("Verified ${accountChoice} balance: ${displayMoney(storedMinor)}",style=MaterialTheme.typography.headlineSmall)
                                 Text("Reference date: $storedDate")
                                 val related=transactions.filter { accountLabels[it.fingerprint]==accountChoice && it.timestamp.take(10)>storedDate }
                                 Text("Recorded transactions after reference: ${related.size}")
                                 Text("Shown balance is the verified snapshot; later transactions are not silently added.")
+                            }
+                        }
+                }
+
+                6 -> {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Overview",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                        TextButton(onClick={showDashboardOptions=!showDashboardOptions}) { Text("Customize") }
+                    }
+                    if(showDashboardOptions) {
+                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) {
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Account cards",Modifier.weight(1f))
+                                Switch(checked=showAccountCards,onCheckedChange={showAccountCards=it;dashboardPrefs.edit().putBoolean("accounts",it).apply()})
+                            }
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Spending insights",Modifier.weight(1f))
+                                Switch(checked=showSpendingInsights,onCheckedChange={showSpendingInsights=it;dashboardPrefs.edit().putBoolean("insights",it).apply()})
+                            }
+                        } }
+                    }
+                    if(showAccountCards) {
+                        Text("Account snapshots",style=MaterialTheme.typography.titleMedium)
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            listOf("MIB","BML","Cash").forEach { bank ->
+                                val key=bank.lowercase(java.util.Locale.ROOT)
+                                val minor=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
+                                Card(onClick={tab=8;accountChoice=bank},modifier=Modifier.weight(1f)) {
+                                    Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                                        Text(bank,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
+                                        Text(if(minor==Long.MIN_VALUE) "Not set" else displayMoney(minor),style=MaterialTheme.typography.bodySmall,maxLines=2)
+                                        Text("Snapshot",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if(showSpendingInsights) {
+                        val monthExpenses=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
+                        val monthIncome=monthlyTransactions.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }
+                        val monthOut=monthExpenses.sumOf { -it.amountLaari }
+                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("Monthly insights",style=MaterialTheme.typography.titleMedium)
+                            Text("Income: ${displayMoney(monthIncome)}")
+                            Text("Expenses: ${displayMoney(monthOut)}")
+                            LinearProgressIndicator(progress={if(monthIncome>0) (monthOut.toFloat()/monthIncome).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
+                            Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
+                            HorizontalDivider()
+                            Text("Top spending categories",style=MaterialTheme.typography.titleSmall)
+                            val topCategories=monthExpenses.groupBy { it.category }.mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
+                                .toList().sortedByDescending { it.second }.take(5)
+                            if(topCategories.isEmpty()) Text("No recorded expenses for this month.",style=MaterialTheme.typography.bodySmall)
+                            topCategories.forEach { (category,total) ->
+                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                    Text(category,style=MaterialTheme.typography.bodySmall)
+                                    Text(displayMoney(total),style=MaterialTheme.typography.bodySmall)
+                                }
+                                LinearProgressIndicator(progress={if(monthOut>0L) (total.toFloat()/monthOut).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
+                            }
+                            val net=monthIncome-monthOut
+                            Text("Net cash flow: ${displayMoney(net)}",style=MaterialTheme.typography.titleSmall)
+                            Text("Based on recorded transactions; transfers and incomplete imports can affect totals.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        } }
+                    }
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected=dashboardView=="Cash flow",onClick={dashboardView="Cash flow"},label={Text("Cash flow")})
+                        FilterChip(selected=dashboardView=="Account balance",onClick={tab=8},label={Text("Account balance")})
+                    }
+                    if(dashboardView=="Cash flow") {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                        TextButton(onClick={selectedMonth=selectedMonth.minusMonths(1)}) { Text("‹ Previous") }
+                        Text(selectedMonth.toString(),modifier=Modifier.padding(top=12.dp))
+                        TextButton(onClick={selectedMonth=selectedMonth.plusMonths(1)},enabled=selectedMonth<YearMonth.now()) { Text("Next ›") }
+                    }
+                    val cashflowTransactions = monthlyTransactions.filter { it.category != "Internal Transfer" }
+                    val incoming = cashflowTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
+                    val outgoing = cashflowTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
+                    Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(24.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) { Column(Modifier.padding(22.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("MONTHLY CASH FLOW", style=MaterialTheme.typography.labelLarge, color=Color.White.copy(alpha=0.8f))
+                        Text(displayMoney(incoming-outgoing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                        Text("↑  Income   ${displayMoney(incoming)}",color=Color.White)
+                        Text("↓  Expenses   ${displayMoney(outgoing)}",color=Color.White)
+                        Text("Cash flow, not your bank balance",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
+                    } }
+                        val anchorDate=balancePrefs.getString("mib_date","").orEmpty()
+                        val anchorMinor=balancePrefs.getLong("mib_minor",Long.MIN_VALUE)
+                        val accountMonthTransactions=monthlyTransactions.filter { accountLabels[it.fingerprint]=="MIB" }
+                        val unassignedMonth=monthlyTransactions.filter { (accountLabels[it.fingerprint] ?: "Unassigned")=="Unassigned" }
+                        val monthNet=accountMonthTransactions.sumOf { it.amountLaari }
+                        val monthStart=selectedMonth.atDay(1).toString()
+                        val monthEnd=selectedMonth.atEndOfMonth().toString()
+                        var reconciliationExpanded by remember { mutableStateOf(false) }
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                    Text("MIB balance",style=MaterialTheme.typography.titleMedium)
+                                    TextButton(onClick={reconciliationExpanded=!reconciliationExpanded}) {
+                                        Text(if(reconciliationExpanded) "Less details ↑" else "Details ↓")
+                                    }
+                                }
+                                if(anchorMinor==Long.MIN_VALUE || anchorDate.isBlank()) {
+                                    Text("No bank balance saved",style=MaterialTheme.typography.titleLarge)
+                                    Text("Import a bank statement to compare cash flow with your balance.",style=MaterialTheme.typography.bodySmall)
+                                } else {
+                                    val anchorDay=runCatching { java.time.LocalDate.parse(anchorDate) }.getOrNull()
+                                    val startDay=selectedMonth.atDay(1)
+                                    val endDay=selectedMonth.atEndOfMonth()
+                                    val inMonth=anchorDay!=null && !anchorDay.isBefore(startDay) && !anchorDay.isAfter(endDay)
+                                    Text(displayMoney(anchorMinor),style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                                    Text("Bank balance · $anchorDate",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if(inMonth) {
+                                        val movementToAnchor=accountMonthTransactions.filter { it.timestamp.take(10)<=anchorDate }.sumOf { it.amountLaari }
+                                        val opening=anchorMinor-movementToAnchor
+                                        val later=accountMonthTransactions.filter { it.timestamp.take(10)>anchorDate }.sumOf { it.amountLaari }
+                                        if(later!=0L) Text("After-statement activity: ${displayMoney(later)}",style=MaterialTheme.typography.bodySmall)
+                                        if(reconciliationExpanded) {
+                                            HorizontalDivider()
+                                            Text("Opening balance: ${displayMoney(opening)}")
+                                            Text("MIB movements: ${displayMoney(monthNet)}")
+                                            Text("Estimated month-end: ${displayMoney(opening+monthNet)}")
+                                            Text("Based on a saved statement balance, not independently verified against a second statement.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    } else if(reconciliationExpanded) {
+                                        Text("Select the month of the bank statement to see the balance calculation.",style=MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                                if(unassignedMonth.isNotEmpty()) {
+                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                        Text("${unassignedMonth.size} transactions need an account",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error,modifier=Modifier.weight(1f))
+                                        TextButton(onClick={tab=1;accountFilter="Unassigned";showAdvancedFilters=true}) { Text("Review →") }
+                                    }
+                                    if(reconciliationExpanded) Text("${displayMoney(unassignedMonth.sumOf { it.amountLaari })} excluded from MIB movements",style=MaterialTheme.typography.bodySmall)
+                                } else {
+                                    Text("All recorded transactions are assigned",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
@@ -935,7 +1074,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 largeTransfers.forEach { tx ->
                                     Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
                                         Text(TransactionPresentation.label(tx.description),style=MaterialTheme.typography.bodyMedium)
-                                        Text("${if(tx.amountLaari>0) "Incoming" else "Outgoing"} · ${tx.timestamp.take(10)} · ${Money.format(tx.amountLaari)}",
+                                        Text("${if(tx.amountLaari>0) "Incoming" else "Outgoing"} · ${tx.timestamp.take(10)} · ${displayMoney(tx.amountLaari)}",
                                             style=MaterialTheme.typography.bodySmall)
                                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                             if(tx.category=="Internal Transfer") {
@@ -966,14 +1105,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                             Text("Spending insights",style=MaterialTheme.typography.titleMedium)
-                            Text("Income: ${Money.format(monthInsight.income)} · Expenses: ${Money.format(monthInsight.spending)}")
-                            Text("Net cash flow: ${Money.format(monthInsight.income-monthInsight.spending)}")
+                            Text("Income: ${displayMoney(monthInsight.income)} · Expenses: ${displayMoney(monthInsight.spending)}")
+                            Text("Net cash flow: ${displayMoney(monthInsight.income-monthInsight.spending)}")
                             if(monthInsight.biggestExpenseCategory!=null)
-                                Text("Largest category: ${monthInsight.biggestExpenseCategory} · ${Money.format(monthInsight.biggestExpense)}")
+                                Text("Largest category: ${monthInsight.biggestExpenseCategory} · ${displayMoney(monthInsight.biggestExpense)}")
                             if(monthInsight.spending>monthInsight.income && monthInsight.income>0)
                                 Text("Alert: Spending exceeds income this month.",color=MaterialTheme.colorScheme.error)
                             if(monthInsight.internalMoved>0)
-                                Text("Internal movement excluded: ${Money.format(monthInsight.internalMoved)}",
+                                Text("Internal movement excluded: ${displayMoney(monthInsight.internalMoved)}",
                                     style=MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -990,7 +1129,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("Suggestions match equal outgoing and incoming transfer amounts within 3 days. Confirm only your own-account movements.",
                                 style=MaterialTheme.typography.bodySmall)
                             if(showSuggestedPairs) suggestedPairs.forEach { pair ->
-                                Text("${Money.format(pair.incoming.amountLaari)} · ${pair.outgoing.timestamp.take(10)} → ${pair.incoming.timestamp.take(10)}")
+                                Text("${displayMoney(pair.incoming.amountLaari)} · ${pair.outgoing.timestamp.take(10)} → ${pair.incoming.timestamp.take(10)}")
                                 Text(TransactionPresentation.label(pair.outgoing.description),style=MaterialTheme.typography.bodySmall)
                                 Text(TransactionPresentation.label(pair.incoming.description),style=MaterialTheme.typography.bodySmall)
                                 OutlinedButton(onClick={
@@ -1013,7 +1152,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("Monthly net movements are not bank balances without a verified opening balance.",
                                 style=MaterialTheme.typography.bodySmall)
                             accountGroups.forEach { (account,rows) ->
-                                Text("$account · ${Money.format(rows.sumOf { it.amountLaari })} net · ${rows.size} transactions")
+                                Text("$account · ${displayMoney(rows.sumOf { it.amountLaari })} net · ${rows.size} transactions")
                             }
                         }
                     }
@@ -1044,9 +1183,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val previousTotal=previous.sumOf { -it.amountLaari }
                         val currentTotal=current.sumOf { -it.amountLaari }
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
-                            Text("${selectedMonth.minusMonths(1)}: ${Money.format(previousTotal)}")
-                            Text("$selectedMonth: ${Money.format(currentTotal)}")
-                            Text("Difference: ${Money.format(currentTotal-previousTotal)}")
+                            Text("${selectedMonth.minusMonths(1)}: ${displayMoney(previousTotal)}")
+                            Text("$selectedMonth: ${displayMoney(currentTotal)}")
+                            Text("Difference: ${displayMoney(currentTotal-previousTotal)}")
                             TextButton(onClick={transactionMonthFilter=selectedMonth.minusMonths(1);categoryFilter="All categories";transactionFilter="Expenses";tab=1}) { Text("View previous month transactions") }
                         } }
                     }
@@ -1082,7 +1221,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) {
                             Row(Modifier.fillMaxWidth().padding(14.dp),horizontalArrangement=Arrangement.SpaceBetween) {
                                 Text(cat,fontWeight=FontWeight.Medium)
-                                Text("${Money.format(spent)}  ›",color=MaterialTheme.colorScheme.primary)
+                                Text("${displayMoney(spent)}  ›",color=MaterialTheme.colorScheme.primary)
                             }
                         }
                         val limit=budgets[cat]
@@ -1123,12 +1262,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     HorizontalDivider()
                     Text("Savings goals",style=MaterialTheme.typography.titleMedium)
                     store.goals().forEach { (name,target,saved) ->
-                        Text("$name: ${Money.format(saved)} / ${Money.format(target)}")
+                        Text("$name: ${displayMoney(saved)} / ${displayMoney(target)}")
                         LinearProgressIndicator(progress={(saved.toFloat()/target).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
                     }
                     OutlinedTextField(value=goalName,onValueChange={goalName=it},label={Text("Goal name")})
-                    OutlinedTextField(value=goalTarget,onValueChange={goalTarget=it},label={Text("Target MVR")})
-                    OutlinedTextField(value=goalSaved,onValueChange={goalSaved=it},label={Text("Saved MVR")})
+                    OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=goalTarget,onValueChange={goalTarget=it},label={Text("Target MVR")})
+                    OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=goalSaved,onValueChange={goalSaved=it},label={Text("Saved MVR")})
                     OutlinedButton(onClick={
                         val target=Money.parseLaari(goalTarget);val saved=Money.parseLaari(goalSaved)
                         if(goalName.isNotBlank() && target!=null && target>0 && saved!=null) {store.setGoal(goalName,target,saved);revision++;goalName="";goalTarget="";goalSaved=""} else notice="Invalid goal"
@@ -1138,12 +1277,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text("Templates only; no automatic charges or duplicate entries.")
                     store.recurring().forEach { (name,value,cat) ->
                         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                            Text("$name: ${Money.format(value)}",modifier=Modifier.weight(1f))
+                            Text("$name: ${displayMoney(value)}",modifier=Modifier.weight(1f))
                             TextButton(onClick={store.add(-value,cat,name);revision++}) { Text("Record now") }
                         }
                     }
                     OutlinedTextField(value=recurringName,onValueChange={recurringName=it},label={Text("Recurring name")})
-                    OutlinedTextField(value=recurringAmount,onValueChange={recurringAmount=it},label={Text("Monthly amount MVR")})
+                    OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=recurringAmount,onValueChange={recurringAmount=it},label={Text("Monthly amount MVR")})
                     OutlinedButton(onClick={
                         val v=Money.parseLaari(recurringAmount)
                         if(recurringName.isNotBlank() && v!=null && v>0) {store.setRecurring(recurringName,v,"Bills");revision++;recurringName="";recurringAmount=""} else notice="Invalid recurring amount"
@@ -1172,26 +1311,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
                     }
                 }
-                1 -> {
+                1, 5 -> {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Column {
-                            Text("Transactions",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                            Text(if(tab==5) "Money Owed" else "Transactions",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
                             Text("${transactions.size} transactions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         TextButton(onClick={tab=2}) { Text("Import") }
                     }
-                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp),
-                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
-                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                            Text("Transactions",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-                            Text("Search, select and organize your money",
-                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick={tab=0},modifier=Modifier.weight(1f)) { Text("Overview") }
-                                Button(onClick={showTransactionForm=true},modifier=Modifier.weight(1f)) { Text("+ Add") }
-                            }
-                        }
-                    }
+                    if(tab==1) Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) {
+                        val minor=balancePrefs.getLong("mib_minor",Long.MIN_VALUE)
+                        Text("MIB · saved balance",style=MaterialTheme.typography.labelMedium)
+                        Text(if(minor==Long.MIN_VALUE) "No saved balance" else displayMoney(minor),style=MaterialTheme.typography.headlineSmall)
+                        Text(balancePrefs.getString("mib_date", "").orEmpty(),style=MaterialTheme.typography.labelSmall)
+                    } }
                     if(transactionMonthFilter!=null || merchantFilter.isNotBlank()) {
                         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                             Text(listOfNotNull(transactionMonthFilter?.toString(),merchantFilter.takeIf { it.isNotBlank() }?.let { "Merchant: $it" }).joinToString(" · "),modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodySmall)
@@ -1202,7 +1335,31 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         placeholder={Text("Search merchant, amount or date")},
                         leadingIcon={Text("⌕")},modifier=Modifier.fillMaxWidth(),singleLine=true,
                         shape=RoundedCornerShape(20.dp))
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        var monthsOpen by remember { mutableStateOf(false) }
+                        var merchantsOpen by remember { mutableStateOf(false) }
+                        Box {
+                            FilterChip(selected=transactionMonthFilter!=null,onClick={monthsOpen=true},label={Text(transactionMonthFilter?.toString() ?: "All months")})
+                            DropdownMenu(expanded=monthsOpen,onDismissRequest={monthsOpen=false}) {
+                                DropdownMenuItem(text={Text("All months")},onClick={transactionMonthFilter=null;monthsOpen=false})
+                                (listOf(YearMonth.now())+transactions.mapNotNull { runCatching { YearMonth.parse(it.timestamp.take(7)) }.getOrNull() }).distinct().sortedDescending().forEach { month ->
+                                    DropdownMenuItem(text={Text(month.toString())},onClick={transactionMonthFilter=month;monthsOpen=false})
+                                }
+                            }
+                        }
+                        FilterChip(selected=accountFilter!="All accounts",onClick={showAdvancedFilters=true;accountExpanded=true},label={Text(accountFilter)})
+                        FilterChip(selected=categoryFilter!="All categories",onClick={showAdvancedFilters=true;categoryFilterExpanded=true},label={Text(categoryFilter)})
+                        Box {
+                            FilterChip(selected=merchantFilter.isNotBlank(),onClick={merchantsOpen=true},label={Text(merchantFilter.ifBlank { "All merchants" })})
+                            DropdownMenu(expanded=merchantsOpen,onDismissRequest={merchantsOpen=false}) {
+                                DropdownMenuItem(text={Text("All merchants")},onClick={merchantFilter="";merchantsOpen=false})
+                                transactions.map { VendorProfiles.key(it.description) }.distinct().sorted().forEach { merchant ->
+                                    DropdownMenuItem(text={Text(merchant)},onClick={merchantFilter=merchant;merchantsOpen=false})
+                                }
+                            }
+                        }
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         listOf("All","Expenses","Income","Transfers").forEach { option ->
                             FilterChip(selected=transactionFilter==option,onClick={transactionFilter=option},
                                 label={Text(option,style=MaterialTheme.typography.labelSmall)})
@@ -1244,7 +1401,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 Text("Classify a business or individual from transaction details.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";transactionMonthFilter=null;merchantFilter="";transactionFilter="All";searchText=""}) { Text("Clear all filters") }
+                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";transactionMonthFilter=null;merchantFilter="";transactionFilter="All";searchText="";transactionMinAmount="";transactionMaxAmount="";duplicateReviewOnly=false}) { Text("Clear all filters") }
                             }
                         }
                     }
@@ -1328,10 +1485,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     val minFilterLaari=Money.parseLaari(transactionMinAmount)
                     val maxFilterLaari=Money.parseLaari(transactionMaxAmount)
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value=transactionMinAmount,onValueChange={transactionMinAmount=it},
+                    if(showAdvancedFilters) Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=transactionMinAmount,onValueChange={transactionMinAmount=it},
                             label={Text("Min MVR")},singleLine=true,modifier=Modifier.weight(1f))
-                        OutlinedTextField(value=transactionMaxAmount,onValueChange={transactionMaxAmount=it},
+                        OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=transactionMaxAmount,onValueChange={transactionMaxAmount=it},
                             label={Text("Max MVR")},singleLine=true,modifier=Modifier.weight(1f))
                     }
                     if(categoryFilter!="All categories" && splitPrefs.all.isNotEmpty()) Text("Split transactions may appear in both allocated categories. Displayed amounts are original bank amounts.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1339,10 +1496,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         transactions.groupBy { Triple(it.timestamp.take(16),it.amountLaari,VendorProfiles.key(it.description)) }
                             .values.filter { it.size>1 }.flatten().map { it.id }.toSet()
                     }
+                    if(undoEdit!=null) TextButton(onClick={
+                        undoEdit?.let { old ->
+                            if(store.updateTransaction(old.id,old.amountLaari,old.category,old.description)) {
+                                recordEdit("Undid edit #${old.id}");revision++;notice="Transaction edit undone"
+                            }
+                        };undoEdit=null
+                    }) { Text("Undo transaction edit") }
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         FilterChip(selected=duplicateReviewOnly,onClick={duplicateReviewOnly=!duplicateReviewOnly},label={Text("Possible duplicates (${possibleDuplicateIds.size})")})
                         if(undoCategory!=null) TextButton(onClick={
-                            undoCategory?.let { (id,old) -> store.setTransactionCategory(id,old);revision++ }
+                            undoCategory?.let { (id,old) -> store.setTransactionCategory(id,old);recordEdit("Undid category change #$id");revision++ }
                             undoCategory=null
                         }) { Text("Undo category change") }
                     }
@@ -1372,6 +1536,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             .thenByDescending { TransactionPresentation.time(it.description,it.timestamp) ?: "00:00" }
                             .thenByDescending { it.id }
                     )
+                    if(tab==5 || owedSelectionMode) {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
@@ -1399,10 +1564,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 Text("Selected: ${owedSelectedIds.size} transactions",style=MaterialTheme.typography.bodyMedium)
-                                Text("Money sent: ${Money.format(lent)} · Money received: ${Money.format(repaid)}",
+                                Text("Money sent: ${displayMoney(lent)} · Money received: ${displayMoney(repaid)}",
                                     style=MaterialTheme.typography.bodySmall)
                                 val debtBalance=if(debtDirection=="Owed to me") lent-repaid else repaid-lent
-                                Text("Outstanding for $debtDirection: ${Money.format(debtBalance)}",
+                                Text("Outstanding for $debtDirection: ${displayMoney(debtBalance)}",
                                     style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                                 if(editingDebtKey!=null) TextButton(onClick={
                                     editingDebtKey=null
@@ -1421,10 +1586,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         editingDebtKey=key
                                         notice="Debt group saved"
                                     },modifier=Modifier.fillMaxWidth()) { Text(if(editingDebtKey==null) "Save new debt group" else "Update debt group") }
-                                Text("Raw outgoing minus incoming: ${Money.format(lent-repaid)}",
+                                Text("Raw outgoing minus incoming: ${displayMoney(lent-repaid)}",
                                     style=MaterialTheme.typography.bodySmall)
                                 // Previous calculator display retained for comparison.
-                                Text("Estimated outstanding: ${Money.format(lent-repaid)}",
+                                Text("Estimated outstanding: ${displayMoney(lent-repaid)}",
                                     style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,
                                     color=if(lent-repaid<0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                                 Text("Outgoing selected payments count as money lent; incoming payments count as repayments. Select only transactions related to the debt. A negative balance means more was received than sent.",
@@ -1455,7 +1620,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 val direction=record.optString("direction","Owed to me")
                                 val balance=if(direction=="I owe") received-sent else sent-received
                                 Text("${record.optString("name")} · $direction",fontWeight=FontWeight.SemiBold)
-                                Text("${Money.format(balance)} outstanding · ${rows.size} transactions",
+                                Text("${displayMoney(balance)} outstanding · ${rows.size} transactions",
                                     style=MaterialTheme.typography.bodySmall)
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick={
@@ -1476,6 +1641,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    }
+                    if(showAdvancedFilters || internalSelectionMode || categorySelectionMode) {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
@@ -1558,6 +1725,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    }
+                    Text("Swipe right to edit · left for category and more actions",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     if(orderedTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     var lastTransactionDay = ""
                     orderedTransactions.take(150).forEach { t ->
@@ -1572,10 +1741,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else if(owedSelectionMode) owedSelectedIds=if(t.id in owedSelectedIds) owedSelectedIds-t.id else owedSelectedIds+t.id
                             else if(internalSelectionMode) selectedInternalIds=if(t.id in selectedInternalIds) selectedInternalIds-t.id else selectedInternalIds+t.id
                             else selectedTransactionId=t.id
-                        },modifier=Modifier.fillMaxWidth().padding(vertical=2.dp).pointerInput(t.id,categorySelectionMode,owedSelectionMode,internalSelectionMode) {
+                        },modifier=Modifier.fillMaxWidth().padding(vertical=2.dp).pointerInput(t,categorySelectionMode,owedSelectionMode,internalSelectionMode,swipeThreshold) {
                             var dragged=0f
-                            detectHorizontalDragGestures(onDragEnd={
-                                if(kotlin.math.abs(dragged)>90f && !categorySelectionMode && !owedSelectionMode && !internalSelectionMode) selectedTransactionId=t.id
+                            detectHorizontalDragGestures(onDragCancel={dragged=0f},onDragEnd={
+                                if(kotlin.math.abs(dragged)>swipeThreshold && !categorySelectionMode && !owedSelectionMode && !internalSelectionMode) {
+                                    if(dragged>0) {
+                                        editingId=t.id
+                                        editingAmount=Money.format(kotlin.math.abs(t.amountLaari)).removePrefix("MVR ").replace(",","")
+                                        editingDescription=t.description;editingCategory=t.category
+                                    } else selectedTransactionId=t.id
+                                }
                                 dragged=0f
                             }) { change,delta ->
                                 dragged+=delta
@@ -1605,7 +1780,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text(displayTime ?: "Time not recorded",
                                         style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                                 }
-                                Text((if(t.amountLaari>0) "+" else "")+Money.format(t.amountLaari),
+                                Text((if(t.amountLaari>0) "+" else "")+displayMoney(t.amountLaari),
                                     style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,
                                     color=if(t.amountLaari>=0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                             }
@@ -1615,12 +1790,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     TextButton(onClick={showEditHistory=!showEditHistory}) { Text(if(showEditHistory) "Hide edit history" else "View edit history") }
                     if(showEditHistory) {
                         val events=remember(historyRevision) { editHistoryPrefs.getString("events","") ?: "" }
-                        Text(if(events.isBlank()) "No edits recorded yet." else events.take(4000),style=MaterialTheme.typography.bodySmall)
+                        Text(if(hideAmounts) "Show amounts to view edit history." else if(events.isBlank()) "No edits recorded yet." else events.take(4000),style=MaterialTheme.typography.bodySmall)
                     }
                     if(editingId!=null) {
                         AlertDialog(onDismissRequest={editingId=null},title={Text("Edit transaction")},text={
                             Column {
-                                OutlinedTextField(value=editingAmount,onValueChange={editingAmount=it},label={Text("Amount MVR")})
+                                OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=editingAmount,onValueChange={editingAmount=it},label={Text("Amount MVR")})
                                 OutlinedTextField(value=editingDescription,onValueChange={editingDescription=it},label={Text("Description")})
                                 Text("Category")
                                 categories.forEach { cat -> if(cat==editingCategory) Text(cat) }
@@ -1636,7 +1811,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         },confirmButton={TextButton(onClick={
                             val original=transactions.firstOrNull { it.id==editingId }
                             val v=Money.parseLaari(editingAmount)
-                            if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { recordEdit("Edited #${original.id}: ${original.category} ${Money.format(original.amountLaari)} -> $editingCategory ${Money.format(if(original.amountLaari>0) v else -v)}");revision++;notice="Transaction updated";editingId=null }
+                            if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { undoEdit=original;recordEdit("Edited #${original.id}: ${original.category} ${Money.format(original.amountLaari)} -> $editingCategory ${Money.format(if(original.amountLaari>0) v else -v)}");revision++;notice="Transaction updated";editingId=null }
                             else notice="Enter a valid amount and description"
                         }) { Text("Save") }},dismissButton={TextButton(onClick={editingId=null}) { Text("Cancel") }})
                     }
@@ -1645,8 +1820,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         AlertDialog(onDismissRequest={splitTransactionId=null},title={Text("Split spending category")},text={
                             Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text("Keep the original bank transaction intact. Allocate part of its value to another category.")
-                                Text("Original: ${source?.let { Money.format(kotlin.math.abs(it.amountLaari)) } ?: ""}")
-                                OutlinedTextField(value=splitAmount,onValueChange={splitAmount=it},label={Text("Amount to allocate (MVR)")})
+                                Text("Original: ${source?.let { displayMoney(kotlin.math.abs(it.amountLaari)) } ?: ""}")
+                                OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=splitAmount,onValueChange={splitAmount=it},label={Text("Amount to allocate (MVR)")})
                                 categories.filter { it!="Income" }.forEach { cat ->
                                     if(cat==splitCategory) Text("Selected: $cat")
                                 }
@@ -1677,7 +1852,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer),modifier=Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text("Add a transaction",style=MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(value=amount,onValueChange={amount=it},label={Text("Amount (MVR)")},modifier=Modifier.fillMaxWidth())
+                        OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=amount,onValueChange={amount=it},label={Text("Amount (MVR)")},modifier=Modifier.fillMaxWidth())
                         OutlinedTextField(value=input,onValueChange={input=it},label={Text("Description")},modifier=Modifier.fillMaxWidth())
                         Row { Text("Income"); Switch(checked=income,onCheckedChange={income=it}) }
                         Box { TextButton(onClick={expanded=true}) { Text("Category: $category ▾") }
@@ -1701,11 +1876,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("Other transaction records",style=MaterialTheme.typography.titleMedium)
                         Text("Foreign currency purchases (excluded from MVR totals)", style=MaterialTheme.typography.titleMedium)
                         foreignTransactions.forEach { t ->
-                            ListItem(headlineContent={Text("BML: ${t.merchant}")}, supportingContent={Text(t.timestamp.take(16))}, trailingContent={Text("${t.currency} ${Money.format(t.amountMinor).removePrefix("MVR ")}")})
+                            ListItem(headlineContent={Text("BML: ${t.merchant}")}, supportingContent={Text(t.timestamp.take(16))}, trailingContent={Text("${t.currency} ${displayMoney(t.amountMinor).removePrefix("MVR ")}")})
                         }
                         Text("Declined card attempts (not counted as spending)",style=MaterialTheme.typography.titleMedium)
                         declinedTransactions.forEach { d ->
-                            ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${Money.format(d.amountLaari).removePrefix("MVR ")}")})
+                            ListItem(headlineContent={Text(d.merchant)},supportingContent={Text("${d.timestamp.take(16)} • ${d.reason} • Declined")},trailingContent={Text("${d.currency} ${displayMoney(d.amountLaari).removePrefix("MVR ")}")})
                         }
                         }
                     }
@@ -1803,13 +1978,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                                 else selectedPossibleCsvLines=if(checked) selectedPossibleCsvLines+item.line else selectedPossibleCsvLines-item.line
                                             })
                                             Column {
-                                                Text("${item.date}  •  ${Money.format(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
+                                                Text("${item.date}  •  ${displayMoney(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
                                                 Text(item.description,color=MaterialTheme.colorScheme.onSurface)
                                                 Text(item.reason,style=MaterialTheme.typography.bodySmall)
                                             }
                                         }
                                     } else {
-                                        Text("${item.status}  •  ${item.date}  •  ${Money.format(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
+                                        Text("${item.status}  •  ${item.date}  •  ${displayMoney(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
                                         Text(item.description,color=MaterialTheme.colorScheme.onSurface)
                                         Text(item.reason,style=MaterialTheme.typography.bodySmall)
                                     }
@@ -1865,7 +2040,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     LaunchedEffect(candidate?.fingerprint) { importCategory = candidate?.category ?: "Other" }
                     if (declinedCandidate != null) {
                         Text("Declined card attempt — NOT a completed expense", color=MaterialTheme.colorScheme.error)
-                        Text("${declinedCandidate.currency} ${Money.format(declinedCandidate.amountLaari).removePrefix("MVR ")} at ${declinedCandidate.merchant}")
+                        Text("${declinedCandidate.currency} ${displayMoney(declinedCandidate.amountLaari).removePrefix("MVR ")} at ${declinedCandidate.merchant}")
                         Text("Date: ${declinedCandidate.transactionTime} • Reason: ${declinedCandidate.reason}")
                         Button(onClick={
                             val inserted = store.addDeclined(declinedCandidate)
@@ -1874,7 +2049,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             input="";clearShared()
                         }) { Text("Save declined attempt") }
                     } else if (bmlCard != null) {
-                        Text("BML card purchase: ${bmlCard.currency} ${Money.format(bmlCard.amountMinor).removePrefix("MVR ")}")
+                        Text("BML card purchase: ${bmlCard.currency} ${displayMoney(bmlCard.amountMinor).removePrefix("MVR ")}")
                         Text("${bmlCard.merchant} • ${bmlCard.transactionTime}")
                         Text("Excluded from MVR budget totals until converted with a verified rate.")
                         Button(onClick={
@@ -1885,7 +2060,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }) { Text("Save BML purchase") }
                     } else if(candidate==null) Text("Unrecognized SMS. Only supported transaction formats can be imported.")
                     else {
-                        Text("Detected: ${if(candidate.amountLaari>0) "Credit" else "Debit"} ${Money.format(candidate.amountLaari)}")
+                        Text("Detected: ${if(candidate.amountLaari>0) "Credit" else "Debit"} ${displayMoney(candidate.amountLaari)}")
                         Text("Transaction date: ${candidate.transactionTime ?: "Unknown"}")
                         Text("Description: ${candidate.description}")
                         Box { TextButton(onClick={importExpanded=true}) { Text("Category: $importCategory ▾") }
@@ -1910,13 +2085,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text("This month's spending",style=MaterialTheme.typography.titleMedium)
-                            Text(Money.format(totalSpent),style=MaterialTheme.typography.headlineMedium)
-                            Text(if(totalLimit>0) "Combined category limits: ${Money.format(totalLimit)}" else "No category limits set yet",
+                            Text(displayMoney(totalSpent),style=MaterialTheme.typography.headlineMedium)
+                            Text(if(totalLimit>0) "Combined category limits: ${displayMoney(totalLimit)}" else "No category limits set yet",
                                 style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                             if(totalLimit>0) {
                                 LinearProgressIndicator(progress={ (totalSpent.toFloat()/totalLimit).coerceIn(0f,1f) },
                                     modifier=Modifier.fillMaxWidth())
-                                if(totalSpent>totalLimit) Text("Over combined limits by ${Money.format(totalSpent-totalLimit)}",
+                                if(totalSpent>totalLimit) Text("Over combined limits by ${displayMoney(totalSpent-totalLimit)}",
                                     color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                             }
                         }
@@ -1938,8 +2113,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                     Column(Modifier.weight(1f)) {
                                         Text(cat,style=MaterialTheme.typography.titleMedium)
-                                        Text("${Money.format(spent)} spent",style=MaterialTheme.typography.bodySmall)
-                                        Text(if(limit>0) "${Money.format(limit)} limit" else "No budget set",
+                                        Text("${displayMoney(spent)} spent",style=MaterialTheme.typography.bodySmall)
+                                        Text(if(limit>0) "${displayMoney(limit)} limit" else "No budget set",
                                             style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     TextButton(onClick={
@@ -1950,12 +2125,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 if(limit>0) LinearProgressIndicator(
                                     progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },
                                     modifier=Modifier.fillMaxWidth())
-                                if(limit>0 && spent>limit) Text("Over budget by ${Money.format(spent-limit)}",
+                                if(limit>0 && spent>limit) Text("Over budget by ${displayMoney(spent-limit)}",
                                     color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                 if(editingBudgetCategory==cat) {
                                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
                                         horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                        OutlinedTextField(value=editingBudgetValue,onValueChange={editingBudgetValue=it},
+                                        OutlinedTextField(visualTransformation=if(hideAmounts) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,value=editingBudgetValue,onValueChange={editingBudgetValue=it},
                                             label={Text("Monthly limit (MVR)")},singleLine=true,
                                             modifier=Modifier.weight(1f))
                                         Button(onClick={
@@ -1978,8 +2153,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val selectedTransaction=transactions.firstOrNull { it.id==selectedTransactionId }
                     if(selectedTransaction!=null) {
                         ModalBottomSheet(onDismissRequest={selectedTransactionId=null}) {
-                            Column(Modifier.fillMaxWidth().padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                                 Text("Transaction details",style=MaterialTheme.typography.headlineSmall)
+                                TextButton(onClick={tab=1;showEditHistory=true;showTransactionTools=true;selectedTransactionId=null}) { Text("View edit history") }
                                 val isTransfer=selectedTransaction.category.contains("Transfer",ignoreCase=true) ||
                                     selectedTransaction.description.contains("transfer",ignoreCase=true)
                                 val savedRecipient=recipientPrefs.getString(selectedTransaction.fingerprint,null)?.trim().orEmpty()
@@ -2068,7 +2244,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         Text(if(savedRecipient.isNotBlank()) "Edit recipient" else "Set recipient")
                                     }
                                 }
-                                Text(Money.format(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
+                                Text(displayMoney(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
                                 Text("Original bank description",style=MaterialTheme.typography.labelMedium)
                                 Text(selectedTransaction.description,style=MaterialTheme.typography.bodySmall)
                                 if(recipientEdit && isTransfer) {
@@ -2135,6 +2311,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         revision++
                                     }) { Text("Change account") }
                                     OutlinedButton(onClick={
+                                        tab=1
                                         editingId=selectedTransaction.id
                                         editingAmount=Money.format(kotlin.math.abs(selectedTransaction.amountLaari)).removePrefix("MVR ").replace(",","")
                                         editingDescription=selectedTransaction.description
@@ -2142,7 +2319,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         selectedTransactionId=null
                                     }) { Text("Edit") }
                                 }
-                                OutlinedButton(onClick={splitTransactionId=selectedTransaction.id;splitAmount="";splitCategory="Food";selectedTransactionId=null},modifier=Modifier.fillMaxWidth()) { Text("Split into categories") }
+                                OutlinedButton(onClick={tab=1;splitTransactionId=selectedTransaction.id;splitAmount="";splitCategory="Food";selectedTransactionId=null},modifier=Modifier.fillMaxWidth()) { Text("Split into categories") }
                                 if(splitPrefs.contains(selectedTransaction.fingerprint)) TextButton(onClick={
                                     splitPrefs.edit().remove(selectedTransaction.fingerprint).apply()
                                     recordEdit("Removed split allocation #${selectedTransaction.id}")
@@ -2163,9 +2340,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 if(selectedTransaction.category.contains("Transfer",true))
                                     OutlinedButton(onClick={store.markInternal(selectedTransaction.id);revision++;selectedTransactionId=null}) { Text("Mark internal transfer") }
-                                TextButton(onClick={deletingId=selectedTransaction.id;selectedTransactionId=null}) { Text("Delete transaction",color=MaterialTheme.colorScheme.error) }
+                                TextButton(onClick={tab=1;deletingId=selectedTransaction.id;selectedTransactionId=null}) { Text("Delete transaction",color=MaterialTheme.colorScheme.error) }
                             }
                         }
                     }
     }
 }
+
