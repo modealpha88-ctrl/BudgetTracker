@@ -204,6 +204,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var transactionFilter by remember { mutableStateOf("All") }
     var counterpartyFilter by remember { mutableStateOf("All types") }
     var categoryFilter by remember { mutableStateOf("All categories") }
+    var categoryDrilldownMonth by remember { mutableStateOf<YearMonth?>(null) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var categoryFilterExpanded by remember { mutableStateOf(false) }
     val counterpartyPrefs=remember { context.getSharedPreferences("transaction_counterparty",android.content.Context.MODE_PRIVATE) }
@@ -1020,6 +1021,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val spent=txs.sumOf{-it.amountLaari}
                         Card(onClick={
                             categoryFilter=cat
+                            categoryDrilldownMonth=selectedMonth
                             transactionFilter="Expenses"
                             accountFilter="All accounts"
                             counterpartyFilter="All types"
@@ -1045,6 +1047,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val spent=txs.sumOf { -it.amountLaari }
                         TextButton(onClick={
                             categoryFilter=cat
+                            categoryDrilldownMonth=selectedMonth
                             transactionFilter="Expenses"
                             accountFilter="All accounts"
                             counterpartyFilter="All types"
@@ -1178,12 +1181,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     OutlinedButton(onClick={categoryFilterExpanded=true}) { Text(categoryFilter) }
                                     DropdownMenu(expanded=categoryFilterExpanded,onDismissRequest={categoryFilterExpanded=false}) {
                                         (listOf("All categories")+categories).forEach { option ->
-                                            DropdownMenuItem(text={Text(option)},onClick={categoryFilter=option;categoryFilterExpanded=false})
+                                            DropdownMenuItem(text={Text(option)},onClick={categoryFilter=option;categoryDrilldownMonth=null;categoryFilterExpanded=false})
                                         }
                                     }
                                 }
                                 Text("Classify a business or individual from transaction details.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";transactionFilter="All";searchText=""}) { Text("Clear all filters") }
+                                TextButton(onClick={accountFilter="All accounts";counterpartyFilter="All types";categoryFilter="All categories";categoryDrilldownMonth=null;transactionFilter="All";searchText=""}) { Text("Clear all filters") }
                             }
                         }
                     }
@@ -1279,6 +1282,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
                         (categoryFilter=="All categories" || t.category==categoryFilter) &&
+                        (categoryDrilldownMonth==null || t.timestamp.take(7)==categoryDrilldownMonth.toString()) &&
                         (counterpartyFilter=="All types" || (counterpartyPrefs.getString(t.fingerprint,"Unclassified") ?: "Unclassified")==counterpartyFilter) &&
                         when(transactionFilter) {
                             "Expenses" -> t.amountLaari < 0
