@@ -1180,6 +1180,58 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    // Recipient and daily spending rankings use existing transaction data only.
+                    var rankingMonth by remember { mutableStateOf(java.time.YearMonth.now().toString()) }
+                    var rankingExpanded by remember { mutableStateOf(false) }
+                    var rankingMode by remember { mutableStateOf("Recipients") }
+                    val availableMonths = transactions.map { it.timestamp.take(7) }
+                        .filter { it.matches(Regex("\\d{4}-\\d{2}")) }.distinct().sortedDescending()
+                    val rankedExpenses = transactions.filter { it.amountLaari < 0 &&
+                        it.timestamp.startsWith(rankingMonth) &&
+                        !it.category.contains("Internal Transfer",ignoreCase=true) }
+                    val rankingGroups = if(rankingMode=="Recipients")
+                        rankedExpenses.groupBy { tx ->
+                            recipientPrefs.getString(tx.fingerprint,null)?.takeIf { it.isNotBlank() }
+                                ?: TransactionPresentation.label(tx.description).trim().ifBlank { "Unknown recipient" }
+                        }
+                    else rankedExpenses.groupBy { it.timestamp.take(10) }
+                    val rankedTotals = rankingGroups.map { (name, entries) ->
+                        name to entries.sumOf { kotlin.math.abs(it.amountLaari) }
+                    }.sortedByDescending { it.second }
+                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("Spending rankings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(onClick={rankingMode="Recipients"}) { Text("Recipients") }
+                                OutlinedButton(onClick={rankingMode="Days"}) { Text("Highest days") }
+                            }
+                            Box {
+                                OutlinedButton(onClick={rankingExpanded=true}) { Text("Month: $rankingMonth ▾") }
+                                DropdownMenu(expanded=rankingExpanded,onDismissRequest={rankingExpanded=false}) {
+                                    availableMonths.forEach { month ->
+                                        DropdownMenuItem(text={Text(month)},onClick={rankingMonth=month;rankingExpanded=false})
+                                    }
+                                }
+                            }
+                            if(rankedTotals.isEmpty()) Text("No spending recorded for this month.")
+                            else {
+                                val maximum = rankedTotals.first().second.coerceAtLeast(1L)
+                                rankedTotals.take(30).forEachIndexed { index, item ->
+                                    Text("${index+1}. ${item.first} · ${Money.format(item.second)}")
+                                    LinearProgressIndicator(
+                                        progress={item.second.toFloat()/maximum.toFloat()},
+                                        modifier=Modifier.fillMaxWidth())
+                                    if(rankingMode=="Recipients") {
+                                        TextButton(onClick={
+                                            searchText=item.first
+                                            showAdvancedFilters=false
+                                        }) { Text("View transactions") }
+                                    }
+                                }
+                                if(rankedTotals.size>30) Text("Showing top 30 of ${rankedTotals.size}")
+                            }
+                        }
+                    }
                     OutlinedTextField(value=searchText,onValueChange={searchText=it},
                         placeholder={Text("Search merchant, amount or date")},
                         leadingIcon={Text("⌕")},modifier=Modifier.fillMaxWidth(),singleLine=true,
