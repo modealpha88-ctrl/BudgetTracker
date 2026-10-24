@@ -992,6 +992,26 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    val scheduledPayments=remember(revision) { store.recurring() }
+                    if(scheduledPayments.isNotEmpty()) Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                            Text("Recurring payment review",style=MaterialTheme.typography.titleMedium)
+                            Text("Check scheduled payments against the selected month. Missing matches are reminders, not confirmed missed payments.",
+                                style=MaterialTheme.typography.bodySmall)
+                            scheduledPayments.forEach { (name,expected,category) ->
+                                val matches=monthlyTransactions.filter { tx ->
+                                    tx.amountLaari<0 && tx.category!="Internal Transfer" &&
+                                    -tx.amountLaari==expected &&
+                                    (tx.description.contains(name,true) || tx.category==category)
+                                }
+                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                    Text(name,modifier=Modifier.weight(1f))
+                                    Text(if(matches.isNotEmpty()) "Recorded" else "Check payment",
+                                        color=if(matches.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
