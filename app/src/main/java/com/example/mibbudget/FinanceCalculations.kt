@@ -56,6 +56,13 @@ object FinanceCalculations {
         return (limit - previousSpend).coerceAtLeast(0L)
     }
 
+    fun effectiveLimit(category: String, month: YearMonth, limit: Long,
+                       entries: List<Tx>, rolloverEnabled: Boolean): Long {
+        if (!rolloverEnabled || limit <= 0L) return limit
+        val carry = rollover(category, month, limit, entries)
+        return if (carry > Long.MAX_VALUE - limit) Long.MAX_VALUE else limit + carry
+    }
+
     fun assignedAccount(tx: Tx, labels: Map<String, String>): String =
         labels[tx.fingerprint]?.takeIf { it.isNotBlank() }
             ?: if (tx.fingerprint.startsWith("mib-", ignoreCase = true)) "MIB" else "Unassigned"
