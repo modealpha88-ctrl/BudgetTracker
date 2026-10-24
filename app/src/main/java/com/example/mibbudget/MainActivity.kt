@@ -12,6 +12,13 @@ import android.os.Bundle
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.AddCircleOutline
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
@@ -276,6 +283,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var showAccountCards by remember { mutableStateOf(dashboardPrefs.getBoolean("accounts",true)) }
     var showSpendingInsights by remember { mutableStateOf(dashboardPrefs.getBoolean("insights",true)) }
     var showDashboardOptions by remember { mutableStateOf(false) }
+    var insightsExpanded by remember { mutableStateOf(dashboardPrefs.getBoolean("insights_expanded",true)) }
+    var selectedAccountCard by remember { mutableStateOf(dashboardPrefs.getString("account_card","MIB") ?: "MIB") }
+    var showSpendingHeatmap by remember { mutableStateOf(dashboardPrefs.getBoolean("heatmap",true)) }
     var planningLayoutRevision by remember { mutableIntStateOf(0) }
     var balanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var balanceAmount by remember { mutableStateOf(balancePrefs.getString("mib_amount","") ?: "") }
@@ -610,7 +620,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }, bottomBar = {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
             listOf("Home","Transactions","Import","Budgets","Plan").forEachIndexed { i, label ->
-                NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","⚙","◉","◈")[i])},label={Text(label)})
+                NavigationBarItem(selected=tab==i,onClick={tab=i},icon={ Icon(listOf(Icons.Default.Home,Icons.Default.SwapHoriz,Icons.Default.AddCircleOutline,Icons.Default.PieChart,Icons.Default.Event)[i],contentDescription=label) },label={Text(label)})
             }
         }
     }) { padding ->
@@ -792,6 +802,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Switch(checked=showAccountCards,onCheckedChange={showAccountCards=it;dashboardPrefs.edit().putBoolean("accounts",it).apply()})
                             }
                             Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Spending heatmap",Modifier.weight(1f))
+                                Switch(checked=showSpendingHeatmap,onCheckedChange={showSpendingHeatmap=it;dashboardPrefs.edit().putBoolean("heatmap",it).apply()})
+                            }
+                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Text("Spending insights",Modifier.weight(1f))
                                 Switch(checked=showSpendingInsights,onCheckedChange={showSpendingInsights=it;dashboardPrefs.edit().putBoolean("insights",it).apply()})
                             }
@@ -802,18 +816,24 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     HomePlanningHighlights(context, transactions, accountLabels, store, planningLayoutRevision)
                     if(showAccountCards) {
-                        Text("Account snapshots",style=MaterialTheme.typography.titleMedium)
-                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("Accounts",style=MaterialTheme.typography.titleMedium)
+                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             listOf("MIB","BML","Cash").forEach { bank ->
-                                val key=bank.lowercase(java.util.Locale.ROOT)
-                                val minor=balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
-                                Card(onClick={dashboardView="Account balance";accountChoice=bank},modifier=Modifier.weight(1f)) {
-                                    Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                                        Text(bank,style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary)
-                                        Text(if(minor==Long.MIN_VALUE) "Not set" else Money.format(minor),style=MaterialTheme.typography.bodySmall,maxLines=2)
-                                        Text("Snapshot",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
+                                FilterChip(selected=selectedAccountCard==bank,onClick={
+                                    selectedAccountCard=bank
+                                    dashboardPrefs.edit().putString("account_card",bank).apply()
+                                },label={Text(bank)})
+                            }
+                        }
+                        val minor=balancePrefs.getLong("${selectedAccountCard.lowercase(java.util.Locale.ROOT)}_minor",Long.MIN_VALUE)
+                        Card(onClick={dashboardView="Account balance";accountChoice=selectedAccountCard},
+                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
+                            modifier=Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("$selectedAccountCard · Account snapshot",color=MaterialTheme.colorScheme.primary)
+                                Text(if(minor==Long.MIN_VALUE) "Balance not set" else Money.format(minor),
+                                    style=MaterialTheme.typography.headlineMedium)
+                                Text("Tap to manage balance",style=MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
@@ -822,7 +842,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val monthIncome=monthlyTransactions.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }
                         val monthOut=monthExpenses.sumOf { -it.amountLaari }
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Text("Monthly insights",style=MaterialTheme.typography.titleMedium)
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text("Monthly insights",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={insightsExpanded=!insightsExpanded;dashboardPrefs.edit().putBoolean("insights_expanded",insightsExpanded).apply()}) { Text(if(insightsExpanded) "Collapse ↑" else "Expand ↓") }
+                            }
+                            if(insightsExpanded) {
                             Text("Income: ${Money.format(monthIncome)}")
                             Text("Expenses: ${Money.format(monthOut)}")
                             LinearProgressIndicator(progress={if(monthIncome>0) (monthOut.toFloat()/monthIncome).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
@@ -886,7 +910,35 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             val net=monthIncome-monthOut
                             Text("Net cash flow: ${Money.format(net)}",style=MaterialTheme.typography.titleSmall)
                             Text("Based on recorded transactions; transfers and incomplete imports can affect totals.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else Text("Expenses: ${Money.format(monthOut)} · Net: ${Money.format(monthIncome-monthOut)}")
                         } }
+                    }
+                    if(showSpendingHeatmap) {
+                        val daily=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
+                            .groupBy { it.timestamp.take(10) }.mapValues { (_,rows) -> rows.sumOf { -it.amountLaari } }
+                        val peak=daily.values.maxOrNull() ?: 0L
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                                Text("Spending heatmap · $selectedMonth",style=MaterialTheme.typography.titleMedium)
+                                repeat((selectedMonth.lengthOfMonth()+6)/7) { week ->
+                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                        repeat(7) { col ->
+                                            val day=week*7+col+1
+                                            if(day<=selectedMonth.lengthOfMonth()) {
+                                                val amount=daily["$selectedMonth-${day.toString().padStart(2,'0')}"] ?: 0L
+                                                val intensity=if(peak>0L) amount.toFloat()/peak else 0f
+                                                Box(Modifier.weight(1f).height(32.dp)
+                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha=0.12f+0.88f*intensity),RoundedCornerShape(6.dp)),
+                                                    contentAlignment=androidx.compose.ui.Alignment.Center) {
+                                                    Text("$day",style=MaterialTheme.typography.labelSmall)
+                                                }
+                                            } else Spacer(Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                                Text("Brighter cells indicate higher daily spending.",style=MaterialTheme.typography.bodySmall)
+                            }
+                        }
                     }
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected=dashboardView=="Cash flow",onClick={dashboardView="Cash flow"},label={Text("Cash flow")})
