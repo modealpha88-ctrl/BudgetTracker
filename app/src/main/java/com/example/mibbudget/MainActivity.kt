@@ -1952,6 +1952,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         selectedTransactionId=null
                                     }) { Text("Edit") }
                                 }
+                                if(selectedTransaction.category=="Shopping" || selectedTransaction.category=="Food") {
+                                    val destination=if(selectedTransaction.category=="Shopping") "Food" else "Shopping"
+                                    OutlinedButton(onClick={
+                                        store.setTransactionCategory(selectedTransaction.id,destination)
+                                        revision++
+                                        selectedTransactionId=null
+                                        notice="Moved transaction to $destination"
+                                    },modifier=Modifier.fillMaxWidth()) {
+                                        Text("Move to $destination")
+                                    }
+                                }
                                 if(selectedTransaction.category.contains("Transfer",true))
                                     OutlinedButton(onClick={store.markInternal(selectedTransaction.id);revision++;selectedTransactionId=null}) { Text("Mark internal transfer") }
                                 TextButton(onClick={deletingId=selectedTransaction.id;selectedTransactionId=null}) { Text("Delete transaction",color=MaterialTheme.colorScheme.error) }
