@@ -2157,10 +2157,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 3 -> {
                     Text("Monthly budgets",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-                    val budgetCategories=categories.filter { it!="Income" }
+                    val budgetCategories=(categories+monthlyCategorySpending.keys+budgets.keys).distinct().filter { it!="Income" && it!="Internal Transfer" }
                     val totalLimit=budgetCategories.sumOf { budgets[it] ?: 0L }
-                    val totalSpent=monthlyTransactions.filter { it.amountLaari<0 && it.category in budgetCategories }
-                        .sumOf { -it.amountLaari }
+                    val totalSpent=monthlyCategorySpending.values.sum()
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text("This month's spending",style=MaterialTheme.typography.titleMedium)
