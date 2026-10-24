@@ -417,6 +417,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if(uri!=null) try {
             val data=if(useEncryptedBackup) SecureBackup.encrypt(FullBackup.export(context,store),encryptedBackupPassword) else FullBackup.export(context,store)
+            val backupJson = if(useEncryptedBackup) SecureBackup.decrypt(data,encryptedBackupPassword) else data
+            val backupRoot = org.json.JSONObject(backupJson)
+            require(backupRoot.optString("format")=="mib-budget-backup" &&
+                backupRoot.optJSONArray("transactions")!=null) { "Backup verification failed" }
             context.contentResolver.openOutputStream(uri)?.use { it.write(data.toByteArray(Charsets.UTF_8)) } ?: error("Cannot write backup")
             notice=if(useEncryptedBackup) "Encrypted backup saved. Keep your password safe: it cannot be recovered." else "Unencrypted backup saved. Keep it private."
         } catch(e:Exception) { notice="Backup failed: ${e.message?.take(90)}" }
