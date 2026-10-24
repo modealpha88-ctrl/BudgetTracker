@@ -460,9 +460,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     if(lockEnabled && !unlocked) {
         Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.Center) {
             Text("MIB Budget Tracker is locked",style=MaterialTheme.typography.headlineSmall)
-            Button(onClick={authenticate}) { Text("Unlock with biometrics") }
-            TextButton(onClick={unlockWithDeviceCredential}) { Text("Use screen lock instead") }
-            if(lockError.isNotBlank()) Text(lockError)
+            Text("Authentication diagnostics · build fix 2",style=MaterialTheme.typography.bodySmall)
+            Button(onClick={
+                lockError = "Biometric button pressed — checking Android authentication…"
+                authenticate()
+            }) { Text("Unlock with biometrics") }
+            TextButton(onClick={
+                lockError = "Screen lock button pressed — requesting Android confirmation…"
+                unlockWithDeviceCredential()
+            }) { Text("Use screen lock instead") }
+            Text(lockError.ifBlank { "Tap either button to see its authentication status." },
+                style=MaterialTheme.typography.bodySmall)
         }
         return
     }
