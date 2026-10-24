@@ -68,6 +68,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val prefs = remember { context.getSharedPreferences("sms_settings", android.content.Context.MODE_PRIVATE) }
     val securityPrefs=remember { context.getSharedPreferences("app_security",android.content.Context.MODE_PRIVATE) }
     var lockEnabled by remember { mutableStateOf(securityPrefs.getBoolean("biometric_lock",false)) }
+    var screenshotPrivacy by remember { mutableStateOf(securityPrefs.getBoolean("screenshot_privacy",false)) }
+    DisposableEffect(screenshotPrivacy) {
+        val activity=context as? android.app.Activity
+        if(screenshotPrivacy) activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        else activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose { }
+    }
+
     var unlocked by remember { mutableStateOf(!lockEnabled) }
     var lockError by remember { mutableStateOf("") }
     val authenticate = {
@@ -1044,6 +1052,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     Text("Uses Android biometric enrollment. Keep a device backup before enabling.",style=MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Hide app from screenshots and screen recording",modifier=Modifier.weight(1f))
+                        Switch(checked=screenshotPrivacy,onCheckedChange={
+                            screenshotPrivacy=it
+                            securityPrefs.edit().putBoolean("screenshot_privacy",it).apply()
+                        })
+                    }
+
+                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Dark theme",modifier=Modifier.weight(1f))
                         Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
                     }
@@ -1278,8 +1294,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick={
-                                        owedSelectedIds=owedSelectedIds+orderedTransactions.take(150).map { it.id }
-                                    }) { Text("Add visible") }
+                                        owedSelectedIds=owedSelectedIds+orderedTransactions.map { it.id }
+                                    }) { Text("Add all matching") }
                                     TextButton(onClick={owedSelectedIds=emptySet()}) { Text("Clear all") }
                                 }
                             }
@@ -1336,8 +1352,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Text("Select incoming or outgoing transactions below. Marking them internal excludes them from spending and income, but keeps bank records and balances.",style=MaterialTheme.typography.bodySmall)
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick={
-                                        selectedInternalIds=orderedTransactions.filter { it.category!="Internal Transfer" }.take(150).map { it.id }.toSet()
-                                    }) { Text("Select visible") }
+                                        selectedInternalIds=selectedInternalIds+orderedTransactions.filter { it.category!="Internal Transfer" }.map { it.id }
+                                    }) { Text("Add all matching") }
                                     TextButton(onClick={selectedInternalIds=emptySet()}) { Text("Clear") }
                                 }
                                 Button(onClick={confirmInternalSelection=true},
