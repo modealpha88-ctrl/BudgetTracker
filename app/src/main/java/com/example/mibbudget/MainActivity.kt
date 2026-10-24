@@ -1298,7 +1298,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         .mapValues { (_, entries) -> entries.sumOf { kotlin.math.abs(it.amountLaari) } }
                     val highestDay = dailySpend.maxByOrNull { it.value }
                     val monthBudget = budgets.values.sum()
-                    val monthBudgetRemaining = monthBudget - monthSpend
+                    val budgetedSpend = rankedExpenses.filter { budgets.containsKey(it.category) }
+                        .sumOf { kotlin.math.abs(it.amountLaari) }
+                    val monthBudgetRemaining = monthBudget - budgetedSpend
+                    val categoryBudgetUsage = budgets.entries.map { (category, limit) ->
+                        Triple(category, limit, rankedExpenses.filter { it.category==category }
+                            .sumOf { kotlin.math.abs(it.amountLaari) })
+                    }
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text("Spending rankings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
@@ -1310,7 +1316,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Text("Combined category budgets: ${Money.format(monthBudget)} · ${if(monthBudgetRemaining>=0) "Remaining" else "Over budget"}: ${Money.format(kotlin.math.abs(monthBudgetRemaining))}",
                                     style=MaterialTheme.typography.bodySmall)
                                 LinearProgressIndicator(
-                                    progress={ (monthSpend.toFloat()/monthBudget.toFloat()).coerceIn(0f,1f) },
+                                    progress={ (budgetedSpend.toFloat()/monthBudget.toFloat()).coerceIn(0f,1f) },
+                                    modifier=Modifier.fillMaxWidth())
+                            }
+                            categoryBudgetUsage.forEach { (category, limit, spent) ->
+                                Text("$category: ${Money.format(spent)} / ${Money.format(limit)}" +
+                                    if(spent>=limit) " · Over limit" else if(spent*100>=limit*80) " · Near limit" else "",
+                                    style=MaterialTheme.typography.bodySmall)
+                                LinearProgressIndicator(
+                                    progress={ (spent.toFloat()/limit.toFloat()).coerceIn(0f,1f) },
                                     modifier=Modifier.fillMaxWidth())
                             }
                             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
