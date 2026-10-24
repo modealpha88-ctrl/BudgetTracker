@@ -552,16 +552,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         if(tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
     }, bottomBar = {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
-            listOf("Home","Transactions","Import","Budgets").forEachIndexed { i, label ->
-                NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","⚙","◉")[i])},label={Text(label)})
+            listOf("Home","Transactions","Import","Budgets","Plan").forEachIndexed { i, label ->
+                NavigationBarItem(selected=tab==i,onClick={tab=i},icon={Text(listOf("⌂","⇄","⚙","◉","◈")[i])},label={Text(label)})
             }
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(Modifier.verticalScroll(mainScrollState)).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if(tab==0) {
-            Text("MIB Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/MIBBudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
+            OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/BudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
             }
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(start=14.dp,end=6.dp,top=6.dp,bottom=6.dp),
@@ -685,6 +685,32 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             }
             Spacer(Modifier.height(14.dp))
             when(tab) {
+                4 -> {
+                    FinancialPlanningScreen(
+                        context = context,
+                        store = store,
+                        entries = transactions,
+                        labels = accountLabels,
+                        budgets = budgets,
+                        selectedMonth = selectedMonth,
+                        onMonthChange = { selectedMonth = it },
+                        onChanged = { revision++ },
+                        onNotice = { notice = it },
+                        openCashAccount = { accountChoice = "Cash"; dashboardView = "Account balance"; tab = 0 },
+                        exportPdf = { pdfLauncher.launch("BudgetTracker-${selectedMonth}.pdf") },
+                        sharePdf = {
+                            lastPdfUri?.let { uri ->
+                                val share = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(share, "Share financial report"))
+                            }
+                        },
+                        canSharePdf = lastPdfUri != null
+                    )
+                }
                 0 -> {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Overview",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
