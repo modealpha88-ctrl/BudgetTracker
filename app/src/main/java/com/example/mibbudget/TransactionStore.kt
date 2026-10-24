@@ -476,7 +476,12 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val values = android.content.ContentValues().apply {
             put("amount_laari", amountLaari); put("category", category.take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
         }
-        return db.insertWithOnConflict("transactions", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+        val inserted=db.insertWithOnConflict("transactions", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+        if(inserted && fingerprint.startsWith("mib-",ignoreCase=true)) {
+            val account=ContentValues().apply { put("fingerprint",fingerprint);put("label","MIB") }
+            db.insertWithOnConflict("account_labels",null,account,SQLiteDatabase.CONFLICT_IGNORE)
+        }
+        return inserted
     }
     fun all(): List<Tx> {
         val out = mutableListOf<Tx>()
