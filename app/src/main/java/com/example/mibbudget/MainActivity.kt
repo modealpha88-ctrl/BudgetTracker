@@ -1495,6 +1495,38 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("Recipient: $rankedRecipientFilter",modifier=Modifier.weight(1f))
                             TextButton(onClick={rankedRecipientFilter=null;rankedRecipientMonth=null}) { Text("Clear") }
                         }
+                        var merchantRuleCategory by remember(rankedRecipientFilter) { mutableStateOf("Food") }
+                        var merchantRuleExpanded by remember { mutableStateOf(false) }
+                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Box {
+                                OutlinedButton(onClick={merchantRuleExpanded=true}) {
+                                    Text("Category: $merchantRuleCategory")
+                                }
+                                DropdownMenu(expanded=merchantRuleExpanded,onDismissRequest={merchantRuleExpanded=false}) {
+                                    categories.filter { it!="Internal Transfer" }.forEach { option ->
+                                        DropdownMenuItem(text={Text(option)},onClick={
+                                            merchantRuleCategory=option
+                                            merchantRuleExpanded=false
+                                        })
+                                    }
+                                }
+                            }
+                            Button(onClick={
+                                val merchant = transactions.firstOrNull { tx ->
+                                    (recipientPrefs.getString(tx.fingerprint,null)?.takeIf { it.isNotBlank() }
+                                        ?: TransactionPresentation.label(tx.description).trim())
+                                        .equals(rankedRecipientFilter,ignoreCase=true)
+                                }
+                                if(merchant!=null) {
+                                    val count=store.reclassifyMerchant(merchant.description,merchantRuleCategory)
+                                    revision++
+                                    notice="Saved merchant rule; updated $count transactions"
+                                } else notice="No matching merchant transactions"
+                            }) { Text("Apply to merchant") }
+                        }
+                        Text("Applies to existing matching transactions and future imports.",
+                            style=MaterialTheme.typography.bodySmall)
                     }
                     val filteredTransactions = transactions.filter { t ->
                         (rankedRecipientFilter==null || (
