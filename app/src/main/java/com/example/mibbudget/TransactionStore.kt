@@ -342,7 +342,8 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "bml_pending" to listOf("amount_laari","occurred_at","fingerprint"),
             "savings_goals" to listOf("name","target_laari","saved_laari"),
             "recurring_expenses" to listOf("name","amount_laari","category"),
-            "account_labels" to listOf("fingerprint","label")
+            "account_labels" to listOf("fingerprint","label"),
+            "merchant_category_rules" to listOf("merchant_key","category")
         )
         specs.forEach { (table,cols) ->
             val rows=JSONArray()
@@ -372,12 +373,13 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "bml_pending" to listOf("amount_laari","occurred_at","fingerprint"),
             "savings_goals" to listOf("name","target_laari","saved_laari"),
             "recurring_expenses" to listOf("name","amount_laari","category"),
-            "account_labels" to listOf("fingerprint","label")
+            "account_labels" to listOf("fingerprint","label"),
+            "merchant_category_rules" to listOf("merchant_key","category")
         )
         // Validate every row before any database write.
         var total=0
         specs.forEach { (table,cols) ->
-            val rows=root.optJSONArray(table) ?: throw IllegalArgumentException("Missing $table")
+            val rows=root.optJSONArray(table) ?: if(table=="merchant_category_rules") JSONArray() else throw IllegalArgumentException("Missing $table")
             require(rows.length()<=100000) { "Too many records" }
             for(i in 0 until rows.length()) {
                 val item=rows.getJSONObject(i)
@@ -388,7 +390,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         db.beginTransaction()
         try {
             specs.forEach { (table,cols) ->
-                val rows=root.getJSONArray(table)
+                val rows=root.optJSONArray(table) ?: JSONArray()
                 for(i in 0 until rows.length()) {
                     val item=rows.getJSONObject(i)
                     val v=ContentValues()
