@@ -475,15 +475,23 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
 
     fun queueBml(amount: Long, timestamp: String, fingerprint: String): Boolean {
         val db=writableDatabase
-        val recorded=db.rawQuery("SELECT 1 FROM transactions WHERE fingerprint=?",
-            arrayOf(fingerprint)).use { it.moveToFirst() }
-        if(recorded) return false
-        val v = ContentValues().apply {
-            put("amount_laari",amount)
-            put("occurred_at",timestamp)
-            put("fingerprint",fingerprint)
+        db.beginTransaction()
+        try {
+            val recorded=db.rawQuery("SELECT 1 FROM transactions WHERE fingerprint=?",
+                arrayOf(fingerprint)).use { it.moveToFirst() }
+            if(recorded) return false
+            val v = ContentValues().apply {
+                put("amount_laari",amount)
+                put("occurred_at",timestamp)
+                put("fingerprint",fingerprint)
+            }
+            val inserted=db.insertWithOnConflict(
+                "bml_pending", null, v, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+            if(inserted) db.setTransactionSuccessful()
+            return inserted
+        } finally {
+            db.endTransaction()
         }
-        return db.insertWithOnConflict("bml_pending", null, v, SQLiteDatabase.CONFLICT_IGNORE) != -1L
     }
     fun pendingBml(): List<PendingBml> {
         val result = mutableListOf<PendingBml>()
