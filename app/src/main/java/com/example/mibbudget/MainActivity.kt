@@ -433,14 +433,63 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             notice=if(useEncryptedBackup) "Encrypted backup saved. Keep your password safe: it cannot be recovered." else "Unencrypted backup saved. Keep it private."
         } catch(e:Exception) { notice="Backup failed: ${e.message?.take(90)}" }
     }
+    var pendingRestoreJson by remember { mutableStateOf<String?>(null) }
+    var pendingRestorePreview by remember { mutableStateOf<FullBackup.Preview?>(null) }
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null) try {
-            val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: error("Cannot read file")
+            val data=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: error("Cannot read file")
             val json=if(data.startsWith("MIB-ENC-V1:")) SecureBackup.decrypt(data,restoreBackupPassword) else data
-            val count=FullBackup.restore(context,store,json)
-            revision++
-            notice="Restored $count new records. Existing records kept."
-        } catch(e:Exception) { notice="Restore failed. Check password and file: ${e.message?.take(75)}" }
+            val preview=FullBackup.preview(context,store,json)
+            pendingRestoreJson=json
+            pendingRestorePreview=preview
+            notice="Backup validated. Review the preview before confirming."
+        } catch(e:Exception) {
+            pendingRestoreJson=null
+            pendingRestorePreview=null
+            notice="Restore preview failed. Check password and file: ${e.message?.take(75)}"
+        }
+    }
+    pendingRestorePreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest={pendingRestorePreview=null;pendingRestoreJson=null},
+            title={Text("Review backup before restoring")},
+            text={
+                Column(Modifier.heightIn(max=410.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Text("This is a preview only. Your existing transactions have not changed.",
+                        style=MaterialTheme.typography.bodyMedium)
+                    Text("New transactions: ${preview.database.newTransactions}",
+                        fontWeight=FontWeight.Bold)
+                    Text("Already-present transactions: ${preview.database.existingTransactions}")
+                    preview.database.tableCounts.entries.filter { it.value>0 }.forEach { (table,count) ->
+                        Text("${table.replace('_',' ')}: $count records",
+                            style=MaterialTheme.typography.bodySmall)
+                    }
+                    Text("Preference values available: ${preview.settingsToRestore}")
+                    Text("Confirming will merge missing records and may replace non-security preferences. Existing biometric settings will stay on this device.",
+                        color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton={
+                TextButton(onClick={
+                    val text=pendingRestoreJson
+                    pendingRestorePreview=null
+                    pendingRestoreJson=null
+                    if(text!=null) try {
+                        val count=FullBackup.restore(context,store,text)
+                        revision++
+                        notice="Restored $count additional records. Existing transaction records kept."
+                    } catch(e:Exception) {
+                        notice="Restore failed: ${e.message?.take(80)}"
+                    }
+                }) { Text("Confirm restore") }
+            },
+            dismissButton={TextButton(onClick={
+                pendingRestorePreview=null
+                pendingRestoreJson=null
+            }) { Text("Cancel") }}
+        )
     }
     LaunchedEffect(historyRequested) {
         if (historyRequested) {
