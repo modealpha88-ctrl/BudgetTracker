@@ -280,9 +280,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         if (granted) historyRequested = true else notice = "SMS inbox permission denied. Manual import still works."
     }
     var revision by remember { mutableIntStateOf(0) }
-    val transactions = remember(revision) { store.all() }
+    val transactions = store.all()
     val csvBaselineReady = remember(revision) { transactions.any { it.fingerprint.startsWith("csv-") } }
-    val accountLabels = remember(revision) { store.accounts() }
+    val accountLabels = store.accounts()
     val declinedTransactions = remember(revision) { store.declined() }
     val foreignTransactions = remember(revision) { store.foreign() }
     val pendingBml = remember(revision) { store.pendingBml() }
@@ -792,7 +792,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text("Save a dated ${accountChoice} balance snapshot first.",style=MaterialTheme.typography.bodySmall)
                                 else {
                                     val movement=transactions.filter { tx ->
-                                        accountLabels[tx.fingerprint]==accountChoice &&
+                                        (accountLabels[tx.fingerprint] ?: if(accountChoice=="MIB" && tx.fingerprint.startsWith("mib-",true)) "MIB" else "Unassigned")==accountChoice &&
                                         (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
                                          else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
                                     }.sumOf { it.amountLaari }
