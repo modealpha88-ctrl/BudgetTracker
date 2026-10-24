@@ -858,8 +858,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             var selectedSunburstCategory by remember { mutableStateOf<String?>(null) }
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
                                 verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("Top spending categories",style=MaterialTheme.typography.titleSmall)
-                                Row {
+                                Text("Spending breakdown",style=MaterialTheme.typography.titleSmall)
+                            }
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
                                     FilterChip(selected=spendingChartStyle=="Pie",onClick={spendingChartStyle="Pie";dashboardPrefs.edit().putString("spending_chart_style","Pie").apply()},label={Text("Pie")})
                                     Spacer(Modifier.width(6.dp))
                                     FilterChip(selected=spendingChartStyle=="Sunburst",onClick={spendingChartStyle="Sunburst";dashboardPrefs.edit().putString("spending_chart_style","Sunburst").apply()},label={Text("Sunburst")})
@@ -925,7 +926,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         .mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
                                         .toList().sortedByDescending { it.second }
                                 }
-                                Canvas(Modifier.fillMaxWidth().height(230.dp)
+                                Canvas(Modifier.fillMaxWidth().height(210.dp).padding(horizontal=12.dp,vertical=8.dp)
                                     .pointerInput(rings,monthOut) {
                                         detectTapGestures { tap ->
                                             val diameter=kotlin.math.min(size.width,size.height).toFloat()
@@ -943,29 +944,31 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                             }
                                         }
                                     }) {
-                                    val diameter=kotlin.math.min(size.width,size.height)
+                                    val diameter=kotlin.math.min(size.width,size.height)*0.76f
                                     val origin=Offset((size.width-diameter)/2f,(size.height-diameter)/2f)
                                     val bounds=androidx.compose.ui.geometry.Size(diameter,diameter)
                                     var angle=-90f
                                     rings.forEachIndexed { index,(category,total) ->
                                         val sweep=total.toFloat()/monthOut*360f
                                         val base=sunColors[index%sunColors.size]
-                                        drawArc(base,angle,sweep,false,origin,bounds,
-                                            style=androidx.compose.ui.graphics.drawscope.Stroke(width=diameter*0.20f))
+                                        drawArc(base,angle,sweep,false,
+                                            topLeft=Offset(origin.x+diameter*0.10f,origin.y+diameter*0.10f),
+                                            size=androidx.compose.ui.geometry.Size(diameter*0.80f,diameter*0.80f),
+                                            style=androidx.compose.ui.graphics.drawscope.Stroke(width=diameter*0.17f))
                                         var innerAngle=angle
                                         merchantRings[index].forEachIndexed { merchantIndex,(_,value) ->
                                             val merchantSweep=value.toFloat()/monthOut*360f
                                             drawArc(base.copy(alpha=if(merchantIndex%2==0) 0.95f else 0.5f),
                                                 innerAngle,merchantSweep,false,
-                                                topLeft=Offset(origin.x+diameter*0.12f,origin.y+diameter*0.12f),
-                                                size=androidx.compose.ui.geometry.Size(diameter*0.76f,diameter*0.76f),
-                                                style=androidx.compose.ui.graphics.drawscope.Stroke(width=diameter*0.12f))
+                                                topLeft=Offset(origin.x+diameter*0.29f,origin.y+diameter*0.29f),
+                                                size=androidx.compose.ui.geometry.Size(diameter*0.42f,diameter*0.42f),
+                                                style=androidx.compose.ui.graphics.drawscope.Stroke(width=diameter*0.13f))
                                             innerAngle+=merchantSweep
                                         }
                                         angle+=sweep
                                     }
                                 }
-                                Text("Outer ring: categories · Inner ring: merchants",style=MaterialTheme.typography.labelSmall)
+                                Text("Outer: categories · Inner: merchants · Tap to select",style=MaterialTheme.typography.labelSmall)
                                 rings.forEachIndexed { index,(category,total) ->
                                     Row(Modifier.fillMaxWidth().clickable {
                                         selectedSunburstCategory=category
