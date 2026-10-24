@@ -949,6 +949,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 notice="MIB balance reference saved"
                             }
                         }) { Text("Save verified balance") }
+                        val accountMovements=transactions
+                            .filter { it.category!="Internal Transfer" }
+                            .groupBy { accountLabels[it.fingerprint]?.takeIf(String::isNotBlank) ?: "Unassigned" }
+                        Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
+                            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Account activity overview",style=MaterialTheme.typography.titleMedium,
+                                    fontWeight=FontWeight.Bold)
+                                Text("Recorded net movements, not bank balances. Internal transfers excluded.",
+                                    style=MaterialTheme.typography.bodySmall)
+                                accountMovements.toSortedMap().forEach { (account, entries) ->
+                                    Text("$account · ${entries.size} transactions · Net ${Money.format(entries.sumOf { it.amountLaari })}",
+                                        style=MaterialTheme.typography.bodyMedium)
+                                }
+                            }
+                        }
                         if(savedBalanceMinor!=Long.MIN_VALUE && savedBalanceDate.isNotBlank()) {
                             val later=transactions.filter { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint]=="MIB" && it.category!="Internal Transfer" }
                             val unlabeled=transactions.count { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint].isNullOrBlank() }
