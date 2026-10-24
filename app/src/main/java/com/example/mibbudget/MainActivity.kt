@@ -1016,7 +1016,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
                         val spent=txs.sumOf{-it.amountLaari}
-                        Text("$cat    •    ${Money.format(spent)}",Modifier.padding(top=12.dp),fontWeight=FontWeight.Medium)
+                        Card(onClick={
+                            categoryFilter=cat
+                            transactionFilter="Expenses"
+                            accountFilter="All accounts"
+                            counterpartyFilter="All types"
+                            searchText=""
+                            transactionMinAmount=""
+                            transactionMaxAmount=""
+                            showAdvancedFilters=true
+                            tab=1
+                        },modifier=Modifier.fillMaxWidth().padding(top=8.dp)) {
+                            Row(Modifier.fillMaxWidth().padding(14.dp),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text(cat,fontWeight=FontWeight.Medium)
+                                Text("${Money.format(spent)}  ›",color=MaterialTheme.colorScheme.primary)
+                            }
+                        }
                         val limit=budgets[cat]
                         if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth().height(8.dp),strokeCap=androidx.compose.ui.graphics.StrokeCap.Round); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
                     }
@@ -1026,7 +1041,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val totalSpent=grouped.values.flatten().sumOf { -it.amountLaari }
                     grouped.forEach { (cat,txs) ->
                         val spent=txs.sumOf { -it.amountLaari }
-                        Text("$cat  ${if(totalSpent>0) (spent*100/totalSpent) else 0}%")
+                        TextButton(onClick={
+                            categoryFilter=cat
+                            transactionFilter="Expenses"
+                            accountFilter="All accounts"
+                            counterpartyFilter="All types"
+                            searchText=""
+                            transactionMinAmount=""
+                            transactionMaxAmount=""
+                            showAdvancedFilters=true
+                            tab=1
+                        },modifier=Modifier.fillMaxWidth()) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text(cat)
+                                Text("${if(totalSpent>0) (spent*100/totalSpent) else 0}%  ›")
+                            }
+                        }
                         LinearProgressIndicator(progress={if(totalSpent>0) spent.toFloat()/totalSpent else 0f},modifier=Modifier.fillMaxWidth())
                     }
                     budgets.forEach { (cat,limit) ->
