@@ -305,6 +305,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
     val budgets = remember(revision) { store.budgets() }
+    val rolloverEnabled = context.getSharedPreferences("financial_planning",android.content.Context.MODE_PRIVATE)
+        .getBoolean("rollover",false)
     var input by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var income by remember { mutableStateOf(false) }
@@ -333,7 +335,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var lastPdfUri by remember { mutableStateOf<Uri?>(null) }
     val pdfLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if(uri!=null) try {
-            context.contentResolver.openOutputStream(uri)?.use { BudgetPdfReport.write(it,selectedMonth,transactions,budgets) }
+            val reportBudgets=budgets.mapValues { (category,limit) ->
+                FinanceCalculations.effectiveLimit(category,selectedMonth,limit,transactions,rolloverEnabled)
+            }
+            context.contentResolver.openOutputStream(uri)?.use { BudgetPdfReport.write(it,selectedMonth,transactions,reportBudgets) }
                 ?: error("Could not open PDF destination")
             lastPdfUri = uri
             notice="Monthly PDF report saved. Use Plan → Share last exported PDF to send it."
@@ -1234,7 +1239,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Text("${Money.format(spent)}  ›",color=MaterialTheme.colorScheme.primary)
                             }
                         }
-                        val limit=budgets[cat]
+                        val limit=budgets[cat]?.let {
+                            FinanceCalculations.effectiveLimit(cat,selectedMonth,it,transactions,rolloverEnabled)
+                        }
                         if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth().height(8.dp),strokeCap=androidx.compose.ui.graphics.StrokeCap.Round); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
                     }
                     if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
@@ -1262,7 +1269,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         LinearProgressIndicator(progress={if(totalSpent>0) spent.toFloat()/totalSpent else 0f},modifier=Modifier.fillMaxWidth())
                     }
-                    budgets.forEach { (cat,limit) ->
+                    budgets.forEach { (cat,baseLimit) ->
+                        val limit=FinanceCalculations.effectiveLimit(
+                            cat,selectedMonth,baseLimit,transactions,rolloverEnabled)
                         val spent=grouped[cat]?.sumOf { -it.amountLaari } ?: 0L
                         if(spent>=limit*8/10) Text("Budget alert: $cat is at ${if(limit>0) spent*100/limit else 0}% of limit",color=MaterialTheme.colorScheme.error)
                     }
@@ -1418,7 +1427,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val dailySpend = rankedExpenses.groupBy { it.timestamp.take(10) }
                         .mapValues { (_, entries) -> entries.sumOf { kotlin.math.abs(it.amountLaari) } }
                     val highestDay = dailySpend.maxByOrNull { it.value }
-                    val monthBudget = budgets.values.sum()
+                    val rankingMonthPeriod=runCatching { YearMonth.parse(rankingMonth) }.getOrDefault(YearMonth.now())
+                    val effectiveRankingBudgets=budgets.mapValues { (category,limit) ->
+                        FinanceCalculations.effectiveLimit(category,rankingMonthPeriod,limit,transactions,rolloverEnabled)
+                    }
+                    val monthBudget = effectiveRankingBudgets.values.sum()
                     val budgetedSpend = rankedExpenses.filter { budgets.containsKey(it.category) }
                         .sumOf { kotlin.math.abs(it.amountLaari) }
                     val monthBudgetRemaining = monthBudget - budgetedSpend
@@ -1426,7 +1439,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val duplicateCandidates = rankedExpenses.groupBy { tx ->
                         Triple(tx.timestamp.take(10), VendorProfiles.key(tx.description), tx.amountLaari)
                     }.values.filter { group -> group.size > 1 && group.first().fingerprint != "" }
-                    val categoryBudgetUsage = budgets.entries.map { (category, limit) ->
+                    val categoryBudgetUsage = effectiveRankingBudgets.entries.map { (category, limit) ->
                         Triple(category, limit, rankedExpenses.filter { it.category==category }
                             .sumOf { kotlin.math.abs(it.amountLaari) })
                     }
@@ -2238,7 +2251,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     var editingBudgetValue by remember { mutableStateOf("") }
                     budgetCategories.forEach { cat ->
                         val spent=monthlyTransactions.filter { it.category==cat && it.amountLaari<0 }.sumOf { -it.amountLaari }
-                        val limit=budgets[cat] ?: 0L
+                        val baseLimit=budgets[cat] ?: 0L
+                        val limit=FinanceCalculations.effectiveLimit(
+                            cat,selectedMonth,baseLimit,transactions,rolloverEnabled)
                         Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp)) {
                             Column(Modifier.padding(horizontal=14.dp,vertical=12.dp),
                                 verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -2257,7 +2272,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                     TextButton(onClick={
                                         editingBudgetCategory=if(editingBudgetCategory==cat) null else cat
-                                        editingBudgetValue=if(limit>0) "${limit/100}.${(limit%100).toString().padStart(2,'0')}" else ""
+                                        editingBudgetValue=if(baseLimit>0) "${baseLimit/100}.${(baseLimit%100).toString().padStart(2,'0')}" else ""
                                     }) { Text(if(editingBudgetCategory==cat) "Cancel" else if(limit>0) "Edit" else "Set limit") }
                                 }
                                 if(limit>0) LinearProgressIndicator(
