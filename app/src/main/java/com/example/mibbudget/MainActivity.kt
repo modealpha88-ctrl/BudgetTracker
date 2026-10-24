@@ -682,9 +682,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text(tx.timestamp.take(16), style=MaterialTheme.typography.bodySmall)
                             Text("For your own MIB-to-BML transfer, choose Own transfer to avoid double-counting.", style=MaterialTheme.typography.bodySmall)
                             Row {
-                                TextButton(onClick={store.resolveBml(tx,true);revision++}) { Text("Add credit") }
-                                TextButton(onClick={store.resolveBml(tx,true,true);revision++}) { Text("Own transfer") }
-                                TextButton(onClick={store.resolveBml(tx,false);revision++}) { Text("Discard") }
+                                TextButton(onClick={
+                                    val accepted=store.resolveBml(tx,true)
+                                    revision++
+                                    notice=if(accepted) "BML credit approved and added to account activity" else "Approval not applied; review pending transaction"
+                                }) { Text("Add credit") }
+                                TextButton(onClick={
+                                    val accepted=store.resolveBml(tx,true,true)
+                                    revision++
+                                    notice=if(accepted) "BML own transfer recorded; excluded from spending" else "Transfer approval not applied"
+                                }) { Text("Own transfer") }
+                                TextButton(onClick={
+                                    val removed=store.resolveBml(tx,false)
+                                    revision++
+                                    notice=if(removed) "Pending credit dismissed" else "Pending credit already resolved"
+                                }) { Text("Discard") }
                             }
                         }
                     }
@@ -805,7 +817,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     } }
                         val anchorDate=balancePrefs.getString("mib_date","").orEmpty()
                         val anchorMinor=balancePrefs.getLong("mib_minor",Long.MIN_VALUE)
-                        val accountMonthTransactions=monthlyTransactions.filter { accountLabels[it.fingerprint]=="MIB" }
+                        val accountMonthTransactions=monthlyTransactions.filter {
+                            FinanceCalculations.assignedAccount(it,accountLabels)=="MIB"
+                        }
                         val unassignedMonth=monthlyTransactions.filter { (accountLabels[it.fingerprint] ?: "Unassigned")=="Unassigned" }
                         val monthNet=accountMonthTransactions.sumOf { it.amountLaari }
                         val monthStart=selectedMonth.atDay(1).toString()
@@ -1007,13 +1021,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                         if(savedBalanceMinor!=Long.MIN_VALUE && savedBalanceDate.isNotBlank()) {
-                            val later=transactions.filter { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint]=="MIB" && it.category!="Internal Transfer" }
+                            val later=transactions.filter { it.timestamp.take(10)>savedBalanceDate && FinanceCalculations.assignedAccount(it,accountLabels)=="MIB" }
                             val unlabeled=transactions.count { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint].isNullOrBlank() }
                             val estimated=savedBalanceMinor+later.sumOf { it.amountLaari }
                             val referenceDayTransactions=transactions.filter {
                                 it.timestamp.take(10)==savedBalanceDate &&
-                                accountLabels[it.fingerprint]=="MIB" &&
-                                it.category!="Internal Transfer"
+                                FinanceCalculations.assignedAccount(it,accountLabels)=="MIB"
                             }
                             val referenceDateWarning=referenceDayTransactions.isNotEmpty()
                             Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) {
