@@ -57,6 +57,12 @@ object FullBackup {
                     require(value is Boolean || value is Number || value is String) {
                         "Unsupported setting in backup"
                     }
+                    if(name=="reconciliation_history" && key=="reports") {
+                        require(value is String && value.length<=200_000 &&
+                            org.json.JSONArray(value).length()<=100) {
+                            "Invalid reconciliation history"
+                        }
+                    }
                     settingCount++
                 }
             }
@@ -92,7 +98,7 @@ object FullBackup {
                     is Int -> editor.putInt(key,value)
                     is Long -> editor.putLong(key,value)
                     is Number -> editor.putLong(key,value.toLong())
-                    is String -> editor.putString(key,value.take(5000))
+                    is String -> editor.putString(key,if(name=="reconciliation_history" && key=="reports") value else value.take(5000))
                 }
             }
             editor.apply()
