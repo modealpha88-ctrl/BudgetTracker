@@ -329,11 +329,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 .addOnCompleteListener { recognizer.close() }
         } catch(e:Exception) { notice="Cannot open receipt: ${e.message?.take(70)}" }
     }
+    var lastPdfUri by remember { mutableStateOf<Uri?>(null) }
     val pdfLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if(uri!=null) try {
             context.contentResolver.openOutputStream(uri)?.use { BudgetPdfReport.write(it,selectedMonth,transactions,budgets) }
                 ?: error("Could not open PDF destination")
-            notice="Monthly PDF report saved"
+            lastPdfUri = uri
+            notice="Monthly PDF report saved. Use Plan → Share last exported PDF to send it."
         } catch(e:Exception) { notice="PDF export failed: ${e.message?.take(90)}" }
     }
     val screenshotLauncher=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
