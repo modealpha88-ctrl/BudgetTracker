@@ -952,7 +952,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     style=MaterialTheme.typography.bodySmall)
                         }
                     }
-                    val suggestedPairs=FinanceInsights.suggestedInternalPairs(monthlyTransactions)
+                    val suggestedPairs=FinanceInsights.suggestedInternalPairs(monthlyTransactions,accountLabels)
                     var showSuggestedPairs by remember { mutableStateOf(false) }
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
