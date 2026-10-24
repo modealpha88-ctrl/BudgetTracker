@@ -117,7 +117,7 @@ fun HomePlanningHighlights(
     val predicted = FinanceCalculations.spendingForecast(entries, month, LocalDate.now())
     order.filterNot { it in hidden }.forEach { title ->
         when (title) {
-            "Safe to spend" -> PlanningCard("Safe to spend") {
+            "Safe to spend" -> if (balances.isNotEmpty() && balances.values.sum() > reserved + bills) PlanningCard("Safe to spend") {
                 if (balances.isEmpty()) Text("Add a dated MIB, BML or Cash balance snapshot to estimate available funds.")
                 else {
                     Text(Money.format((balances.values.sum() - reserved - bills).coerceAtLeast(0)),
@@ -130,12 +130,12 @@ fun HomePlanningHighlights(
                 Text(Money.format(predicted), style = MaterialTheme.typography.titleLarge)
                 Text("Based on recorded month-to-date expense pace.", style = MaterialTheme.typography.bodySmall)
             }
-            "Cash" -> PlanningCard("Cash wallet") {
+            "Cash" -> if (balances.containsKey("Cash")) PlanningCard("Cash wallet") {
                 Text(balances["Cash"]?.let(Money::format) ?: "Cash opening balance not set",
                     style = MaterialTheme.typography.titleMedium)
                 Text("Cash expenses are included only when transactions are assigned to Cash.", style = MaterialTheme.typography.bodySmall)
             }
-            "Bills" -> PlanningCard("Unrecorded recurring bills") {
+            "Bills" -> if (bills > 0L) PlanningCard("Unrecorded recurring bills") {
                 Text(Money.format(bills), style = MaterialTheme.typography.titleLarge)
                 Text("Templates without a matching current-month transaction.", style = MaterialTheme.typography.bodySmall)
             }
