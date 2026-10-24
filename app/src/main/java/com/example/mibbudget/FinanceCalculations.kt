@@ -22,11 +22,19 @@ object FinanceCalculations {
         entries.filter { it.timestamp.take(10) >= start.toString() &&
             it.timestamp.take(10) < endExclusive.toString() }
 
-    /** Salary cycles always use a valid day in every month (1–28). */
+    /** Clamp paydays 29–31 to the month's final date without drifting across months. */
+    private fun paydayInMonth(month: YearMonth, payday: Int): LocalDate =
+        month.atDay(payday.coerceIn(1, 31).coerceAtMost(month.lengthOfMonth()))
+
     fun cycleStart(today: LocalDate, payday: Int): LocalDate {
-        val anchor = today.withDayOfMonth(payday.coerceIn(1, 28))
-        return if (today.isBefore(anchor)) anchor.minusMonths(1) else anchor
+        val month = YearMonth.from(today)
+        val anchor = paydayInMonth(month, payday)
+        return if (today.isBefore(anchor)) paydayInMonth(month.minusMonths(1), payday) else anchor
     }
+
+    fun cycleEnd(start: LocalDate, payday: Int): LocalDate =
+        paydayInMonth(YearMonth.from(start).plusMonths(1), payday)
+
 
     /** Past months are actuals; present month is extrapolated from elapsed calendar days. */
     fun spendingForecast(entries: List<Tx>, month: YearMonth, today: LocalDate): Long {
