@@ -1245,10 +1245,39 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     HorizontalDivider()
                     Text("Recurring expense templates",style=MaterialTheme.typography.titleMedium)
                     Text("Templates only; no automatic charges or duplicate entries.")
+                    val recurringSchedulePrefs = remember {
+                        context.getSharedPreferences("recurring_due_dates",android.content.Context.MODE_PRIVATE)
+                    }
                     store.recurring().forEach { (name,value,cat) ->
                         val recordedThisMonth = monthlyTransactions.count { tx ->
                             tx.amountLaari == -value && tx.category == cat &&
                                 tx.description.equals(name, ignoreCase = true)
+                        }
+                        var dueDayInput by remember(name) {
+                            mutableStateOf(recurringSchedulePrefs.getInt(name,0).takeIf { it>0 }?.toString() ?: "")
+                        }
+                        val dueDay=dueDayInput.toIntOrNull()
+                        val today=java.time.LocalDate.now()
+                        val dueThisMonth=dueDay?.let { day ->
+                            today.withDayOfMonth(day.coerceAtMost(today.lengthOfMonth()))
+                        }
+                        if(dueThisMonth!=null && recordedThisMonth==0) {
+                            Text("$name · " + when {
+                                today.isAfter(dueThisMonth) -> "Overdue since $dueThisMonth"
+                                today==dueThisMonth -> "Due today"
+                                else -> "Due $dueThisMonth"
+                            },style=MaterialTheme.typography.bodySmall)
+                        }
+                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                            OutlinedTextField(value=dueDayInput,onValueChange={ dueDayInput=it.take(2) },
+                                label={Text("Due day (1–31)")},singleLine=true,modifier=Modifier.weight(1f))
+                            TextButton(onClick={
+                                val day=dueDayInput.toIntOrNull()
+                                if(day!=null && day in 1..31) {
+                                    recurringSchedulePrefs.edit().putInt(name,day).apply()
+                                    notice="Due date saved for $name"
+                                } else notice="Enter a day from 1 to 31"
+                            }) { Text("Save due day") }
                         }
                         Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                             Text("$name: ${Money.format(value)}",modifier=Modifier.weight(1f))
