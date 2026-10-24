@@ -70,7 +70,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("sms_settings", android.content.Context.MODE_PRIVATE) }
     val securityPrefs=remember { context.getSharedPreferences("app_security",android.content.Context.MODE_PRIVATE) }
-    var lockEnabled by remember { mutableStateOf(securityPrefs.getBoolean("biometric_lock",false)) }
+    var lockEnabled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { securityPrefs.edit().putBoolean("biometric_lock", false).apply() }
     var screenshotPrivacy by remember { mutableStateOf(securityPrefs.getBoolean("screenshot_privacy",false)) }
     DisposableEffect(screenshotPrivacy) {
         val activity=context as? android.app.Activity
@@ -79,7 +80,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         onDispose { }
     }
 
-    var unlocked by remember { mutableStateOf(!lockEnabled) }
+    var unlocked by remember { mutableStateOf(true) }
     var lockError by remember { mutableStateOf("") }
     // Unified biometric and device credential authentication.
     val activity = context as FragmentActivity
@@ -439,7 +440,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    if(lockEnabled && !unlocked) {
+    if(false && lockEnabled && !unlocked) {
         Column(Modifier.fillMaxSize().padding(24.dp),verticalArrangement=Arrangement.Center) {
             Text("MIB Budget Tracker is locked",style=MaterialTheme.typography.headlineSmall)
             Button(onClick={authenticate}) { Text("Unlock with biometrics") }
@@ -1137,7 +1138,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }) { Text("Save recurring template") }
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Biometric app lock",modifier=Modifier.weight(1f))
-                        Switch(checked=lockEnabled,onCheckedChange={ enabled ->
+                        Switch(checked=false,enabled=false,onCheckedChange={ enabled ->
                             if(!enabled || android.os.Build.VERSION.SDK_INT>=28) {
                                 lockEnabled=enabled
                                 securityPrefs.edit().putBoolean("biometric_lock",enabled).apply()
