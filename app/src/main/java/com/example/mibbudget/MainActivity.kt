@@ -1421,6 +1421,52 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    var showChangeHistory by remember { mutableStateOf(false) }
+                    var pendingUndo by remember { mutableStateOf<TransactionAudit.Entry?>(null) }
+                    val recentChanges=remember(revision) { store.recentTransactionChanges(35) }
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text("Transaction edit history",style=MaterialTheme.typography.titleMedium)
+                                TextButton(onClick={showChangeHistory=!showChangeHistory}) {
+                                    Text(if(showChangeHistory) "Hide" else "Review ${recentChanges.size}")
+                                }
+                            }
+                            Text("New additions, edits and deletions are recorded. Undo checks for newer changes before touching the ledger.",
+                                style=MaterialTheme.typography.bodySmall)
+                            if(showChangeHistory) {
+                                if(recentChanges.isEmpty()) Text("No recorded transaction changes yet.")
+                                recentChanges.take(20).forEach { change ->
+                                    Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("${change.operation.lowercase().replaceFirstChar { it.uppercase() }} · ${change.description.take(45)}",
+                                                style=MaterialTheme.typography.bodyMedium)
+                                            Text("${change.changedAt} · ID ${change.txId}" +
+                                                if(change.undone) " · Undone" else "",
+                                                style=MaterialTheme.typography.bodySmall)
+                                        }
+                                        TextButton(onClick={pendingUndo=change},enabled=!change.undone) {
+                                            Text("Undo")
+                                        }
+                                    }
+                                    HorizontalDivider()
+                                }
+                            }
+                        }
+                    }
+                    pendingUndo?.let { change ->
+                        AlertDialog(onDismissRequest={pendingUndo=null},
+                            title={Text("Undo transaction change?")},
+                            text={Text("Reverse ${change.operation.lowercase()} for ${change.description.take(70)}? This only succeeds when the transaction has not changed since this action.")},
+                            confirmButton={TextButton(onClick={
+                                val restored=store.undoTransactionChange(change.id)
+                                pendingUndo=null
+                                revision++
+                                notice=if(restored) "Transaction change reversed" else
+                                    "Undo unavailable: transaction was changed later or has a conflict"
+                            }) { Text("Undo change") }},
+                            dismissButton={TextButton(onClick={pendingUndo=null}) { Text("Cancel") }})
+                    }
                     // Recipient and daily spending rankings use existing transaction data only.
                     var rankingMonth by remember { mutableStateOf(java.time.YearMonth.now().toString()) }
                     var rankingExpanded by remember { mutableStateOf(false) }
