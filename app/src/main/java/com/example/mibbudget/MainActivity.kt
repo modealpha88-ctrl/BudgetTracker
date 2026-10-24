@@ -121,6 +121,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         try {
             val keyguard = context.getSystemService(android.content.Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
             if (keyguard.isDeviceSecure) {
+                lockError = "Opening device screen lock…"
                 val intent = keyguard.createConfirmDeviceCredentialIntent(
                     "Unlock MIB Budget Tracker", "Confirm your device screen lock")
                 if (intent != null) credentialLauncher.launch(intent)
@@ -133,7 +134,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val authenticate: () -> Unit = {
         lockError = ""
         try {
-            if (BiometricManager.from(context).canAuthenticate(biometricAllowed) == BiometricManager.BIOMETRIC_SUCCESS) {
+            val biometricStatus = BiometricManager.from(context).canAuthenticate(biometricAllowed)
+            if (biometricStatus == BiometricManager.BIOMETRIC_SUCCESS) {
+                lockError = "Opening biometric prompt…"
                 prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
                     .setTitle("Unlock MIB Budget Tracker")
                     .setSubtitle("Confirm your fingerprint")
@@ -142,10 +145,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     .build())
             } else {
                 // Fingerprint unavailable: keep the PIN/pattern/password path usable.
-                unlockWithDeviceCredential()
+                lockError = "Biometrics unavailable (Android status $biometricStatus). Try screen lock."
             }
         } catch (error: Exception) {
-            lockError = "Biometric authentication unavailable. Use screen lock instead."
+            lockError = "Biometric launch error: ${error.localizedMessage ?: "unknown error"}"
         }
     }
 
