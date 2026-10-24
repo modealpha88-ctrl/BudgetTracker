@@ -1245,7 +1245,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         if(limit!=null) { LinearProgressIndicator(progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },modifier=Modifier.fillMaxWidth().height(8.dp),strokeCap=androidx.compose.ui.graphics.StrokeCap.Round); if(spent>=limit) Text("Budget reached",color=MaterialTheme.colorScheme.error) }
                     }
                     if(grouped.isEmpty()) Text("No transactions yet. Add one or import a bank SMS.")
-                    OutlinedButton(onClick={pdfLauncher.launch("MIB-Report-${selectedMonth}.pdf")},modifier=Modifier.fillMaxWidth()) { Text("Export monthly PDF report") }
+                    OutlinedButton(onClick={pdfLauncher.launch("BudgetTracker-Report-${selectedMonth}.pdf")},modifier=Modifier.fillMaxWidth()) { Text("Export monthly PDF report") }
                     Text("Monthly spending overview",style=MaterialTheme.typography.titleMedium)
                     val totalSpent=grouped.values.flatten().sumOf { -it.amountLaari }
                     grouped.forEach { (cat,txs) ->
@@ -2229,8 +2229,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 3 -> {
                     Text("Monthly budgets",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-                    val budgetCategories=categories.filter { it!="Income" }
-                    val totalLimit=budgetCategories.sumOf { budgets[it] ?: 0L }
+                    val budgetCategories=categories.filter { it!="Income" && it!="Internal Transfer" }
+                    val totalLimit=budgetCategories.sumOf { cat ->
+                        budgets[cat]?.let { FinanceCalculations.effectiveLimit(
+                            cat,selectedMonth,it,transactions,rolloverEnabled) } ?: 0L
+                    }
                     val totalSpent=monthlyTransactions.filter { it.amountLaari<0 && it.category in budgetCategories }
                         .sumOf { -it.amountLaari }
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
@@ -2267,7 +2270,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Column(Modifier.weight(1f)) {
                                         Text(cat,style=MaterialTheme.typography.titleMedium)
                                         Text("${Money.format(spent)} spent",style=MaterialTheme.typography.bodySmall)
-                                        Text(if(limit>0) "${Money.format(limit)} limit" else "No budget set",
+                                        Text(if(limit>0) "${Money.format(limit)} allowance" else "No budget set",
                                             style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     TextButton(onClick={
