@@ -828,16 +828,60 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             LinearProgressIndicator(progress={if(monthIncome>0) (monthOut.toFloat()/monthIncome).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
                             Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
                             HorizontalDivider()
-                            Text("Top spending categories",style=MaterialTheme.typography.titleSmall)
-                            val topCategories=monthExpenses.groupBy { it.category }.mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
-                                .toList().sortedByDescending { it.second }.take(5)
-                            if(topCategories.isEmpty()) Text("No recorded expenses for this month.",style=MaterialTheme.typography.bodySmall)
-                            topCategories.forEach { (category,total) ->
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text(category,style=MaterialTheme.typography.bodySmall)
-                                    Text(Money.format(total),style=MaterialTheme.typography.bodySmall)
+                            var insightsPieView by remember { mutableStateOf(true) }
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
+                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Top spending categories",style=MaterialTheme.typography.titleSmall)
+                                Row {
+                                    FilterChip(selected=insightsPieView,onClick={insightsPieView=true},label={Text("Pie")})
+                                    Spacer(Modifier.width(6.dp))
+                                    FilterChip(selected=!insightsPieView,onClick={insightsPieView=false},label={Text("List")})
                                 }
-                                LinearProgressIndicator(progress={if(monthOut>0L) (total.toFloat()/monthOut).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
+                            }
+                            val categoryTotals=monthExpenses.groupBy { it.category }
+                                .mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
+                                .toList().sortedByDescending { it.second }
+                            val topCategories=categoryTotals.take(5)
+                            if(categoryTotals.isEmpty()) Text("No recorded expenses for this month.",style=MaterialTheme.typography.bodySmall)
+                            if(insightsPieView && monthOut>0L) {
+                                val chartSlices=if(categoryTotals.size>5)
+                                    topCategories + ("Other categories" to categoryTotals.drop(5).sumOf { it.second })
+                                    else topCategories
+                                val sliceColors=listOf(
+                                    Color(0xFFB5A0FF),Color(0xFF80CBC4),Color(0xFFFFC78E),
+                                    Color(0xFF90CAF9),Color(0xFFF48FB1),Color(0xFFA5A5A5))
+                                Canvas(Modifier.fillMaxWidth().height(190.dp).padding(8.dp)) {
+                                    val diameter=kotlin.math.min(size.width,size.height)
+                                    var start=-90f
+                                    chartSlices.forEachIndexed { index,(_,amount) ->
+                                        val sweep=amount.toFloat()/monthOut.toFloat()*360f
+                                        drawArc(sliceColors[index % sliceColors.size],start,sweep,true,
+                                            topLeft=Offset((size.width-diameter)/2f,(size.height-diameter)/2f),
+                                            size=androidx.compose.ui.geometry.Size(diameter,diameter))
+                                        start+=sweep
+                                    }
+                                }
+                                chartSlices.forEachIndexed { index,(category,total) ->
+                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
+                                        verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                            Box(Modifier.size(10.dp).background(sliceColors[index % sliceColors.size],RoundedCornerShape(3.dp)))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(category,style=MaterialTheme.typography.bodySmall)
+                                        }
+                                        Text("${"%.1f".format(java.util.Locale.US,total.toDouble()*100.0/monthOut)}%",
+                                            style=MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            } else if(!insightsPieView) {
+                                topCategories.forEach { (category,total) ->
+                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                        Text(category,style=MaterialTheme.typography.bodySmall)
+                                        Text(Money.format(total),style=MaterialTheme.typography.bodySmall)
+                                    }
+                                    LinearProgressIndicator(progress={if(monthOut>0L) (total.toFloat()/monthOut).coerceIn(0f,1f) else 0f},
+                                        modifier=Modifier.fillMaxWidth())
+                                }
                             }
                             val net=monthIncome-monthOut
                             Text("Net cash flow: ${Money.format(net)}",style=MaterialTheme.typography.titleSmall)
