@@ -205,6 +205,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var counterpartyFilter by remember { mutableStateOf("All types") }
     var categoryFilter by remember { mutableStateOf("All categories") }
     var merchantFilter by remember { mutableStateOf("") }
+    val merchantRules=remember { context.getSharedPreferences("merchant_category_rules",android.content.Context.MODE_PRIVATE) }
+    var merchantRulesRevision by remember { mutableIntStateOf(0) }
+    var duplicateReviewOnly by remember { mutableStateOf(false) }
+    var showMonthlyComparison by remember { mutableStateOf(false) }
+    var undoCategory by remember { mutableStateOf<Pair<Long,String>?>(null) }
     var transactionMonthFilter by remember { mutableStateOf<YearMonth?>(null) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var categoryFilterExpanded by remember { mutableStateOf(false) }
@@ -1016,6 +1021,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
+                    OutlinedButton(onClick={showMonthlyComparison=!showMonthlyComparison},modifier=Modifier.fillMaxWidth()) { Text(if(showMonthlyComparison) "Hide month comparison" else "Compare with previous month") }
+                    if(showMonthlyComparison) {
+                        val previous=transactions.filter { it.timestamp.startsWith(selectedMonth.minusMonths(1).toString()) && it.amountLaari<0 && it.category!="Internal Transfer" }
+                        val current=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
+                        val previousTotal=previous.sumOf { -it.amountLaari }
+                        val currentTotal=current.sumOf { -it.amountLaari }
+                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
+                            Text("${selectedMonth.minusMonths(1)}: ${Money.format(previousTotal)}")
+                            Text("$selectedMonth: ${Money.format(currentTotal)}")
+                            Text("Difference: ${Money.format(currentTotal-previousTotal)}")
+                            TextButton(onClick={transactionMonthFilter=selectedMonth.minusMonths(1);categoryFilter="All categories";transactionFilter="Expenses";tab=1}) { Text("View previous month transactions") }
+                        } }
+                    }
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                     val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
@@ -1285,7 +1303,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         OutlinedTextField(value=transactionMaxAmount,onValueChange={transactionMaxAmount=it},
                             label={Text("Max MVR")},singleLine=true,modifier=Modifier.weight(1f))
                     }
+                    val possibleDuplicateIds=remember(transactions) {
+                        transactions.groupBy { Triple(it.timestamp.take(16),it.amountLaari,VendorProfiles.key(it.description)) }
+                            .values.filter { it.size>1 }.flatten().map { it.id }.toSet()
+                    }
+                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        FilterChip(selected=duplicateReviewOnly,onClick={duplicateReviewOnly=!duplicateReviewOnly},label={Text("Possible duplicates (${possibleDuplicateIds.size})")})
+                        if(undoCategory!=null) TextButton(onClick={
+                            undoCategory?.let { (id,old) -> store.setTransactionCategory(id,old);revision++ }
+                            undoCategory=null
+                        }) { Text("Undo category change") }
+                    }
                     val filteredTransactions = transactions.filter { t ->
+                        (!duplicateReviewOnly || t.id in possibleDuplicateIds) &&
                         (transactionMonthFilter==null || t.timestamp.startsWith(transactionMonthFilter.toString())) &&
                         (merchantFilter.isBlank() || VendorProfiles.key(t.description)==merchantFilter) &&
                         (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
@@ -1585,7 +1615,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Button(onClick={
                             val v=Money.parseLaari(amount)
                             if(v==null || v<=0 || input.isBlank()) notice="Enter a valid amount and description"
-                            else { store.add(if(income) v else -v,if(income) "Income" else if(category=="Income") "Other" else category,input.trim()); amount="";input="";receiptPending=false;notice="Transaction saved";revision++ }
+                            else {
+                                val chosen=if(income) "Income" else merchantRules.getString(VendorProfiles.key(input.trim()),null) ?: if(category=="Income") "Other" else category
+                                store.add(if(income) v else -v,chosen,input.trim()); amount="";input="";receiptPending=false;notice="Transaction saved";revision++
+                            }
                         }) { Text("Add transaction") }
                             }
                         }
@@ -1990,6 +2023,25 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     tab=1
                                 }) { Text("View all transactions from this merchant") }
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
+                                TextButton(onClick={
+                                    accountFilter=accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"
+                                    merchantFilter=""
+                                    categoryFilter="All categories"
+                                    transactionMonthFilter=null
+                                    selectedTransactionId=null
+                                    tab=1
+                                }) { Text("View transactions from this account") }
+                                val merchantKey=VendorProfiles.key(selectedTransaction.description)
+                                val currentRule=merchantRules.getString(merchantKey,null)
+                                Text("Future merchant category: ${currentRule ?: "Not set"}",style=MaterialTheme.typography.bodySmall)
+                                TextButton(onClick={
+                                    merchantRules.edit().putString(merchantKey,selectedTransaction.category).apply()
+                                    merchantRulesRevision++
+                                    notice="Future manual transactions for this merchant will use ${selectedTransaction.category}"
+                                }) { Text("Remember this merchant category") }
+                                if(currentRule!=null) TextButton(onClick={
+                                    merchantRules.edit().remove(merchantKey).apply();merchantRulesRevision++
+                                }) { Text("Forget merchant rule") }
                                 Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,"Unclassified")}",style=MaterialTheme.typography.bodyMedium)
                                 Box {
                                     OutlinedButton(onClick={counterpartyEditExpanded=true}) { Text("Classify business / individual") }
@@ -2020,6 +2072,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 if(selectedTransaction.category=="Shopping" || selectedTransaction.category=="Food") {
                                     val destination=if(selectedTransaction.category=="Shopping") "Food" else "Shopping"
                                     OutlinedButton(onClick={
+                                        undoCategory=selectedTransaction.id to selectedTransaction.category
                                         store.setTransactionCategory(selectedTransaction.id,destination)
                                         revision++
                                         selectedTransactionId=null
