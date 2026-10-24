@@ -216,6 +216,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var splitAmount by remember { mutableStateOf("") }
     var splitCategory by remember { mutableStateOf("Food") }
     var splitRevision by remember { mutableIntStateOf(0) }
+    var showSplitFilterNote by remember { mutableStateOf(false) }
     val splitPrefs=remember { context.getSharedPreferences("transaction_category_splits",android.content.Context.MODE_PRIVATE) }
     val editHistoryPrefs=remember { context.getSharedPreferences("transaction_edit_history",android.content.Context.MODE_PRIVATE) }
     var historyRevision by remember { mutableIntStateOf(0) }
@@ -1333,6 +1334,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         OutlinedTextField(value=transactionMaxAmount,onValueChange={transactionMaxAmount=it},
                             label={Text("Max MVR")},singleLine=true,modifier=Modifier.weight(1f))
                     }
+                    if(categoryFilter!="All categories" && splitPrefs.all.isNotEmpty()) Text("Split transactions may appear in both allocated categories. Displayed amounts are original bank amounts.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     val possibleDuplicateIds=remember(transactions) {
                         transactions.groupBy { Triple(it.timestamp.take(16),it.amountLaari,VendorProfiles.key(it.description)) }
                             .values.filter { it.size>1 }.flatten().map { it.id }.toSet()
@@ -1345,6 +1347,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }) { Text("Undo category change") }
                     }
                     val filteredTransactions = transactions.filter { t ->
+                        val splitTarget=splitPrefs.getString(t.fingerprint,null)?.substringBefore("|")
+                        val matchesCategory=categoryFilter=="All categories" || t.category==categoryFilter || splitTarget==categoryFilter || (categoryFilter=="Fast Food" && t.description.contains("fast food",true))
                         (!duplicateReviewOnly || t.id in possibleDuplicateIds) &&
                         (transactionMonthFilter==null || t.timestamp.startsWith(transactionMonthFilter.toString())) &&
                         (merchantFilter.isBlank() || VendorProfiles.key(t.description)==merchantFilter) &&
@@ -1352,7 +1356,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
-                        (categoryFilter=="All categories" || t.category==categoryFilter || (categoryFilter=="Fast Food" && t.description.contains("fast food",true))) &&
+                        matchesCategory &&
                         (counterpartyFilter=="All types" || (counterpartyPrefs.getString(t.fingerprint,"Unclassified") ?: "Unclassified")==counterpartyFilter) &&
                         when(transactionFilter) {
                             "Expenses" -> t.amountLaari < 0
