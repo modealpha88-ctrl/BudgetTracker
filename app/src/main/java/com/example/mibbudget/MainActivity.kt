@@ -160,6 +160,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
 
 
     var selectedInternalIds by remember { mutableStateOf(setOf<Long>()) }
+    var categorySelectionMode by remember { mutableStateOf(false) }
+    var categorySelectedIds by remember { mutableStateOf(setOf<Long>()) }
     var confirmInternalSelection by remember { mutableStateOf(false) }
     val originalInternalCategories=remember { context.getSharedPreferences("internal_transfer_original_categories",android.content.Context.MODE_PRIVATE) }
 
@@ -1440,6 +1442,44 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }) { Text("Confirm ${selectedInternalIds.size}") }},
                         dismissButton={TextButton(onClick={confirmInternalSelection=false}) { Text("Cancel") }}
                     )
+                    if(categoryFilter=="Shopping" || categoryFilter=="Food") {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Text("Reclassify $categoryFilter transactions",style=MaterialTheme.typography.titleMedium)
+                                val targetCategory=if(categoryFilter=="Shopping") "Food" else "Shopping"
+                                Text("Tap individual transactions for Move to $targetCategory, or select several below.",
+                                    style=MaterialTheme.typography.bodySmall)
+                                TextButton(onClick={
+                                    categorySelectionMode=!categorySelectionMode
+                                    categorySelectedIds=emptySet()
+                                    if(categorySelectionMode) {
+                                        owedSelectionMode=false
+                                        internalSelectionMode=false
+                                    }
+                                }) { Text(if(categorySelectionMode) "Cancel category selection" else "Select transactions") }
+                                if(categorySelectionMode) {
+                                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                        TextButton(onClick={
+                                            categorySelectedIds=categorySelectedIds+
+                                                orderedTransactions.filter { it.category==categoryFilter }.map { it.id }
+                                        }) { Text("Select all matching") }
+                                        TextButton(onClick={categorySelectedIds=emptySet()}) { Text("Clear") }
+                                    }
+                                    Button(enabled=categorySelectedIds.isNotEmpty(),onClick={
+                                        transactions.filter { it.id in categorySelectedIds && it.category==categoryFilter }
+                                            .forEach { store.setTransactionCategory(it.id,targetCategory) }
+                                        val changed=categorySelectedIds.size
+                                        categorySelectedIds=emptySet()
+                                        categorySelectionMode=false
+                                        revision++
+                                        notice="Reclassified $changed transactions to $targetCategory"
+                                    },modifier=Modifier.fillMaxWidth()) {
+                                        Text("Move ${categorySelectedIds.size} to $targetCategory")
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if(orderedTransactions.isEmpty()) Text("No transactions match this filter.",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     var lastTransactionDay = ""
                     orderedTransactions.take(150).forEach { t ->
@@ -1450,7 +1490,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         val merchant=TransactionPresentation.label(t.description)
                         Card(onClick={
-                            if(owedSelectionMode) owedSelectedIds=if(t.id in owedSelectedIds) owedSelectedIds-t.id else owedSelectedIds+t.id
+                            if(categorySelectionMode) categorySelectedIds=if(t.id in categorySelectedIds) categorySelectedIds-t.id else categorySelectedIds+t.id
+                            else if(owedSelectionMode) owedSelectedIds=if(t.id in owedSelectedIds) owedSelectedIds-t.id else owedSelectedIds+t.id
                             else if(internalSelectionMode) selectedInternalIds=if(t.id in selectedInternalIds) selectedInternalIds-t.id else selectedInternalIds+t.id
                             else selectedTransactionId=t.id
                         },modifier=Modifier.fillMaxWidth().padding(vertical=2.dp),shape=RoundedCornerShape(16.dp),
