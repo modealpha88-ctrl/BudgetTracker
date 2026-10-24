@@ -364,7 +364,63 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         }
         return root.toString(2)
     }
+    data class BackupPreview(
+        val tableCounts: Map<String,Int>,
+        val existingTransactions: Int,
+        val newTransactions: Int
+    )
+
+    /** Validate the complete SQLite backup structure without writing any data. */
+    fun previewJson(text: String): BackupPreview {
+        require(text.length <= 20_000_000) { "Backup too large" }
+        val root=JSONObject(text)
+        require(root.optString("format")=="mib-budget-backup" &&
+            root.optInt("version")==1) { "Unsupported backup" }
+        val specs=mapOf(
+            "transactions" to listOf("amount_laari","category","description","created_at","fingerprint"),
+            "budgets" to listOf("category","limit_laari"),
+            "foreign_transactions" to listOf("amount_minor","currency","merchant","occurred_at","fingerprint"),
+            "declined_transactions" to listOf("amount_laari","currency","merchant","occurred_at","reason","fingerprint"),
+            "bml_pending" to listOf("amount_laari","occurred_at","fingerprint"),
+            "savings_goals" to listOf("name","target_laari","saved_laari"),
+            "recurring_expenses" to listOf("name","amount_laari","category"),
+            "account_labels" to listOf("fingerprint","label"),
+            "merchant_category_rules" to listOf("merchant_key","category"),
+            "transaction_audit_history" to TransactionAudit.backupColumns
+        )
+        val counts=linkedMapOf<String,Int>()
+        val incomingFingerprints=mutableSetOf<String>()
+        specs.forEach { (table,cols) ->
+            val rows=root.optJSONArray(table) ?: if(table in
+                setOf("merchant_category_rules","transaction_audit_history")) JSONArray()
+                else throw IllegalArgumentException("Missing $table")
+            require(rows.length()<=100000) { "Too many $table records" }
+            counts[table]=rows.length()
+            for(i in 0 until rows.length()) {
+                val item=rows.getJSONObject(i)
+                cols.forEach { key ->
+                    require(item.has(key) && !item.isNull(key)) { "Invalid $table row" }
+                    require(item.get(key) is String || item.get(key) is Number) {
+                        "Unsupported $table value"
+                    }
+                }
+                if(table=="transactions") {
+                    val fingerprint=item.getString("fingerprint")
+                    require(fingerprint.isNotBlank()) { "Missing transaction fingerprint" }
+                    incomingFingerprints.add(fingerprint)
+                }
+            }
+        }
+        val existing=mutableSetOf<String>()
+        readableDatabase.rawQuery("SELECT fingerprint FROM transactions",null).use { c ->
+            while(c.moveToNext()) existing.add(c.getString(0))
+        }
+        val duplicates=incomingFingerprints.count { it in existing }
+        return BackupPreview(counts,duplicates,incomingFingerprints.size-duplicates)
+    }
+
     fun restoreJson(text: String): Int {
+        previewJson(text)
         require(text.length <= 20_000_000) { "Backup too large" }
         val root=JSONObject(text)
         require(root.optString("format")=="mib-budget-backup" && root.optInt("version")==1) { "Unsupported backup" }
