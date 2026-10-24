@@ -1,0 +1,35 @@
+name: Android feature validation
+on:
+  push:
+    branches:
+      - feature/transaction-drilldowns-20261024
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      # GitHub Ubuntu runners already provide ANDROID_HOME and Android SDK command-line tools.
+      # setup-android@v3 currently fails trying to install the retired SDK package "tools".
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Compile and test debug
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: MIBBudgetTracker-feature-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
