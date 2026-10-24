@@ -320,17 +320,17 @@ fun FinancialPlanningScreen(
 
     PlanningCard("Salary-cycle budgets") {
         var paydayText by remember { mutableStateOf(prefs.getInt("payday", 1).toString()) }
-        val payday = prefs.getInt("payday", 1).coerceIn(1,28)
+        val payday = prefs.getInt("payday", 1).coerceIn(1,31)
         val start = FinanceCalculations.cycleStart(today, payday)
-        val end = start.plusMonths(1)
+        val end = FinanceCalculations.cycleEnd(start, payday)
         val cycleEntries = FinanceCalculations.periodEntries(entries, start, end)
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             OutlinedTextField(value = paydayText, onValueChange = { paydayText = it.take(2) },
-                modifier = Modifier.weight(1f), label = { Text("Payday (1–28)") }, singleLine = true)
+                modifier = Modifier.weight(1f), label = { Text("Payday (1–31)") }, singleLine = true)
             Spacer(Modifier.width(8.dp))
             Button(onClick = {
                 val day = paydayText.toIntOrNull()
-                if (day == null || day !in 1..28) onNotice("Choose a payday between 1 and 28.")
+                if (day == null || day !in 1..31) onNotice("Choose a payday between 1 and 31.")
                 else { prefs.edit().putInt("payday", day).apply(); localRevision++; onChanged(); onNotice("Payday saved.") }
             }) { Text("Save") }
         }
