@@ -1318,6 +1318,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         name to entries.sumOf { kotlin.math.abs(it.amountLaari) }
                     }.sortedByDescending { it.second }
                     val monthSpend = rankedExpenses.sumOf { kotlin.math.abs(it.amountLaari) }
+                    val previousRankingMonth = runCatching {
+                        java.time.YearMonth.parse(rankingMonth).minusMonths(1).toString()
+                    }.getOrDefault("")
+                    val previousMonthSpend = transactions.filter {
+                        it.amountLaari < 0 && it.timestamp.startsWith(previousRankingMonth) &&
+                            !it.category.contains("Internal Transfer",ignoreCase=true)
+                    }.sumOf { kotlin.math.abs(it.amountLaari) }
                     val dailySpend = rankedExpenses.groupBy { it.timestamp.take(10) }
                         .mapValues { (_, entries) -> entries.sumOf { kotlin.math.abs(it.amountLaari) } }
                     val highestDay = dailySpend.maxByOrNull { it.value }
@@ -1336,6 +1343,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text("Spending rankings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                            Text("Previous month: ${Money.format(previousMonthSpend)} · ${if(monthSpend>=previousMonthSpend) "Increase" else "Decrease"} of ${Money.format(kotlin.math.abs(monthSpend-previousMonthSpend))}",
+                                style=MaterialTheme.typography.bodySmall)
                             Text("Total spent: ${Money.format(monthSpend)} · ${rankedExpenses.size} transactions",
                                 style=MaterialTheme.typography.bodyMedium)
                             if(highestDay!=null) Text("Highest spending day: ${highestDay.key} · ${Money.format(highestDay.value)}",
