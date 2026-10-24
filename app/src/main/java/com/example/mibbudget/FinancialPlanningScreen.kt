@@ -66,13 +66,13 @@ private fun pots(context: Context): Map<String, Long> =
 fun HomePlanningControls(context: Context, onChanged: () -> Unit) {
     val prefs = remember(context) { context.getSharedPreferences("dashboard_layout", Context.MODE_PRIVATE) }
     var order by remember { mutableStateOf(readHighlightOrder(prefs.getString("planning_order", null))) }
-    var hidden by remember { mutableStateOf(prefs.getStringSet("planning_hidden", emptySet())?.toSet() ?: emptySet()) }
+    var hidden by remember { mutableStateOf(readHiddenHighlights(prefs.all["planning_hidden"])) }
     Text("Planning highlights: visibility and order", style = MaterialTheme.typography.titleSmall)
     order.forEachIndexed { index, name ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Checkbox(checked = name !in hidden, onCheckedChange = { checked ->
                 hidden = if (checked) hidden - name else hidden + name
-                prefs.edit().putStringSet("planning_hidden", hidden).apply()
+                prefs.edit().putString("planning_hidden", hidden.joinToString("|")).apply()
                 onChanged()
             })
             Text(name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
@@ -90,6 +90,13 @@ fun HomePlanningControls(context: Context, onChanged: () -> Unit) {
     }
 }
 
+/** Supports the first release's StringSet preference while making new backups portable. */
+private fun readHiddenHighlights(value: Any?): Set<String> = when (value) {
+    is String -> value.split("|").filter { it in planningHighlights }.toSet()
+    is Set<*> -> value.filterIsInstance<String>().filter { it in planningHighlights }.toSet()
+    else -> emptySet()
+}
+
 private fun readHighlightOrder(value: String?): List<String> {
     val parsed = value?.split("|")?.filter { it in planningHighlights }?.distinct().orEmpty()
     return parsed + planningHighlights.filterNot { it in parsed }
@@ -102,7 +109,7 @@ fun HomePlanningHighlights(
 ) {
     val prefs = remember(context) { context.getSharedPreferences("dashboard_layout", Context.MODE_PRIVATE) }
     val order = remember(layoutRevision) { readHighlightOrder(prefs.getString("planning_order", null)) }
-    val hidden = remember(layoutRevision) { prefs.getStringSet("planning_hidden", emptySet())?.toSet() ?: emptySet() }
+    val hidden = remember(layoutRevision) { readHiddenHighlights(prefs.all["planning_hidden"]) }
     val balances = plannedBalances(context, entries, labels)
     val reserved = pots(context).values.sum()
     val bills = upcomingBills(context, store, entries)
