@@ -1278,7 +1278,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
-                        (categoryFilter=="All categories" || t.category==categoryFilter || (categoryFilter=="Fast Food" && t.description.contains("fast food",true))) &&
+                        (categoryFilter=="All categories" || t.category==categoryFilter) &&
                         (counterpartyFilter=="All types" || (counterpartyPrefs.getString(t.fingerprint,"Unclassified") ?: "Unclassified")==counterpartyFilter) &&
                         when(transactionFilter) {
                             "Expenses" -> t.amountLaari < 0
@@ -1995,7 +1995,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 run {
                                     var showCategoryChoices by remember(selectedTransaction.id) { mutableStateOf(false) }
-                                    val availableCategories = (listOf("Food","Fast Food","Groceries","Transport","Bills","Shopping","Health","Transfers","Internal Transfer","Other","Income") +
+                                    val availableCategories = (categories +
                                         transactions.map { it.category }).filter { it.isNotBlank() }.distinct().filter { it != selectedTransaction.category }
                                     Box(Modifier.fillMaxWidth()) {
                                         OutlinedButton(onClick={showCategoryChoices=true},modifier=Modifier.fillMaxWidth()) {
