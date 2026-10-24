@@ -425,6 +425,9 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val db = writableDatabase
         db.beginTransaction()
         try {
+            val pendingExists = db.rawQuery("SELECT 1 FROM bml_pending WHERE id=? AND fingerprint=?",
+                arrayOf(tx.id.toString(),tx.fingerprint)).use { it.moveToFirst() }
+            if(!pendingExists) return false
             if (approve && !internalTransfer) {
                 val v = android.content.ContentValues().apply {
                     put("amount_laari", tx.amountLaari); put("category", "Incoming Transfer")
