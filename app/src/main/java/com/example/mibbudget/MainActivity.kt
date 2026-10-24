@@ -229,6 +229,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var duplicateReviewOnly by remember { mutableStateOf(false) }
     var showMonthlyComparison by remember { mutableStateOf(false) }
     var undoEdit by remember { mutableStateOf<Tx?>(null) }
+    var undoEditExpected by remember { mutableStateOf<Triple<Long,String,String>?>(null) }
     var undoCategory by remember { mutableStateOf<Pair<Long,String>?>(null) }
     var splitTransactionId by remember { mutableStateOf<Long?>(null) }
     var splitAmount by remember { mutableStateOf("") }
@@ -467,7 +468,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             listOf(0 to "Home",1 to "Transactions",4 to "Accounts",5 to "Money Owed",7 to "More").forEachIndexed { i, (destination,label) ->
                 NavigationBarItem(selected=tab==destination || (destination==7 && tab in listOf(2,3,6)) || (destination==4 && tab==8),
                     onClick={tab=destination},icon={Text(listOf("⌂","⇄","▣","◎","⋯")[i])},
-                    label={Text(label,maxLines=1,style=MaterialTheme.typography.labelSmall)})
+                    label={Text(label,maxLines=2,style=MaterialTheme.typography.labelSmall)})
             }
         }
     }) { padding ->
@@ -1498,9 +1499,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     if(undoEdit!=null) TextButton(onClick={
                         undoEdit?.let { old ->
-                            if(store.updateTransaction(old.id,old.amountLaari,old.category,old.description)) {
+                            val expected=undoEditExpected
+                            if(expected!=null && store.undoTransactionEdit(old,expected.first,expected.second,expected.third)) {
                                 recordEdit("Undid edit #${old.id}");revision++;notice="Transaction edit undone"
-                            }
+                            } else notice="Cannot undo: this transaction changed again or was deleted"
                         };undoEdit=null
                     }) { Text("Undo transaction edit") }
                     Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -1586,13 +1588,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         editingDebtKey=key
                                         notice="Debt group saved"
                                     },modifier=Modifier.fillMaxWidth()) { Text(if(editingDebtKey==null) "Save new debt group" else "Update debt group") }
-                                Text("Raw outgoing minus incoming: ${displayMoney(lent-repaid)}",
-                                    style=MaterialTheme.typography.bodySmall)
-                                // Previous calculator display retained for comparison.
-                                Text("Estimated outstanding: ${displayMoney(lent-repaid)}",
-                                    style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold,
-                                    color=if(lent-repaid<0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                                Text("Outgoing selected payments count as money lent; incoming payments count as repayments. Select only transactions related to the debt. A negative balance means more was received than sent.",
+                                Text("Select only transactions related to this debt. The direction determines whether outgoing payments are lending or repayments. A negative balance indicates overpayment.",
                                     style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick={
@@ -1811,7 +1807,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         },confirmButton={TextButton(onClick={
                             val original=transactions.firstOrNull { it.id==editingId }
                             val v=Money.parseLaari(editingAmount)
-                            if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { undoEdit=original;recordEdit("Edited #${original.id}: ${original.category} ${Money.format(original.amountLaari)} -> $editingCategory ${Money.format(if(original.amountLaari>0) v else -v)}");revision++;notice="Transaction updated";editingId=null }
+                            if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { undoEdit=original;undoEditExpected=Triple(if(original.amountLaari>0) v else -v,editingCategory.take(40),editingDescription.trim().take(120));undoCategory=null;recordEdit("Edited #${original.id}: ${original.category} ${Money.format(original.amountLaari)} -> $editingCategory ${Money.format(if(original.amountLaari>0) v else -v)}");revision++;notice="Transaction updated";editingId=null }
                             else notice="Enter a valid amount and description"
                         }) { Text("Save") }},dismissButton={TextButton(onClick={editingId=null}) { Text("Cancel") }})
                     }
@@ -2246,7 +2242,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Text(displayMoney(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
                                 Text("Original bank description",style=MaterialTheme.typography.labelMedium)
-                                Text(selectedTransaction.description,style=MaterialTheme.typography.bodySmall)
+                                Text(if(hideAmounts) "Show amounts to view the original bank description." else selectedTransaction.description,style=MaterialTheme.typography.bodySmall)
                                 if(recipientEdit && isTransfer) {
                                     OutlinedTextField(value=recipientText,onValueChange={recipientText=it.take(100)},
                                         label={Text("Recipient name")},singleLine=true,modifier=Modifier.fillMaxWidth())
@@ -2328,7 +2324,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 if(selectedTransaction.category=="Shopping" || selectedTransaction.category=="Food") {
                                     val destination=if(selectedTransaction.category=="Shopping") "Food" else "Shopping"
                                     OutlinedButton(onClick={
-                                        undoCategory=selectedTransaction.id to selectedTransaction.category
+                                        undoEdit=null;undoCategory=selectedTransaction.id to selectedTransaction.category
                                         recordEdit("Reclassified #${selectedTransaction.id}: ${selectedTransaction.category} -> $destination")
                                         store.setTransactionCategory(selectedTransaction.id,destination)
                                         revision++

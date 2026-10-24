@@ -277,6 +277,20 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         }
         return writableDatabase.update("transactions", v, "id=?", arrayOf(id.toString())) > 0
     }
+    /** Restore exactly what an edit replaced, only while its resulting values still match. */
+    fun undoTransactionEdit(original: Tx, expectedAmount: Long, expectedCategory: String, expectedDescription: String): Boolean {
+        val values = ContentValues().apply {
+            put("amount_laari", original.amountLaari)
+            put("category", original.category)
+            put("description", original.description)
+        }
+        return writableDatabase.update(
+            "transactions", values,
+            "id=? AND amount_laari=? AND category=? AND description=?",
+            arrayOf(original.id.toString(), expectedAmount.toString(), expectedCategory, expectedDescription)
+        ) > 0
+    }
+
     /** Removes only records earlier than the chosen ISO date. Caller must confirm and back up. */
     fun deleteTransactionsBefore(date: String): Int {
         require(Regex("""[0-9]{4}-[0-9]{2}-[0-9]{2}""").matches(date))
