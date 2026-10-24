@@ -20,7 +20,7 @@ data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String,
 
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 7) {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 8) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
@@ -31,6 +31,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         db.execSQL("CREATE TABLE declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+        TransactionAudit.install(db)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 7) db.execSQL("CREATE TABLE IF NOT EXISTS merchant_category_rules(merchant_key TEXT PRIMARY KEY, category TEXT NOT NULL)")
@@ -42,6 +43,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         if (oldVersion < 3) db.execSQL("CREATE TABLE IF NOT EXISTS declined_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, reason TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 5) db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
+        if (oldVersion < 8) TransactionAudit.install(db)
     }
 
 
@@ -343,7 +345,8 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "savings_goals" to listOf("name","target_laari","saved_laari"),
             "recurring_expenses" to listOf("name","amount_laari","category"),
             "account_labels" to listOf("fingerprint","label"),
-            "merchant_category_rules" to listOf("merchant_key","category")
+            "merchant_category_rules" to listOf("merchant_key","category"),
+            "transaction_audit_history" to TransactionAudit.backupColumns
         )
         specs.forEach { (table,cols) ->
             val rows=JSONArray()
@@ -374,12 +377,14 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "savings_goals" to listOf("name","target_laari","saved_laari"),
             "recurring_expenses" to listOf("name","amount_laari","category"),
             "account_labels" to listOf("fingerprint","label"),
-            "merchant_category_rules" to listOf("merchant_key","category")
+            "merchant_category_rules" to listOf("merchant_key","category"),
+            "transaction_audit_history" to TransactionAudit.backupColumns
         )
         // Validate every row before any database write.
         var total=0
         specs.forEach { (table,cols) ->
-            val rows=root.optJSONArray(table) ?: if(table=="merchant_category_rules") JSONArray() else throw IllegalArgumentException("Missing $table")
+            val rows=root.optJSONArray(table) ?: if(table=="merchant_category_rules" ||
+                table=="transaction_audit_history") JSONArray() else throw IllegalArgumentException("Missing $table")
             require(rows.length()<=100000) { "Too many records" }
             for(i in 0 until rows.length()) {
                 val item=rows.getJSONObject(i)
@@ -389,6 +394,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val db=writableDatabase
         db.beginTransaction()
         try {
+            db.execSQL("UPDATE transaction_audit_control SET enabled=0 WHERE id=1")
             specs.forEach { (table,cols) ->
                 val rows=root.optJSONArray(table) ?: JSONArray()
                 for(i in 0 until rows.length()) {
@@ -405,6 +411,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                     if(db.insertWithOnConflict(table,null,v,SQLiteDatabase.CONFLICT_IGNORE)!=-1L) total++
                 }
             }
+            db.execSQL("UPDATE transaction_audit_control SET enabled=1 WHERE id=1")
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
         return total
@@ -569,6 +576,15 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             return changed
         } finally { db.endTransaction() }
     }
+
+
+    /** Audit entries are recorded at SQLite level, including edits outside the UI. */
+    fun recentTransactionChanges(limit: Int = 30): List<TransactionAudit.Entry> =
+        TransactionAudit.recent(readableDatabase,limit)
+
+    /** Undo fails safely when another operation changed the transaction later. */
+    fun undoTransactionChange(historyId: Long): Boolean =
+        TransactionAudit.undo(writableDatabase,historyId)
 
     fun setTransactionCategory(id: Long, category: String) {
         require(category.isNotBlank())
