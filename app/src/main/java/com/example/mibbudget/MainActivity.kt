@@ -1006,8 +1006,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     val startDay=selectedMonth.atDay(1)
                                     val endDay=selectedMonth.atEndOfMonth()
                                     val inMonth=anchorDay!=null && !anchorDay.isBefore(startDay) && !anchorDay.isAfter(endDay)
-                                    Text(Money.format(anchorMinor),style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                                    Text("Bank balance · $anchorDate",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val estimatedBalance=FinanceCalculations.projectedBalance("MIB", anchorMinor, anchorDate, transactions, accountLabels, java.time.LocalDate.now())
+                                    Text(estimatedBalance?.let(Money::format) ?: "Estimate unavailable",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                                    Text("Estimated current balance · recorded activity",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Last verified bank balance: ${Money.format(anchorMinor)} · $anchorDate",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     if(inMonth) {
                                         val movementToAnchor=accountMonthTransactions.filter { it.timestamp.take(10)<=anchorDate }.sumOf { it.amountLaari }
                                         val opening=anchorMinor-movementToAnchor
