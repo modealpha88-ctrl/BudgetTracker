@@ -293,6 +293,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var showDashboardOptions by remember { mutableStateOf(false) }
     var insightsExpanded by remember { mutableStateOf(dashboardPrefs.getBoolean("insights_expanded",true)) }
     var selectedAccountCard by remember { mutableStateOf(dashboardPrefs.getString("account_card","MIB") ?: "MIB") }
+    var dedicatedAccountOpen by remember { mutableStateOf(false) }
+    var accountBalanceRevision by remember { mutableIntStateOf(0) }
     var showSpendingHeatmap by remember { mutableStateOf(dashboardPrefs.getBoolean("heatmap",true)) }
     var planningLayoutRevision by remember { mutableIntStateOf(0) }
     var balanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
@@ -318,6 +320,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val transactions = store.all()
     val csvBaselineReady = remember(revision) { transactions.any { it.fingerprint.startsWith("csv-") } }
     val accountLabels = store.accounts()
+    if(dedicatedAccountOpen) {
+        DedicatedAccountScreen(
+            context=context,
+            initialAccount=selectedAccountCard,
+            transactions=transactions,
+            labels=accountLabels,
+            onDismiss={ dedicatedAccountOpen=false;accountBalanceRevision++ },
+            onTransactions={ selected ->
+                dedicatedAccountOpen=false
+                accountBalanceRevision++
+                tab=1
+                accountFilter=selected
+                showAdvancedFilters=true
+            }
+        )
+    }
     val declinedTransactions = remember(revision) { store.declined() }
     val foreignTransactions = remember(revision) { store.foreign() }
     val pendingBml = remember(revision) { store.pendingBml() }
@@ -835,6 +853,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         val accountKey=selectedAccountCard.lowercase(java.util.Locale.ROOT)
                         val minor=balancePrefs.getLong("${accountKey}_minor",Long.MIN_VALUE)
+                        val accountRefresh=accountBalanceRevision
                         val anchorDateForCard=balancePrefs.getString("${accountKey}_date","").orEmpty()
                         val anchorDayForCard=runCatching { java.time.LocalDate.parse(anchorDateForCard) }.getOrNull()
                         val todayForCard=java.time.LocalDate.now()
@@ -844,12 +863,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 tx.timestamp.take(10)>anchorDateForCard &&
                                 tx.timestamp.take(10)<=todayForCard.toString()
                             }.sumOf { it.amountLaari } else 0L
-                        val projectedMinor=if(minor!=Long.MIN_VALUE && anchorDayForCard!=null) minor+cardMovements else Long.MIN_VALUE
+                        val projectedMinor=FinanceCalculations.projectedBalance(
+                            selectedAccountCard,minor,anchorDateForCard,transactions,accountLabels,todayForCard)
+                            ?: Long.MIN_VALUE
                         Card(onClick={
-                            dashboardView="Account balance"
                             accountChoice=selectedAccountCard
-                            historicalBalanceDate=java.time.LocalDate.now().toString()
-                            accountNavigationScope.launch { accountSectionRequester.bringIntoView() }
+                            dedicatedAccountOpen=true
                         },
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
                             modifier=Modifier.fillMaxWidth()) {
