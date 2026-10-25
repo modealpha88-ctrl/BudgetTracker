@@ -43,6 +43,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -281,6 +284,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
     val balancePrefs=remember { context.getSharedPreferences("balance_anchor",android.content.Context.MODE_PRIVATE) }
     var dashboardView by remember { mutableStateOf("Cash flow") }
+    val accountSectionRequester = remember { BringIntoViewRequester() }
+    val accountNavigationScope = rememberCoroutineScope()
     val dashboardPrefs=remember { context.getSharedPreferences("dashboard_layout",android.content.Context.MODE_PRIVATE) }
     var showAccountCards by remember { mutableStateOf(dashboardPrefs.getBoolean("accounts",true)) }
     var showSpendingInsights by remember { mutableStateOf(dashboardPrefs.getBoolean("insights",true)) }
@@ -827,15 +832,34 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 },label={Text(bank)})
                             }
                         }
-                        val minor=balancePrefs.getLong("${selectedAccountCard.lowercase(java.util.Locale.ROOT)}_minor",Long.MIN_VALUE)
-                        Card(onClick={dashboardView="Account balance";accountChoice=selectedAccountCard},
+                        val accountKey=selectedAccountCard.lowercase(java.util.Locale.ROOT)
+                        val minor=balancePrefs.getLong("${accountKey}_minor",Long.MIN_VALUE)
+                        val anchorDateForCard=balancePrefs.getString("${accountKey}_date","").orEmpty()
+                        val anchorDayForCard=runCatching { java.time.LocalDate.parse(anchorDateForCard) }.getOrNull()
+                        val todayForCard=java.time.LocalDate.now()
+                        val cardMovements=if(anchorDayForCard!=null && !anchorDayForCard.isAfter(todayForCard))
+                            transactions.filter { tx ->
+                                FinanceCalculations.assignedAccount(tx,accountLabels)==selectedAccountCard &&
+                                tx.timestamp.take(10)>anchorDateForCard &&
+                                tx.timestamp.take(10)<=todayForCard.toString()
+                            }.sumOf { it.amountLaari } else 0L
+                        val projectedMinor=if(minor!=Long.MIN_VALUE && anchorDayForCard!=null) minor+cardMovements else Long.MIN_VALUE
+                        Card(onClick={
+                            dashboardView="Account balance"
+                            accountChoice=selectedAccountCard
+                            historicalBalanceDate=java.time.LocalDate.now().toString()
+                            accountNavigationScope.launch { accountSectionRequester.bringIntoView() }
+                        },
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
                             modifier=Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Text("$selectedAccountCard · Account snapshot",color=MaterialTheme.colorScheme.primary)
-                                Text(if(minor==Long.MIN_VALUE) "Balance not set" else Money.format(minor),
+                                Text(if(projectedMinor==Long.MIN_VALUE) "Balance not set" else Money.format(projectedMinor),
                                     style=MaterialTheme.typography.headlineMedium)
-                                Text("Tap to manage balance",style=MaterialTheme.typography.bodySmall)
+                                Text(if(projectedMinor==Long.MIN_VALUE) "Tap to set balance" else
+                                    "Estimated today · ${anchorDateForCard} verified snapshot + recorded movements",
+                                    style=MaterialTheme.typography.bodySmall)
+                                Text("Tap to manage balance →",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -1031,7 +1055,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.bringIntoViewRequester(accountSectionRequester),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected=dashboardView=="Cash flow",onClick={dashboardView="Cash flow"},label={Text("Cash flow")})
                         FilterChip(selected=dashboardView=="Account balance",onClick={dashboardView="Account balance"},label={Text("Account balance")})
                     }
@@ -1177,7 +1201,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text("Save a dated ${accountChoice} balance snapshot first.",style=MaterialTheme.typography.bodySmall)
                                 else {
                                     val movement=transactions.filter { tx ->
-                                        (accountLabels[tx.fingerprint] ?: if(accountChoice=="MIB" && tx.fingerprint.startsWith("mib-",true)) "MIB" else "Unassigned")==accountChoice &&
+                                        FinanceCalculations.assignedAccount(tx,accountLabels)==accountChoice &&
                                         (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
                                          else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
                                     }.sumOf { it.amountLaari }
