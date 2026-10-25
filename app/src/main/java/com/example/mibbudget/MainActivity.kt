@@ -899,149 +899,34 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
                             HorizontalDivider()
                             var spendingChartStyle by remember { mutableStateOf(dashboardPrefs.getString("spending_chart_style","Pie") ?: "Pie") }
-                            var selectedSunburstCategory by remember { mutableStateOf<String?>(null) }
-                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
-                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("Spending breakdown",style=MaterialTheme.typography.titleSmall)
-                            }
-                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
-                                    FilterChip(selected=spendingChartStyle=="Pie",onClick={spendingChartStyle="Pie";dashboardPrefs.edit().putString("spending_chart_style","Pie").apply()},label={Text("Pie")})
-                                    Spacer(Modifier.width(6.dp))
-                                    FilterChip(selected=spendingChartStyle=="Sunburst",onClick={spendingChartStyle="Sunburst";dashboardPrefs.edit().putString("spending_chart_style","Sunburst").apply()},label={Text("Sunburst")})
-                                    Spacer(Modifier.width(6.dp))
-                                    FilterChip(selected=spendingChartStyle=="List",onClick={spendingChartStyle="List";dashboardPrefs.edit().putString("spending_chart_style","List").apply()},label={Text("List")})
-                            }
-                            val categoryTotals=monthExpenses.groupBy { it.category }
-                                .mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
-                                .toList().sortedByDescending { it.second }
-                            val topCategories=categoryTotals.take(5)
-                            if(categoryTotals.isEmpty()) Text("No recorded expenses for this month.",style=MaterialTheme.typography.bodySmall)
-                            if(spendingChartStyle=="Pie" && monthOut>0L) {
-                                val chartSlices=if(categoryTotals.size>5)
-                                    topCategories + ("Other categories" to categoryTotals.drop(5).sumOf { it.second })
-                                    else topCategories
-                                val sliceColors=listOf(
-                                    Color(0xFFB5A0FF),Color(0xFF80CBC4),Color(0xFFFFC78E),
-                                    Color(0xFF90CAF9),Color(0xFFF48FB1),Color(0xFFA5A5A5))
-                                Canvas(Modifier.fillMaxWidth().height(190.dp).padding(8.dp)) {
-                                    val diameter=kotlin.math.min(size.width,size.height)
-                                    var start=-90f
-                                    chartSlices.forEachIndexed { index,(_,amount) ->
-                                        val sweep=amount.toFloat()/monthOut.toFloat()*360f
-                                        drawArc(sliceColors[index % sliceColors.size],start,sweep,true,
-                                            topLeft=Offset((size.width-diameter)/2f,(size.height-diameter)/2f),
-                                            size=androidx.compose.ui.geometry.Size(diameter,diameter))
-                                        start+=sweep
-                                    }
+                            SpendingBreakdown(
+                                expenses=monthExpenses,
+                                initialStyle=spendingChartStyle,
+                                onStyleChange={ choice ->
+                                    spendingChartStyle=choice
+                                    dashboardPrefs.edit().putString("spending_chart_style",choice).apply()
+                                },
+                                onCategory={ category ->
+                                    categoryFilter=category
+                                    categoryDrilldownMonth=selectedMonth
+                                    transactionFilter="Expenses"
+                                    accountFilter="All accounts"
+                                    counterpartyFilter="All types"
+                                    searchText=""
+                                    showAdvancedFilters=true
+                                    tab=1
+                                },
+                                onMerchant={ category,merchant ->
+                                    categoryFilter=category
+                                    categoryDrilldownMonth=selectedMonth
+                                    transactionFilter="Expenses"
+                                    accountFilter="All accounts"
+                                    counterpartyFilter="All types"
+                                    searchText=merchant
+                                    showAdvancedFilters=true
+                                    tab=1
                                 }
-                                chartSlices.forEachIndexed { index,(category,total) ->
-                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
-                                        verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                            Box(Modifier.size(10.dp).background(sliceColors[index % sliceColors.size],RoundedCornerShape(3.dp)))
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(category,style=MaterialTheme.typography.bodySmall)
-                                        }
-                                        Text("${"%.1f".format(java.util.Locale.US,total.toDouble()*100.0/monthOut)}%",
-                                            style=MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            } else if(spendingChartStyle=="List") {
-                                topCategories.forEach { (category,total) ->
-                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                        Text(category,style=MaterialTheme.typography.bodySmall)
-                                        Text(Money.format(total),style=MaterialTheme.typography.bodySmall)
-                                    }
-                                    LinearProgressIndicator(progress={if(monthOut>0L) (total.toFloat()/monthOut).coerceIn(0f,1f) else 0f},
-                                        modifier=Modifier.fillMaxWidth())
-                                }
-                            }
-                            if(spendingChartStyle=="Sunburst" && monthOut>0L) {
-                                val sunColors=listOf(Color(0xFFB5A0FF),Color(0xFF80CBC4),Color(0xFFFFC78E),
-                                    Color(0xFF90CAF9),Color(0xFFF48FB1),Color(0xFFA5A5A5))
-                                val segments=categoryTotals.take(6)
-                                val other=categoryTotals.drop(6).sumOf { it.second }
-                                val rings=if(other>0L) segments+("Other categories" to other) else segments
-                                val merchantRings=rings.map { (category,_) ->
-                                    if(category=="Other categories") emptyList()
-                                    else monthExpenses.filter { it.category==category }
-                                        .groupBy { VendorProfiles.key(it.description) }
-                                        .mapValues { (_,items) -> items.sumOf { -it.amountLaari } }
-                                        .toList().sortedByDescending { it.second }
-                                }
-                                Canvas(Modifier.fillMaxWidth().height(210.dp).padding(horizontal=12.dp,vertical=8.dp)
-                                    .pointerInput(rings,monthOut) {
-                                        detectTapGestures { tap ->
-                                            val diameter=kotlin.math.min(size.width,size.height).toFloat()
-                                            val x=tap.x-size.width/2f
-                                            val y=tap.y-size.height/2f
-                                            val radius=kotlin.math.sqrt(x*x+y*y)
-                                            if(radius>diameter*0.16f && radius<diameter*0.49f) {
-                                                val angle=((Math.toDegrees(kotlin.math.atan2(y.toDouble(),x.toDouble()))+450.0)%360.0)
-                                                var cursor=0.0
-                                                rings.forEach { (category,total) ->
-                                                    val sweep=total.toDouble()/monthOut*360.0
-                                                    if(angle>=cursor && angle<cursor+sweep) selectedSunburstCategory=category
-                                                    cursor+=sweep
-                                                }
-                                            }
-                                        }
-                                    }) {
-                                    val diameter=kotlin.math.min(size.width,size.height)*0.76f
-                                    val origin=Offset((size.width-diameter)/2f,(size.height-diameter)/2f)
-                                    val bounds=androidx.compose.ui.geometry.Size(diameter,diameter)
-                                    var angle=-90f
-                                    rings.forEachIndexed { index,(category,total) ->
-                                        val sweep=total.toFloat()/monthOut*360f
-                                        val base=sunColors[index%sunColors.size]
-                                        drawArc(base,angle,sweep,false,
-                                            topLeft=Offset(origin.x+diameter*0.10f,origin.y+diameter*0.10f),
-                                            size=androidx.compose.ui.geometry.Size(diameter*0.80f,diameter*0.80f),
-                                            style=androidx.compose.ui.graphics.drawscope.Stroke(width=diameter*0.17f))
-                                        var innerAngle=angle
-                                        merchantRings[index].forEachIndexed { merchantIndex,(_,value) ->
-                                            val merchantSweep=value.toFloat()/monthOut*360f
-                                            drawArc(base.copy(alpha=if(merchantIndex%2==0) 0.95f else 0.5f),
-                                                innerAngle,merchantSweep,false,
-                                                topLeft=Offset(origin.x+diameter*0.29f,origin.y+diameter*0.29f),
-                                                size=androidx.compose.ui.geometry.Size(diameter*0.42f,diameter*0.42f),
-                                                style=androidx.compose.ui.graphics.drawscope.Stroke(width=diameter*0.13f))
-                                            innerAngle+=merchantSweep
-                                        }
-                                        angle+=sweep
-                                    }
-                                }
-                                Text("Outer: categories · Inner: merchants · Tap to select",style=MaterialTheme.typography.labelSmall)
-                                rings.forEachIndexed { index,(category,total) ->
-                                    Row(Modifier.fillMaxWidth().clickable {
-                                        selectedSunburstCategory=category
-                                    },horizontalArrangement=Arrangement.SpaceBetween) {
-                                        Text("● $category",color=sunColors[index%sunColors.size],
-                                            style=MaterialTheme.typography.bodySmall)
-                                        Text("${"%.1f".format(java.util.Locale.US,total.toDouble()*100/monthOut)}%",
-                                            style=MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                                selectedSunburstCategory?.let { category ->
-                                    val total=if(category=="Other categories") other
-                                        else categoryTotals.firstOrNull { it.first==category }?.second ?: 0L
-                                    Text("$category · ${"%.1f".format(java.util.Locale.US,total.toDouble()*100/monthOut)}%")
-                                    TextButton(onClick={
-                                        categoryFilter=if(category=="Other categories") "All" else category
-                                        categoryDrilldownMonth=selectedMonth
-                                        transactionFilter="Expenses"
-                                        accountFilter="All accounts"
-                                        counterpartyFilter="All types"
-                                        searchText=""
-                                        tab=1
-                                    }) { Text("View category transactions →") }
-                                    if(category!="Other categories") merchantRings.getOrNull(rings.indexOfFirst { it.first==category })
-                                        ?.take(4)?.forEach { (merchant,amount) ->
-                                            Text("$merchant · ${"%.1f".format(java.util.Locale.US,amount.toDouble()*100/monthOut)}%",
-                                                style=MaterialTheme.typography.bodySmall)
-                                        }
-                                }
-                            }
+                            )
                             val net=monthIncome-monthOut
                             Text("Net cash flow: ${Money.format(net)}",style=MaterialTheme.typography.titleSmall)
                             Text("Based on recorded transactions; transfers and incomplete imports can affect totals.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
