@@ -885,8 +885,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 tx.timestamp.take(10)>anchorDateForCard &&
                                 tx.timestamp.take(10)<=todayForCard.toString()
                             }.sumOf { it.amountLaari } else 0L
-                        val projectedMinor=FinanceCalculations.projectedBalance(
-                            selectedAccountCard,minor,anchorDateForCard,transactions,accountLabels,todayForCard,balancePrefs.getString("${accountKey}_time",null)?.takeIf { it.isNotBlank() })
+                        val projectedMinor=reconciledAccountBalances(context, transactions, accountLabels)[selectedAccountCard]
                             ?: Long.MIN_VALUE
                         Card(onClick={
                             accountChoice=selectedAccountCard
