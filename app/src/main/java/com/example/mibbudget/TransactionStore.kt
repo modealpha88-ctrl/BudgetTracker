@@ -685,6 +685,17 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     }
 
     /** Explicit opt-in merchant rule; updates prior matching transactions atomically. */
+    /** Explicitly exported only on user request; never includes transaction amounts or SMS. */
+    fun shareableMerchantPreferences(): List<Pair<String, String>> {
+        val rows = mutableListOf<Pair<String, String>>()
+        readableDatabase.rawQuery(
+            "SELECT merchant_key, category FROM merchant_category_rules ORDER BY merchant_key LIMIT 200", null
+        ).use { cursor ->
+            while (cursor.moveToNext()) rows += cursor.getString(0) to cursor.getString(1)
+        }
+        return rows
+    }
+
     fun reclassifyMerchant(description: String, category: String): Int {
         require(category.isNotBlank() && category.length <= 40)
         val key = VendorProfiles.key(description)
