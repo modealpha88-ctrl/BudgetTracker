@@ -503,11 +503,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     balanceAmount=String.format(java.util.Locale.US,"%.2f",closing.amountLaari/100.0)
                     balanceSource="MIB CSV statement"
                     balancePrefs.edit().putString("mib_date",closing.date)
-                        .putString("mib_amount",balanceAmount).remove("mib_time").putLong("mib_minor",closing.amountLaari)
+                        .putString("mib_amount",balanceAmount).putLong("mib_minor",closing.amountLaari)
+                        .apply()
+                    balancePrefs.edit().apply {
+                        if(closing.time!=null) putString("mib_time",closing.time) else remove("mib_time")
+                        putString("mib_reference_confidence",closing.confidence)
+                    }.apply()
+                    balancePrefs.edit().putLong("mib_minor",closing.amountLaari)
                         .putString("mib_source",balanceSource).apply()
                 }
             }
-            notice="Statement checked. No transactions were imported. Review the results below."
+            notice="Statement checked. CSV balance reference uses the last running-balance row timestamp when present; otherwise its date is treated as end-of-day (unverified). No transactions were imported."
         } catch(e:Exception) { csvReview=null;csvText=null;notice="CSV comparison failed: ${e.message?.take(100)}" }
     }
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -1554,10 +1560,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                     Text("MIB ESTIMATED BALANCE",color=Color.White)
                                     Text(Money.format(estimated),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
-                                    Text("${balanceSource} at ${savedBalanceDate}: ${Money.format(savedBalanceMinor)}",color=Color.White)
+                                    Text("${balanceSource} at ${savedBalanceDate}${if(snapshotTime.isNotBlank()) " $snapshotTime" else " (end-of-day assumed)"}: ${Money.format(savedBalanceMinor)}",color=Color.White)
+                                    if(balanceSource=="MIB CSV statement") Text("Reference confidence: ${balancePrefs.getString("mib_reference_confidence","Date only; end-of-day assumed")}",color=Color.White)
                                     Text("MIB transactions after reference: ${later.size}",color=Color.White)
                                     if(referenceDateWarning) Text(
-                                        "${referenceDayTransactions.size} MIB transactions occurred on the reference date and are excluded. Use an end-of-day bank balance for accurate reconciliation.",
+                                        "${referenceDayTransactions.size} MIB transactions occurred on the reference date and are excluded under the unverified end-of-day assumption. Confirm the bank statement closing time for accurate reconciliation.",
                                         color=Color.White)
                                     if(unlabeled>0) Text(
                                         "$unlabeled later transactions have no account label and are excluded from the MIB estimate.",
