@@ -796,16 +796,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         if (!enabled) {
                             monitoring=false
                             prefs.edit().putBoolean("enabled", false).apply()
-                        } else if (!csvBaselineReady) {
-                            tab=2
-                            notice="Upload and import your CSV statement first. Then enable SMS to fill missing transactions."
                         } else if (context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
                             monitoring=true
                             prefs.edit().putBoolean("enabled", true).apply()
                         } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                     })
                 }
-                Text("Automatic SMS imports save recognized MIB transfers and purchases. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
+                Text("Built-in SMS templates work without pasting sample messages or importing CSV first. A CSV statement remains recommended for reconciliation. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
 
                 var showSmsFormats by remember { mutableStateOf(false) }
                 OutlinedButton(onClick={showSmsFormats=!showSmsFormats},modifier=Modifier.fillMaxWidth()) {
@@ -837,8 +834,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 Button(enabled=!importingHistory,onClick={
-                    if (!csvBaselineReady) { tab=2; notice="Import CSV statement records first; SMS will then fill gaps." }
-                    else if (context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) historyRequested=true
+                    if (context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) historyRequested=true
                     else historyLauncher.launch(Manifest.permission.READ_SMS)
                 }) { Text(if(importingHistory) "Importing…" else "Import previous SMS") }
                 Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
