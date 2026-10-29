@@ -1715,10 +1715,26 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val budgetedSpend = rankedExpenses.filter { budgets.containsKey(it.category) }
                         .sumOf { kotlin.math.abs(it.amountLaari) }
                     val monthBudgetRemaining = monthBudget - budgetedSpend
-                    // Flag possible duplicates for review; never delete repeated purchases automatically.
-                    val duplicateCandidates = rankedExpenses.groupBy { tx ->
-                        Triple(tx.timestamp.take(10), VendorProfiles.key(tx.description), tx.amountLaari)
-                    }.values.filter { group -> group.size > 1 && group.first().fingerprint != "" }
+                    val duplicateCandidates=remember(revision) { store.exactDuplicateGroups() }
+                    var confirmDuplicateIds by remember { mutableStateOf<List<Long>>(emptyList()) }
+                    var lastMergedKeeper by remember { mutableStateOf<Long?>(null) }
+                    if(confirmDuplicateIds.isNotEmpty()) {
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest={confirmDuplicateIds=emptyList()},
+                            title={Text("Merge exact-time duplicates?")},
+                            text={Text("Keep the first record and archive the other records. This changes the calculated balance. Only proceed after checking that these represent the same bank transaction, not repeated purchases.")},
+                            confirmButton={TextButton(onClick={
+                                val ids=confirmDuplicateIds
+                                confirmDuplicateIds=emptyList()
+                                runCatching { store.mergeExactDuplicates(ids) }.onSuccess { count ->
+                                    lastMergedKeeper=ids.first()
+                                    revision++
+                                    notice="Archived $count duplicate records. Undo is available below."
+                                }.onFailure { notice="Merge blocked: ${it.message}" }
+                            }) { Text("Merge and archive") }},
+                            dismissButton={TextButton(onClick={confirmDuplicateIds=emptyList()}) { Text("Cancel") }}
+                        )
+                    }
                     val categoryBudgetUsage = effectiveRankingBudgets.entries.map { (category, limit) ->
                         Triple(category, limit, rankedExpenses.filter { it.category==category }
                             .sumOf { kotlin.math.abs(it.amountLaari) })
@@ -1732,27 +1748,30 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 style=MaterialTheme.typography.bodyMedium)
                             if(highestDay!=null) Text("Highest spending day: ${highestDay.key} · ${Money.format(highestDay.value)}",
                                 style=MaterialTheme.typography.bodySmall)
-                            if(duplicateCandidates.isNotEmpty()) {
-                                var showDuplicateDetails by remember(rankingMonth) { mutableStateOf(false) }
-                                Text("${duplicateCandidates.sumOf { it.size }} transactions in ${duplicateCandidates.size} possible duplicate groups (same day, merchant and amount). Review before deleting.",
-                                    style=MaterialTheme.typography.bodySmall)
-                                TextButton(onClick={showDuplicateDetails=!showDuplicateDetails}) {
-                                    Text(if(showDuplicateDetails) "Hide duplicate review" else "Review possible duplicates")
+                            Text("Duplicate management · exact second + signed amount · all saved transactions",style=MaterialTheme.typography.bodySmall)
+                            Text("${duplicateCandidates.size} potential duplicate groups",style=MaterialTheme.typography.bodyMedium)
+                            if(lastMergedKeeper!=null) {
+                                OutlinedButton(onClick={
+                                    runCatching { store.undoDuplicateMerge(lastMergedKeeper!!) }.onSuccess { count ->
+                                        notice="Restored $count archived transactions"
+                                        lastMergedKeeper=null
+                                        revision++
+                                    }.onFailure { notice="Undo failed: ${it.message}" }
+                                }) { Text("Undo last duplicate merge") }
+                            }
+                            var showDuplicateDetails by remember { mutableStateOf(false) }
+                            TextButton(onClick={showDuplicateDetails=!showDuplicateDetails}) {
+                                Text(if(showDuplicateDetails) "Hide duplicate matches" else "Scan / review exact duplicates")
+                            }
+                            if(showDuplicateDetails) {
+                                duplicateCandidates.take(100).forEach { group ->
+                                    val first=group.first()
+                                    Text("${first.timestamp} · ${Money.format(first.amountLaari)} · ${group.size} records",style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold)
+                                    group.forEach { tx -> Text("ID ${tx.id} · ${tx.category} · ${tx.description}",style=MaterialTheme.typography.bodySmall) }
+                                    OutlinedButton(onClick={confirmDuplicateIds=group.map { it.id }}) { Text("Review and merge ${group.size} records") }
+                                    HorizontalDivider()
                                 }
-                                if(showDuplicateDetails) {
-                                    duplicateCandidates.take(20).forEach { group ->
-                                        val first=group.first()
-                                        Text("${first.timestamp.take(10)} · ${TransactionPresentation.label(first.description)} · ${Money.format(kotlin.math.abs(first.amountLaari))}",
-                                            style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold)
-                                        group.forEach { candidate ->
-                                            Text("ID ${candidate.id} · ${candidate.timestamp} · ${candidate.category} · ${candidate.description}",
-                                                style=MaterialTheme.typography.bodySmall)
-                                        }
-                                        HorizontalDivider()
-                                    }
-                                    Text("These are possible matches, not confirmed duplicates. No transactions are automatically removed.",
-                                        style=MaterialTheme.typography.bodySmall)
-                                }
+                                if(duplicateCandidates.size>100) Text("Showing first 100 groups. Resolve these and scan again.",style=MaterialTheme.typography.bodySmall)
                             }
                             if(monthBudget>0L) {
                                 Text("Combined category budgets: ${Money.format(monthBudget)} · ${if(monthBudgetRemaining>=0) "Remaining" else "Over budget"}: ${Money.format(kotlin.math.abs(monthBudgetRemaining))}",
