@@ -971,14 +971,33 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         TextButton(onClick={selectedMonth=selectedMonth.plusMonths(1)},enabled=selectedMonth<YearMonth.now()) { Text("Next ›") }
                     }
                     val cashflowTransactions = monthlyTransactions.filter { it.category != "Internal Transfer" }
+                    // Virtual carry-forward, calculated from the saved MIB balance snapshot.
+                    // Never insert a synthetic income transaction into the ledger.
+                    val openingDay = selectedMonth.atDay(1).minusDays(1)
+                    val savedDay = runCatching { java.time.LocalDate.parse(balancePrefs.getString("mib_date", "").orEmpty()) }.getOrNull()
+                    val savedMinor = balancePrefs.getLong("mib_minor", Long.MIN_VALUE)
+                    val openingBalance = if (savedDay == null || savedMinor == Long.MIN_VALUE) null else {
+                        val between = transactions.filter { tx ->
+                            val day = runCatching { java.time.LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
+                            day != null && FinanceCalculations.assignedAccount(tx, accountLabels) == "MIB" &&
+                                (if (openingDay.isAfter(savedDay)) day.isAfter(savedDay) && !day.isAfter(openingDay)
+                                 else day.isAfter(openingDay) && !day.isAfter(savedDay))
+                        }.sumOf { it.amountLaari }
+                        runCatching {
+                            if (openingDay.isAfter(savedDay)) Math.addExact(savedMinor, between)
+                            else Math.subtractExact(savedMinor, between)
+                        }.getOrNull()
+                    }
                     val incoming = cashflowTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
                     val outgoing = cashflowTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
                     Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(24.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) { Column(Modifier.padding(22.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text("MONTHLY CASH FLOW", style=MaterialTheme.typography.labelLarge, color=Color.White.copy(alpha=0.8f))
-                        Text(Money.format(incoming-outgoing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                        Text(Money.format((openingBalance ?: 0L)+incoming-outgoing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                        Text("Opening MIB balance · ${openingBalance?.let(Money::format) ?: "Unavailable"} · ${openingDay}",color=Color.White)
+                        if (openingBalance == null) Text("No verified MIB balance snapshot; showing transaction net only.",color=Color.White)
                         Text("↑  Income   ${Money.format(incoming)}",color=Color.White)
                         Text("↓  Expenses   ${Money.format(outgoing)}",color=Color.White)
-                        Text("Cash flow, not your bank balance",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
+                        Text("Opening balance + monthly net · estimate, not verified bank balance. Carry-forward is not income.",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
                     } }
                         val anchorDate=balancePrefs.getString("mib_date","").orEmpty()
                         val anchorMinor=balancePrefs.getLong("mib_minor",Long.MIN_VALUE)
