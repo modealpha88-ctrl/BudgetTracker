@@ -1203,6 +1203,49 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         val snapshotDayCandidates=transactions.filter { tx ->
                             tx.timestamp.take(10)==balanceDate && FinanceCalculations.assignedAccount(tx,accountLabels)=="MIB"
                         }.sortedBy { it.timestamp }
+                        var bankReferenceAmounts by remember { mutableStateOf("") }
+                        var bankMatchConfirmed by remember { mutableStateOf(false) }
+                        OutlinedTextField(
+                            value=bankReferenceAmounts,
+                            onValueChange={bankReferenceAmounts=it;bankMatchConfirmed=false},
+                            label={Text("Bank screenshot transactions (signed MVR, comma separated)")},
+                            placeholder={Text("+1360.00, -13.00, -16.00, -8.50, -38.16")},
+                            modifier=Modifier.fillMaxWidth(),minLines=2
+                        )
+                        val referenceAmounts=bankReferenceAmounts.split(',', '\\n').map { it.trim() }.filter { it.isNotBlank() }
+                        val parsedReferenceAmounts=referenceAmounts.map { raw ->
+                            val amount=Money.parseLaari(raw.removePrefix("+").removePrefix("-"))
+                            if(amount==null) null else if(raw.startsWith("-")) -amount else amount
+                        }
+                        val matches=mutableListOf<Tx>()
+                        val ambiguous=mutableListOf<Long>()
+                        if(referenceAmounts.isNotEmpty() && parsedReferenceAmounts.all { it!=null }) {
+                            val used=mutableSetOf<Long>()
+                            parsedReferenceAmounts.filterNotNull().forEach { amount ->
+                                val possible=snapshotDayCandidates.filter { it.amountLaari==amount && it.id !in used }
+                                if(possible.size==1) { matches.add(possible.first());used.add(possible.first().id) }
+                                else ambiguous.add(amount)
+                            }
+                        }
+                        if(referenceAmounts.isNotEmpty()) {
+                            Text("Matched ${matches.size} of ${referenceAmounts.size} bank entries by exact signed amount and date.",style=MaterialTheme.typography.bodySmall)
+                            matches.sortedBy { it.timestamp }.forEach { tx ->
+                                Text("Matched: ${Money.format(tx.amountLaari)} · ${tx.timestamp.take(19)} · ${tx.description.take(55)}",style=MaterialTheme.typography.bodySmall)
+                            }
+                            if(ambiguous.isNotEmpty() || parsedReferenceAmounts.any { it==null })
+                                Text("Unmatched, repeated, or invalid amounts: ${ambiguous.size + parsedReferenceAmounts.count { it==null }}. Check merchant/reference before confirming.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                            val proposedCutoff=matches.maxByOrNull { it.timestamp }?.timestamp?.substring(11)?.take(8)?.let { if(it.length==5) "${it}:59" else it }
+                            if(proposedCutoff!=null && matches.size==referenceAmounts.size && ambiguous.isEmpty()) {
+                                val subsequent=snapshotDayCandidates.filter { tx ->
+                                    runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()?.isAfter(
+                                        runCatching { java.time.LocalTime.parse(proposedCutoff) }.getOrNull())==true
+                                }
+                                Text("Proposed last included time: $proposedCutoff · Later recorded movements: ${subsequent.size} · Net ${Money.format(subsequent.sumOf { it.amountLaari })}",style=MaterialTheme.typography.bodyMedium)
+                                OutlinedButton(onClick={balanceTime=proposedCutoff;bankMatchConfirmed=true}) {
+                                    Text("Confirm matched bank transactions and use cutoff")
+                                }
+                            }
+                        }
                         if(snapshotDayCandidates.isNotEmpty()) {
                             Text("Reference-date transactions · select the LAST transaction already reflected in the bank balance (do not select a later purchase).",style=MaterialTheme.typography.bodySmall)
                             snapshotDayCandidates.forEach { tx ->
