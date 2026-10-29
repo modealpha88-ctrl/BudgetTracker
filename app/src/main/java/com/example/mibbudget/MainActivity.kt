@@ -384,6 +384,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val screenshotLauncher=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if(uri!=null) {
             try {
+                // EXIF capture time is preferred. Document-provider modification dates are not capture times.
+                val captured=runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val exif=androidx.exifinterface.media.ExifInterface(stream)
+                        val raw=exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
+                            ?: exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_DIGITIZED)
+                        raw?.let { java.time.LocalDateTime.parse(it,java.time.format.DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")) }
+                    }
+                }.getOrNull()
                 val image=InputImage.fromFilePath(context,uri)
                 val recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
                 recognizer.process(image).addOnSuccessListener { result ->
@@ -423,8 +432,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     screenshotPending=valid!=null
                     if(valid!=null) {
                         balanceAmount=amountCandidate!!
-                        balanceDate=java.time.LocalDate.now().toString()
-                        notice="Detected MVR $balanceAmount. Review the amount and screenshot date, then tap Save verified balance."
+                        val statusTime=result.textBlocks.filter { block ->
+                            block.boundingBox?.top?.let { top -> top < image.height*0.16 }==true
+                        }.flatMap { it.lines }.map { it.text.trim() }
+                            .firstNotNullOfOrNull { line ->
+                                Regex("""\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b""").find(line)?.value
+                            }
+                        val inferredTime=if(captured!=null) captured.toLocalTime().toString() else statusTime?.let { "$it:00" }
+                        if(captured!=null) balanceDate=captured.toLocalDate().toString()
+                        if(inferredTime!=null) balanceTime=inferredTime else balanceTime=""
+                        notice=when {
+                            captured!=null -> "EXIF capture time found: ${captured}. Confirm this matches the bank balance screenshot before saving."
+                            statusTime!=null -> "Status bar clock detected: $statusTime (minute precision only). Verify screenshot date and time before saving."
+                            else -> "No reliable capture time found. Select the last included bank transaction or enter the time manually."
+                        }
                     } else {
                         balanceAmount=""
                         notice="No safe balance match. Type the account balance below and save it manually. OCR preview is shown below."
