@@ -95,7 +95,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         // filesystem creation/modification time (which can be export/download time).
         // Only trust a clock actually embedded in the statement row.
         val dateField=last[0].trim()
-        val embeddedClock=Regex("""(?:T|\\s)(\\d{2}:\\d{2}(?::\\d{2})?)""").find(dateField)?.groupValues?.get(1)
+        val embeddedClock=Regex("""(?:T|\s)(\d{2}:\d{2}(?::\d{2})?)""").find(dateField)?.groupValues?.get(1)
             ?.let { runCatching { java.time.LocalTime.parse(it).toString() }.getOrNull() }
         return StatementBalance(if(raw.startsWith("-")) -amount else amount,date,last[3].trim(),embeddedClock,
             if(embeddedClock!=null) "Transaction timestamp in CSV" else "Date only; end-of-day assumed")
