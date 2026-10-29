@@ -319,7 +319,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }
     var revision by remember { mutableIntStateOf(0) }
     val transactions = store.all()
-    val csvBaselineReady = remember(revision) { transactions.any { it.fingerprint.startsWith("csv-") } }
+    // Once the first CSV has established a baseline, subsequent imports never require another CSV.
+    // Existing installations with CSV records are migrated automatically without altering transactions.
+    val setupPrefs = remember { context.getSharedPreferences("initial_csv_setup", android.content.Context.MODE_PRIVATE) }
+    val csvBaselineReady = transactions.any { it.fingerprint.startsWith("csv-") }
+    if (csvBaselineReady && !setupPrefs.getBoolean("completed", false)) {
+        setupPrefs.edit().putBoolean("completed", true).apply()
+    }
+    val initialCsvSetupComplete = setupPrefs.getBoolean("completed", false)
     val accountLabels = store.accounts()
     if(dedicatedAccountOpen) {
         DedicatedAccountScreen(
@@ -782,7 +789,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text("Recommended setup: CSV first, SMS second",style=MaterialTheme.typography.titleMedium)
                         Text("1. Upload your bank CSV and review the matches. 2. Import missing statement rows. 3. Enable SMS or import previous SMS to fill gaps. Same-amount transactions within one day of a CSV entry are skipped to avoid duplicates.",style=MaterialTheme.typography.bodySmall)
-                        Text(if(csvBaselineReady) "CSV baseline: ready" else "CSV baseline: not yet imported",color=if(csvBaselineReady) Color(0xFF15966C) else MaterialTheme.colorScheme.error)
+                        Text(if(initialCsvSetupComplete) "Initial CSV setup: complete" else "Initial CSV setup: required",color=if(csvBaselineReady) Color(0xFF15966C) else MaterialTheme.colorScheme.error)
                         OutlinedButton(onClick={tab=2;csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Step 1 · Upload CSV statement") }
                     }
                 }
@@ -796,13 +803,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         if (!enabled) {
                             monitoring=false
                             prefs.edit().putBoolean("enabled", false).apply()
+                        } else if (!initialCsvSetupComplete) {
+                            tab=2
+                            notice="Initial setup: import a CSV statement once before enabling automatic SMS import."
                         } else if (context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
                             monitoring=true
                             prefs.edit().putBoolean("enabled", true).apply()
                         } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                     })
                 }
-                Text("Built-in SMS templates work without pasting sample messages or importing CSV first. A CSV statement remains recommended for reconciliation. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
+                Text("Import a CSV once during initial setup; afterward built-in SMS templates work without pasting samples or uploading CSV again. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
 
                 var showSmsFormats by remember { mutableStateOf(false) }
                 OutlinedButton(onClick={showSmsFormats=!showSmsFormats},modifier=Modifier.fillMaxWidth()) {
@@ -834,7 +844,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 Button(enabled=!importingHistory,onClick={
-                    if (context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) historyRequested=true
+                    if (!initialCsvSetupComplete) {
+                        tab=2
+                        notice="Initial setup: import a CSV statement once before scanning previous SMS."
+                    } else if (context.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) historyRequested=true
                     else historyLauncher.launch(Manifest.permission.READ_SMS)
                 }) { Text(if(importingHistory) "Importing…" else "Import previous SMS") }
                 Text("BML notification imports (optional)", style=MaterialTheme.typography.titleMedium)
