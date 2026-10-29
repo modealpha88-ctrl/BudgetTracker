@@ -1900,12 +1900,36 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val queuedReviews=remember(reviewQueueRevision) { reviewQueue.all() }
                     var reviewInboxExpanded by remember { mutableStateOf(false) }
                     var reviewPageSize by remember { mutableIntStateOf(5) }
+                    var confirmBulkReview by remember { mutableStateOf(false) }
+                    val pendingReviewCount=queuedReviews.count { it.status=="PENDING" }
+                    if(confirmBulkReview) {
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest={confirmBulkReview=false},
+                            title={Text("Approve all pending reviews?")},
+                            text={Text("Mark $pendingReviewCount pending review entries as approved. This does not import CSV rows, create transactions, or change account balances. Check missing transactions separately in Import & backup tools.")},
+                            confirmButton={
+                                TextButton(onClick={
+                                    val changed=reviewQueue.approveAllPending()
+                                    reviewQueueRevision++
+                                    confirmBulkReview=false
+                                    notice="$changed review entries approved. No transactions or balances changed."
+                                }) { Text("Approve $pendingReviewCount") }
+                            },
+                            dismissButton={TextButton(onClick={confirmBulkReview=false}) { Text("Cancel") }}
+                        )
+                    }
+
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                                 Text("Review queue",style=MaterialTheme.typography.titleMedium)
                                 TextButton(onClick={reviewInboxExpanded=!reviewInboxExpanded}) {
                                     Text("${queuedReviews.count { it.status=="PENDING" }} pending")
+                                }
+                            }
+                            if(pendingReviewCount>0) {
+                                OutlinedButton(onClick={confirmBulkReview=true},modifier=Modifier.fillMaxWidth()) {
+                                    Text("Approve all pending ($pendingReviewCount)")
                                 }
                             }
                             if(reviewInboxExpanded) {
