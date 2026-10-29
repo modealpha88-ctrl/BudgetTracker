@@ -75,14 +75,15 @@ object FinanceCalculations {
     fun projectedBalance(
         account: String, anchorMinor: Long, anchorDate: String,
         entries: List<Tx>, labels: Map<String, String>,
-        throughDate: LocalDate? = null
+        throughDate: LocalDate? = null,
+        anchorTime: String? = null
     ): Long? {
         val anchor = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
         if (anchorMinor == Long.MIN_VALUE || anchor == null ||
             (throughDate != null && throughDate.isBefore(anchor))) return null
         val movements = entries.filter { tx ->
             val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
-            date != null && date.isAfter(anchor) &&
+            date != null && (date.isAfter(anchor) || (date==anchor && anchorTime!=null && runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()?.isAfter(runCatching { java.time.LocalTime.parse(anchorTime) }.getOrNull())==true)) &&
                 (throughDate == null || !date.isAfter(throughDate)) &&
                 assignedAccount(tx, labels).equals(account, ignoreCase = true)
         }.sumOf { it.amountLaari }
