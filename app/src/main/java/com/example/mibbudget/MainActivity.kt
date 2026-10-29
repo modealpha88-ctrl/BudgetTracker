@@ -2712,6 +2712,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 2 -> {
+                    PrivacyFeedbackScreen(context, transactions.size)
                     Text("Import & Access",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
