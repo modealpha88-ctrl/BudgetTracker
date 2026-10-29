@@ -31,20 +31,23 @@ private fun expensesByCategory(entries: List<Tx>): Map<String, Long> =
     entries.filter(FinanceCalculations::isExpense).groupBy { it.category }
         .mapValues { (_, items) -> items.sumOf { -it.amountLaari } }
 
-private fun plannedBalances(
-    context: Context, entries: List<Tx>, labels: Map<String, String>
-): Map<String, Long> {
+/** Shared account balance projection for planning and the home account card. */
+internal fun reconciledAccountBalances(context: Context, entries: List<Tx>, labels: Map<String, String>): Map<String, Long> {
     val prefs = context.getSharedPreferences("balance_anchor", Context.MODE_PRIVATE)
+    val today = LocalDate.now()
     return planningAccountNames.mapNotNull { bank ->
         val key = bank.lowercase(java.util.Locale.ROOT)
-        val amount = prefs.getLong("${key}_minor", Long.MIN_VALUE)
-        val date = prefs.getString("${key}_date", "") ?: ""
-        // A snapshot dated in the future is not a confirmed starting balance.
-        if (runCatching { LocalDate.parse(date) }.getOrNull()?.isAfter(LocalDate.now()) != false)
-            null
-        else FinanceCalculations.projectedBalance(bank, amount, date, entries, labels)?.let { bank to it }
+        val date = prefs.getString("${key}_date", "").orEmpty()
+        val anchor = runCatching { LocalDate.parse(date) }.getOrNull()
+        if (anchor == null || anchor.isAfter(today)) return@mapNotNull null
+        val minor = prefs.getLong("${key}_minor", Long.MIN_VALUE)
+        val time = prefs.getString("${key}_time", null)?.takeIf { it.isNotBlank() }
+        FinanceCalculations.projectedBalance(bank, minor, date, entries, labels, today, time)?.let { bank to it }
     }.toMap()
 }
+
+private fun plannedBalances(context: Context, entries: List<Tx>, labels: Map<String, String>) =
+    reconciledAccountBalances(context, entries, labels)
 
 private fun upcomingBills(context: Context, store: TransactionStore, entries: List<Tx>): Long {
     val month = YearMonth.now().toString()
@@ -110,6 +113,7 @@ fun HomePlanningHighlights(
     val prefs = remember(context) { context.getSharedPreferences("dashboard_layout", Context.MODE_PRIVATE) }
     val order = remember(layoutRevision) { readHighlightOrder(prefs.getString("planning_order", null)) }
     val hidden = remember(layoutRevision) { readHiddenHighlights(prefs.all["planning_hidden"]) }
+    var showSafeBreakdown by remember { mutableStateOf(false) }
     val balances = plannedBalances(context, entries, labels)
     val reserved = pots(context).values.sum()
     val bills = upcomingBills(context, store, entries)
@@ -117,13 +121,24 @@ fun HomePlanningHighlights(
     val predicted = FinanceCalculations.spendingForecast(entries, month, LocalDate.now())
     order.filterNot { it in hidden }.forEach { title ->
         when (title) {
-            "Safe to spend" -> if (balances.isNotEmpty() && balances.values.sum() > reserved + bills) PlanningCard("Safe to spend") {
-                if (balances.isEmpty()) Text("Add a dated MIB, BML or Cash balance snapshot to estimate available funds.")
-                else {
-                    Text(Money.format((balances.values.sum() - reserved - bills).coerceAtLeast(0)),
-                        style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                    Text("Estimated snapshots less reserved savings pots and unpaid recurring templates. Not live bank data.",
-                        style = MaterialTheme.typography.bodySmall)
+            "Safe to spend" -> PlanningCard("Safe to spend") {
+                val available = balances.values.sumOf { it.coerceAtLeast(0L) }
+                val safe = (available - reserved - bills).coerceIn(0L, available)
+                if (balances.isEmpty()) Text("Not available: add a verified account snapshot.")
+                else Text(Money.format(safe), style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary)
+                TextButton(onClick = { showSafeBreakdown = !showSafeBreakdown }) {
+                    Text(if (showSafeBreakdown) "Hide balance breakdown" else "View balance breakdown")
+                }
+                if (showSafeBreakdown) {
+                    planningAccountNames.forEach { name ->
+                        Text("$name: " + (balances[name]?.let(Money::format) ?: "No verified snapshot"))
+                    }
+                    Text("Available funds: ${Money.format(available)}")
+                    Text("Reserved savings: -${Money.format(reserved)}")
+                    Text("Unpaid recurring bills: -${Money.format(bills)}")
+                    if (balances.values.any { it < 0L }) Text("Negative account balances excluded from spendable funds.")
+                    Text("Reconciled estimates, not live bank data.")
                 }
             }
             "Forecast" -> PlanningCard("Month-end spending forecast") {
@@ -168,8 +183,8 @@ fun FinancialPlanningScreen(
     val currentPots = remember(localRevision, entries) { pots(context) }
     val totalReserved = currentPots.values.sum()
     val unpaidBills = upcomingBills(context, store, entries)
-    val knownTotal = balances.values.sum()
-    val safeToSpend = (knownTotal - totalReserved - unpaidBills).coerceAtLeast(0L)
+    val knownTotal = balances.values.sumOf { it.coerceAtLeast(0L) }
+    val safeToSpend = (knownTotal - totalReserved - unpaidBills).coerceIn(0L, knownTotal)
     val missing = planningAccountNames.filterNot { it in balances }
     val unassigned = entries.count { FinanceCalculations.assignedAccount(it, labels) == "Unassigned" }
     val monthEntries = entries.filter { it.timestamp.startsWith(selectedMonth.toString()) }
