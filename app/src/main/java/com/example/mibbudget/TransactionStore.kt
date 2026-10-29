@@ -777,6 +777,7 @@ object BankSmsParser {
     }
     private val fundIncoming = Regex("""(?is)^Fund\s+Transfer\s+to\s+your\s+account\s+(\d+[\d*]*\d+)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
+    private val ecommerce = Regex("""(?is)^Your\\s+E-COMMERCE\\s+TRX\\s+from\\s+(\\*+\\d{4})\\s+for\\s+([\\d,]+\\.\\d{2})\\s+MVR\\s+at\\s+(.+?),\\s*MV\\s+on\\s+(\\d{2}\\.\\d{2}\\.\\d{2}\\s+\\d{2}:\\d{2})\\s+was\\s+processed\\s+successfully\\.\\s+Approval\\s+Code:\\s*([\\w-]+)\\s*$""")
     private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*[\w-]+\s*$""")
     private fun date(value: String, pattern: String): String? = try {
         val formatter = DateTimeFormatter.ofPattern(pattern, Locale.US).withResolverStyle(java.time.format.ResolverStyle.STRICT)
@@ -805,6 +806,14 @@ object BankSmsParser {
             val whenAt = date(m.groupValues[2], "dd/MM/uuuu HH:mm:ss") ?: return null
             if (amount <= 0) return null
             return Candidate(-amount, "Transfers", "Favara transfer", fingerprint, whenAt)
+        }
+        ecommerce.matchEntire(text)?.let { m ->
+            val amount = Money.parseLaari(m.groupValues[2]) ?: return null
+            val merchant = m.groupValues[3].trim().replace(Regex("""\\s+"""), " ")
+            val whenAt = date(m.groupValues[4], "dd.MM.uu HH:mm") ?: return null
+            if (amount <= 0 || merchant.length !in 2..70) return null
+            return Candidate(-amount, MerchantCategories.classify(merchant),
+                "E-commerce purchase: $merchant", fingerprint, whenAt)
         }
         pos.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[1]) ?: return null
