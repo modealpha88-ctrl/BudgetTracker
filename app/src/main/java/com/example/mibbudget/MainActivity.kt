@@ -1230,14 +1230,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                         if(savedBalanceMinor!=Long.MIN_VALUE && savedBalanceDate.isNotBlank()) {
-                            val later=transactions.filter { it.timestamp.take(10)>savedBalanceDate && FinanceCalculations.assignedAccount(it,accountLabels)=="MIB" }
-                            val unlabeled=transactions.count { it.timestamp.take(10)>savedBalanceDate && accountLabels[it.fingerprint].isNullOrBlank() }
-                            val estimated=savedBalanceMinor+later.sumOf { it.amountLaari }
-                            val referenceDayTransactions=transactions.filter {
-                                it.timestamp.take(10)==savedBalanceDate &&
-                                FinanceCalculations.assignedAccount(it,accountLabels)=="MIB"
+                            val snapshotTime=balancePrefs.getString("mib_time","").orEmpty()
+                            val clock=runCatching { java.time.LocalTime.parse(snapshotTime) }.getOrNull()
+                            val later=transactions.filter { tx ->
+                                FinanceCalculations.assignedAccount(tx,accountLabels)=="MIB" &&
+                                    (tx.timestamp.take(10)>savedBalanceDate || (tx.timestamp.take(10)==savedBalanceDate && clock!=null &&
+                                        runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()?.isAfter(clock)==true))
                             }
-                            val referenceDateWarning=referenceDayTransactions.isNotEmpty()
+                            val unlabeled=transactions.count { tx ->
+                                FinanceCalculations.assignedAccount(tx,accountLabels)=="Unassigned" && tx.timestamp.take(10)>savedBalanceDate
+                            }
+                            val estimated=FinanceCalculations.projectedBalance("MIB",savedBalanceMinor,savedBalanceDate,transactions,accountLabels,java.time.LocalDate.now(),snapshotTime.takeIf { it.isNotBlank() }) ?: savedBalanceMinor
+                            val referenceDayTransactions=transactions.filter {
+                                it.timestamp.take(10)==savedBalanceDate && FinanceCalculations.assignedAccount(it,accountLabels)=="MIB"
+                            }
+                            val referenceDateWarning=referenceDayTransactions.isNotEmpty() && clock==null
                             Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) {
                                 Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                     Text("MIB ESTIMATED BALANCE",color=Color.White)
