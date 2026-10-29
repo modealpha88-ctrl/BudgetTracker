@@ -675,6 +675,65 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         }
         return
     }
+    if (onboardingRequired) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState()).padding(horizontal=24.dp,vertical=40.dp),
+            verticalArrangement=Arrangement.spacedBy(18.dp)) {
+            Text("Welcome to Budget Tracker",style=MaterialTheme.typography.headlineMedium)
+            Text("First-time setup · Step ${setupStage+1} of 4",style=MaterialTheme.typography.titleMedium)
+            LinearProgressIndicator(progress={ (setupStage+1)/4f },modifier=Modifier.fillMaxWidth())
+            when(setupStage) {
+                0 -> {
+                    Text("Import your initial bank CSV statement. This is required only once.")
+                    Button(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))},modifier=Modifier.fillMaxWidth()) { Text("Choose CSV statement") }
+                    csvReview?.let { review ->
+                        Text("CSV preview · Matched ${review.confirmed}, missing ${review.missing}, possible duplicates ${review.possible}, ignored ${review.ignored}")
+                        Text("Only confirmed missing rows will be imported. Possible duplicates are excluded.")
+                        review.matches.filter { it.status=="MISSING" }.take(25).forEach { item ->
+                            Text("${item.date} · ${Money.format(item.amountLaari)} · ${item.description}",style=MaterialTheme.typography.bodySmall)
+                        }
+                        Button(onClick={
+                            val data=csvText
+                            if(data!=null) {
+                                val missing=review.matches.filter { it.status=="MISSING" }.map { it.line }.toSet()
+                                val result=store.importMissingCsv(data,missing,includePossible=false)
+                                notice="Initial statement imported: ${result.first} transactions; ${result.second} excluded."
+                                revision++
+                                setupPrefs.edit().putBoolean("completed",true).apply()
+                                setupStage=1;setupPrefs.edit().putInt("stage",1).apply()
+                            }
+                        },modifier=Modifier.fillMaxWidth()) { Text("Confirm CSV and continue") }
+                    }
+                }
+                1 -> {
+                    Text("Enable SMS access. Built-in bank templates require no sample messages.")
+                    Button(onClick={
+                        if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) {
+                            monitoring=true;prefs.edit().putBoolean("enabled",true).apply()
+                        } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                    },modifier=Modifier.fillMaxWidth()) { Text("Allow automatic SMS import") }
+                    Button(onClick={
+                        if(context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED) historyRequested=true
+                        else historyLauncher.launch(Manifest.permission.READ_SMS)
+                    },modifier=Modifier.fillMaxWidth()) { Text("Scan previous SMS (optional)") }
+                    Button(enabled=context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED,
+                        onClick={setupStage=2;setupPrefs.edit().putInt("stage",2).apply()},modifier=Modifier.fillMaxWidth()) { Text("Continue") }
+                }
+                2 -> {
+                    Text("Review imported transactions and duplicates. The transaction review inbox remains available after setup.")
+                    Text("Transactions imported: ${transactions.size}")
+                    Button(onClick={setupStage=3;setupPrefs.edit().putInt("stage",3).apply()},modifier=Modifier.fillMaxWidth()) { Text("Continue to account balances") }
+                }
+                3 -> {
+                    Text("Verify MIB, BML and Cash balances on the dashboard and back up your data.")
+                    Button(onClick={setupStage=4;setupPrefs.edit().putInt("stage",4).apply();tab=0},modifier=Modifier.fillMaxWidth()) { Text("Finish setup") }
+                }
+            }
+            if(setupStage>0) TextButton(onClick={setupStage--;setupPrefs.edit().putInt("stage",setupStage).apply()}) { Text("Back") }
+            if(notice.isNotBlank()) Text(notice,style=MaterialTheme.typography.bodySmall)
+        }
+        return
+    }
     val mainScrollState = rememberScrollState()
     Scaffold(floatingActionButton = {
         if(!onboardingRequired && tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
