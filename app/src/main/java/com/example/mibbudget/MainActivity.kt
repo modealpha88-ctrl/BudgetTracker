@@ -1200,6 +1200,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         OutlinedTextField(value=balanceTime,onValueChange={balanceTime=it},label={Text("Snapshot time (HH:mm:ss, optional)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                        val snapshotDayCandidates=transactions.filter { tx ->
+                            tx.timestamp.take(10)==balanceDate && FinanceCalculations.assignedAccount(tx,accountLabels)=="MIB"
+                        }.sortedBy { it.timestamp }
+                        if(snapshotDayCandidates.isNotEmpty()) {
+                            Text("Reference-date transactions · select the LAST transaction already reflected in the bank balance (do not select a later purchase).",style=MaterialTheme.typography.bodySmall)
+                            snapshotDayCandidates.forEach { tx ->
+                                val cutoff=tx.timestamp.substring(11).take(8).let { if(it.length==5) "${it}:59" else it }
+                                OutlinedButton(onClick={balanceTime=cutoff},modifier=Modifier.fillMaxWidth()) {
+                                    Text("${tx.timestamp.take(16)} · ${Money.format(tx.amountLaari)} · ${tx.description.take(35)}",maxLines=2)
+                                }
+                            }
+                            Text("Selected cutoff: ${balanceTime.ifBlank { "None — same-day movements excluded" }}",style=MaterialTheme.typography.bodySmall)
+                        }
                         OutlinedTextField(value=balanceAmount,onValueChange={balanceAmount=it},label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         Button(onClick={
                             val date=runCatching { java.time.LocalDate.parse(balanceDate) }.getOrNull()
