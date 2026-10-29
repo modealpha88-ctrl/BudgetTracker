@@ -327,6 +327,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         setupPrefs.edit().putBoolean("completed", true).apply()
     }
     val initialCsvSetupComplete = setupPrefs.getBoolean("completed", false)
+    var setupStage by remember { mutableIntStateOf(setupPrefs.getInt("stage", if (initialCsvSetupComplete) 4 else 0)) }
+    if (initialCsvSetupComplete && setupStage == 0) {
+        setupStage = 4
+        setupPrefs.edit().putInt("stage", 4).apply()
+    }
+    val onboardingRequired = setupStage < 4
     val accountLabels = store.accounts()
     if(dedicatedAccountOpen) {
         DedicatedAccountScreen(
@@ -671,16 +677,53 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }
     val mainScrollState = rememberScrollState()
     Scaffold(floatingActionButton = {
-        if(tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
+        if(!onboardingRequired && tab==1) FloatingActionButton(onClick={showTransactionForm=true}) { Text("+",style=MaterialTheme.typography.headlineMedium) }
     }, bottomBar = {
-        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
+        if(!onboardingRequired) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
             listOf("Home","Transactions","Import","Budgets","Plan").forEachIndexed { i, label ->
                 NavigationBarItem(selected=tab==i,onClick={tab=i},icon={ Icon(listOf(Icons.Default.Home,Icons.Default.SwapHoriz,Icons.Default.AddCircleOutline,Icons.Default.PieChart,Icons.Default.Event)[i],contentDescription=label) },label={Text(label)})
             }
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(Modifier.verticalScroll(mainScrollState)).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if(tab==0) {
+            if (onboardingRequired) {
+                Text("Welcome to Budget Tracker", style=MaterialTheme.typography.headlineMedium)
+                Text("Required first-time setup · Step ${setupStage+1} of 4", style=MaterialTheme.typography.titleMedium)
+                LinearProgressIndicator(progress = { (setupStage+1)/4f },modifier=Modifier.fillMaxWidth())
+                when(setupStage) {
+                    0 -> {
+                        Text("1. Import a bank CSV statement to establish your initial transaction baseline. Your existing data is never cleared.")
+                        Button(onClick={tab=2;csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Choose initial CSV statement") }
+                        Text("After reviewing and importing your statement, tap Continue.")
+                        Button(enabled=initialCsvSetupComplete,onClick={setupStage=1;setupPrefs.edit().putInt("stage",1).apply()}) { Text("Continue") }
+                    }
+                    1 -> {
+                        Text("2. Enable bank SMS access. Built-in templates work without entering sample messages.")
+                        Button(onClick={
+                            if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) {
+                                monitoring=true;prefs.edit().putBoolean("enabled",true).apply()
+                            } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                        }) { Text("Enable automatic SMS import") }
+                        Button(onClick={
+                            if(context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED) historyRequested=true
+                            else historyLauncher.launch(Manifest.permission.READ_SMS)
+                        }) { Text("Import previous SMS (optional)") }
+                        Button(enabled=context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED,
+                            onClick={setupStage=2;setupPrefs.edit().putInt("stage",2).apply()}) { Text("Continue") }
+                    }
+                    2 -> {
+                        Text("3. Review imported transactions, possible duplicates, merchants and account assignments.")
+                        Text("You can return to the full transaction review screen after setup.")
+                        Button(onClick={setupStage=3;setupPrefs.edit().putInt("stage",3).apply()}) { Text("I will review my transactions") }
+                    }
+                    3 -> {
+                        Text("4. Confirm your MIB, BML and Cash balances after setup and create a backup of your financial records.")
+                        Text("Balances and backup tools are available on the main dashboard.")
+                        Button(onClick={setupStage=4;setupPrefs.edit().putInt("stage",4).apply();tab=0}) { Text("Finish setup and open dashboard") }
+                    }
+                }
+            }
+            if(!onboardingRequired && tab==0) {
             Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             val improvementPrefs = remember { context.getSharedPreferences("improvement_preferences", android.content.Context.MODE_PRIVATE) }
