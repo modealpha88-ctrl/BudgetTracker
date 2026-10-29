@@ -166,6 +166,23 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }
 
     val openAppSettings = { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
+    val openSmsPermissionSettings = {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+        context.startActivity(intent)
+    }
+    val openNotificationAccessSettings = {
+        try { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        catch (_: Exception) { openSmsPermissionSettings() }
+    }
+    var onboardingPermissionRefresh by remember { mutableIntStateOf(0) }
+    val onboardingLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(onboardingLifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if(event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) onboardingPermissionRefresh++
+        }
+        onboardingLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { onboardingLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var monitoring by remember { mutableStateOf(prefs.getBoolean("enabled", false)) }
     var permissionRefresh by remember { mutableIntStateOf(0) }
     var showAccessHelp by remember { mutableStateOf(false) }
@@ -720,6 +737,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     monitoring=true;prefs.edit().putBoolean("enabled",true).apply();permissionRefresh++
                                 } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                             },modifier=Modifier.fillMaxWidth()) { Text(if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) "SMS access granted" else "Allow automatic SMS import") }
+                            val receiveSmsGranted = context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED
+                            val readSmsGranted = context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED
+                            Text("Permission status: incoming SMS ${if(receiveSmsGranted) "allowed" else "not allowed"} · SMS history ${if(readSmsGranted) "allowed" else "not allowed"}",color=Color(0xFFE0DEEA),style=MaterialTheme.typography.bodySmall)
+                            OutlinedButton(onClick=openSmsPermissionSettings,modifier=Modifier.fillMaxWidth()) { Text("Open Budget Tracker app permissions") }
+                            Text("If Android blocks or no longer shows a permission prompt, use the app settings above and return here.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
                             Text("2  ·  Choose how far back to scan",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
                             Text("Select the history period before scanning. Existing transactions are checked for duplicates.",color=Color.White)
                             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -734,6 +756,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 else historyLauncher.launch(Manifest.permission.READ_SMS)
                             },modifier=Modifier.fillMaxWidth()) { Text(if(importingHistory) "Scanning SMS…" else "Scan previous SMS") }
                             if(importingHistory) LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
+                            OutlinedButton(onClick=openNotificationAccessSettings,modifier=Modifier.fillMaxWidth()) { Text("Open notification access settings (BML)") }
+                            Text("Notification access is separate from SMS permission. Enable Budget Tracker if your bank sends transaction notifications.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
                             Text("4  ·  Continue to transaction review",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
                             Text("After importing, continue to check your transactions and balances.",color=Color.White)
                         }
@@ -741,7 +765,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Button(enabled=!importingHistory,onClick={setupStage=2;setupPrefs.edit().putInt("stage",2).apply()},modifier=Modifier.fillMaxWidth()) {
                         Text("Continue to transaction review")
                     }
-                    Text("SMS access can also be enabled later in Import & Access. If your phone restricts permissions, open Android Settings → Apps → Budget Tracker → Permissions.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
+                    Text("On some OnePlus devices, restricted settings may need to be allowed from the app information screen before notification access becomes available. Android controls whether that option is offered.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
                 }
                 2 -> {
                     Text("Review imported transactions and duplicates. The transaction review inbox remains available after setup.",color=Color.White)
