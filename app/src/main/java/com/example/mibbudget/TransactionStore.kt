@@ -297,6 +297,68 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     fun deleteTransaction(id: Long): Boolean =
         writableDatabase.delete("transactions", "id=?", arrayOf(id.toString())) > 0
 
+    /** Review-only exact timestamp/amount matches; account and reference conflicts remain manual. */
+    fun exactDuplicateGroups(): List<List<Tx>> {
+        val rows=mutableListOf<Tx>()
+        readableDatabase.rawQuery("SELECT id,amount_laari,category,description,created_at,fingerprint FROM transactions",null).use { cursor ->
+            while(cursor.moveToNext()) rows.add(Tx(cursor.getLong(0),cursor.getLong(1),cursor.getString(2),cursor.getString(3),cursor.getString(4),cursor.getString(5)))
+        }
+        return rows.filter { Regex("""\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}""").containsMatchIn(it.timestamp) }
+            .groupBy { it.timestamp.take(19).replace(' ','T') to it.amountLaari }
+            .values.filter { it.size>1 }.sortedByDescending { it.size }
+    }
+
+    /** Archive removed records in the same SQLite transaction, allowing a later undo. */
+    fun mergeExactDuplicates(ids: List<Long>): Int {
+        require(ids.size>=2 && ids.distinct().size==ids.size)
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            val entries=mutableListOf<Tx>()
+            ids.forEach { id ->
+                db.rawQuery("SELECT id,amount_laari,category,description,created_at,fingerprint FROM transactions WHERE id=?",arrayOf(id.toString())).use { cursor ->
+                    require(cursor.moveToFirst()) { "Transaction no longer exists" }
+                    entries.add(Tx(cursor.getLong(0),cursor.getLong(1),cursor.getString(2),cursor.getString(3),cursor.getString(4),cursor.getString(5)))
+                }
+            }
+            require(entries.map { it.amountLaari }.distinct().size==1 && entries.map { it.timestamp.take(19).replace(' ','T') }.distinct().size==1) { "Exact time and amount must match" }
+            require(entries.all { Regex("""\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}""").containsMatchIn(it.timestamp) })
+            val labels=entries.map { tx ->
+                db.rawQuery("SELECT label FROM account_labels WHERE fingerprint=?",arrayOf(tx.fingerprint)).use { cur -> if(cur.moveToFirst()) cur.getString(0) else "" }
+            }.filter { it.isNotBlank() }.distinct()
+            require(labels.size<=1) { "Different accounts: review manually" }
+            db.execSQL("CREATE TABLE IF NOT EXISTS duplicate_merge_archive (id INTEGER PRIMARY KEY, amount_laari INTEGER, category TEXT, description TEXT, created_at TEXT, fingerprint TEXT, kept_id INTEGER)")
+            val keep=entries.first()
+            entries.drop(1).forEach { tx ->
+                val values=ContentValues().apply { put("id",tx.id);put("amount_laari",tx.amountLaari);put("category",tx.category);put("description",tx.description);put("created_at",tx.timestamp);put("fingerprint",tx.fingerprint);put("kept_id",keep.id) }
+                check(db.insertOrThrow("duplicate_merge_archive",null,values)>0)
+                check(db.delete("transactions","id=?",arrayOf(tx.id.toString()))==1)
+            }
+            // Preserve source descriptions in the archive; never overwrite bank-origin data.
+            db.setTransactionSuccessful()
+            return entries.size-1
+        } finally { db.endTransaction() }
+    }
+
+    fun undoDuplicateMerge(keptId: Long): Int {
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("CREATE TABLE IF NOT EXISTS duplicate_merge_archive (id INTEGER PRIMARY KEY, amount_laari INTEGER, category TEXT, description TEXT, created_at TEXT, fingerprint TEXT, kept_id INTEGER)")
+            var restored=0
+            db.rawQuery("SELECT id,amount_laari,category,description,created_at,fingerprint FROM duplicate_merge_archive WHERE kept_id=?",arrayOf(keptId.toString())).use { cur ->
+                while(cur.moveToNext()) {
+                    val v=ContentValues().apply { put("id",cur.getLong(0));put("amount_laari",cur.getLong(1));put("category",cur.getString(2));put("description",cur.getString(3));put("created_at",cur.getString(4));put("fingerprint",cur.getString(5)) }
+                    db.insertOrThrow("transactions",null,v)
+                    restored++
+                }
+            }
+            db.delete("duplicate_merge_archive","kept_id=?",arrayOf(keptId.toString()))
+            db.setTransactionSuccessful()
+            return restored
+        } finally { db.endTransaction() }
+    }
+
     fun setAccount(fingerprint: String, label: String) {
         val v=ContentValues().apply { put("fingerprint", fingerprint);put("label", label.take(40)) }
         writableDatabase.insertWithOnConflict("account_labels",null,v,SQLiteDatabase.CONFLICT_REPLACE)
