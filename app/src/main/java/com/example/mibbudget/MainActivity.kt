@@ -989,13 +989,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else Math.subtractExact(savedMinor, between)
                         }.getOrNull()
                     }
-                    val incoming = cashflowTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
-                    val outgoing = cashflowTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
+                    val mibCashflowTransactions=cashflowTransactions.filter { FinanceCalculations.assignedAccount(it,accountLabels)=="MIB" }
+                    val incoming = mibCashflowTransactions.filter { it.amountLaari>0 }.sumOf { it.amountLaari }
+                    val outgoing = mibCashflowTransactions.filter { it.amountLaari<0 }.sumOf { -it.amountLaari }
+                    val snapshotDate=balancePrefs.getString("mib_date","").orEmpty()
+                    val snapshotClock=balancePrefs.getString("mib_time",null)?.takeIf { it.isNotBlank() }
+                    val reconciledClosing=if(selectedMonth==YearMonth.now()) FinanceCalculations.projectedBalance(
+                        "MIB",savedMinor,snapshotDate,transactions,accountLabels,java.time.LocalDate.now(),snapshotClock) else null
+                    val cashflowOpening=if(reconciledClosing!=null) reconciledClosing-incoming+outgoing else openingBalance
+                    val cashflowClosing=reconciledClosing ?: ((cashflowOpening ?: 0L)+incoming-outgoing)
                     Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(24.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) { Column(Modifier.padding(22.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text("MONTHLY CASH FLOW", style=MaterialTheme.typography.labelLarge, color=Color.White.copy(alpha=0.8f))
-                        Text(Money.format((openingBalance ?: 0L)+incoming-outgoing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
-                        Text("Opening MIB balance · ${openingBalance?.let(Money::format) ?: "Unavailable"} · ${openingDay}",color=Color.White)
-                        if (openingBalance == null) Text("No verified MIB balance snapshot; showing transaction net only.",color=Color.White)
+                        Text(Money.format(cashflowClosing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
+                        Text("Opening MIB balance · ${cashflowOpening?.let(Money::format) ?: "Unavailable"} · ${openingDay}",color=Color.White)
+                        if (cashflowOpening == null) Text("No verified MIB balance snapshot; showing transaction net only.",color=Color.White)
                         Text("↑  Income   ${Money.format(incoming)}",color=Color.White)
                         Text("↓  Expenses   ${Money.format(outgoing)}",color=Color.White)
                         Text("Opening balance + monthly net · estimate, not verified bank balance. Carry-forward is not income.",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
@@ -1031,15 +1038,23 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text("Estimated current balance · recorded activity",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text("Last verified bank balance: ${Money.format(anchorMinor)} · $anchorDate",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     if(inMonth) {
-                                        val movementToAnchor=accountMonthTransactions.filter { it.timestamp.take(10)<=anchorDate }.sumOf { it.amountLaari }
+                                        val snapshotTime=balancePrefs.getString("mib_time","").orEmpty()
+                                        val snapshotLocalTime=runCatching { java.time.LocalTime.parse(snapshotTime) }.getOrNull()
+                                        val movementToAnchor=accountMonthTransactions.filter { tx ->
+                                            tx.timestamp.take(10)<anchorDate || (tx.timestamp.take(10)==anchorDate &&
+                                                (snapshotLocalTime==null || runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()?.isAfter(snapshotLocalTime)!=true))
+                                        }.sumOf { it.amountLaari }
                                         val opening=anchorMinor-movementToAnchor
-                                        val later=accountMonthTransactions.filter { it.timestamp.take(10)>anchorDate }.sumOf { it.amountLaari }
+                                        val later=accountMonthTransactions.filter { tx ->
+                                            tx.timestamp.take(10)>anchorDate || (tx.timestamp.take(10)==anchorDate && snapshotLocalTime!=null &&
+                                                runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()?.isAfter(snapshotLocalTime)==true)
+                                        }.sumOf { it.amountLaari }
                                         if(later!=0L) Text("After-statement activity: ${Money.format(later)}",style=MaterialTheme.typography.bodySmall)
                                         if(reconciliationExpanded) {
                                             HorizontalDivider()
                                             Text("Opening balance: ${Money.format(opening)}")
                                             Text("MIB movements: ${Money.format(monthNet)}")
-                                            Text("Estimated month-end: ${Money.format(opening+monthNet)}")
+                                            Text("Estimated month-end: ${Money.format(if(selectedMonth==YearMonth.now()) estimatedBalance ?: (opening+monthNet) else opening+monthNet)}")
                                             Text("Based on a saved statement balance, not independently verified against a second statement.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     } else if(reconciliationExpanded) {
