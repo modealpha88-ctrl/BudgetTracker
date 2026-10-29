@@ -37,6 +37,19 @@ class ReviewQueue(context: Context) {
         if(count>0) save(entries.map { if(it.status=="PENDING") it.copy(status="APPROVED") else it })
         return count
     }
+    /** Atomic review-status transition. Does not insert financial transactions. */
+    @Synchronized fun approveAllPending(): Int {
+        val entries=all()
+        val pending=entries.filter { it.status=="PENDING" }
+        if(pending.isEmpty()) return 0
+        // Duplicate review identifiers are not approved twice.
+        val ids=pending.map { it.id }.toSet()
+        val updated=entries.map { if(it.status=="PENDING" && it.id in ids) it.copy(status="APPROVED") else it }
+        val array=JSONArray()
+        updated.forEach { x -> array.put(JSONObject().put("id",x.id).put("type",x.type).put("title",x.title).put("detail",x.detail).put("status",x.status).put("txId",x.txId)) }
+        check(prefs.edit().putString("entries",array.toString()).commit()) { "Could not save bulk approval" }
+        return ids.size
+    }
     fun addCsv(csv:String,review:TransactionStore.CsvReview) {
         val hash=MessageDigest.getInstance("SHA-256").digest(csv.toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
         add(review.matches.filter { it.status=="MISSING" || it.status=="POSSIBLE" }.map { row ->
