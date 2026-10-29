@@ -299,6 +299,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var planningLayoutRevision by remember { mutableIntStateOf(0) }
     var balanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var balanceAmount by remember { mutableStateOf(balancePrefs.getString("mib_amount","") ?: "") }
+    var balanceTime by remember { mutableStateOf(balancePrefs.getString("mib_time","") ?: "") }
     var savedBalanceDate by remember { mutableStateOf(balancePrefs.getString("mib_date","") ?: "") }
     var savedBalanceMinor by remember { mutableStateOf(balancePrefs.getLong("mib_minor",Long.MIN_VALUE)) }
     var balanceSource by remember { mutableStateOf(balancePrefs.getString("mib_source","Manual") ?: "Manual") }
@@ -451,7 +452,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     balanceAmount=String.format(java.util.Locale.US,"%.2f",closing.amountLaari/100.0)
                     balanceSource="MIB CSV statement"
                     balancePrefs.edit().putString("mib_date",closing.date)
-                        .putString("mib_amount",balanceAmount).putLong("mib_minor",closing.amountLaari)
+                        .putString("mib_amount",balanceAmount).remove("mib_time").putLong("mib_minor",closing.amountLaari)
                         .putString("mib_source",balanceSource).apply()
                 }
             }
@@ -864,7 +865,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 tx.timestamp.take(10)<=todayForCard.toString()
                             }.sumOf { it.amountLaari } else 0L
                         val projectedMinor=FinanceCalculations.projectedBalance(
-                            selectedAccountCard,minor,anchorDateForCard,transactions,accountLabels,todayForCard)
+                            selectedAccountCard,minor,anchorDateForCard,transactions,accountLabels,todayForCard,balancePrefs.getString("${accountKey}_time",null)?.takeIf { it.isNotBlank() })
                             ?: Long.MIN_VALUE
                         Card(onClick={
                             accountChoice=selectedAccountCard
@@ -1025,7 +1026,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     val startDay=selectedMonth.atDay(1)
                                     val endDay=selectedMonth.atEndOfMonth()
                                     val inMonth=anchorDay!=null && !anchorDay.isBefore(startDay) && !anchorDay.isAfter(endDay)
-                                    val estimatedBalance=FinanceCalculations.projectedBalance("MIB", anchorMinor, anchorDate, transactions, accountLabels, java.time.LocalDate.now())
+                                    val estimatedBalance=FinanceCalculations.projectedBalance("MIB", anchorMinor, anchorDate, transactions, accountLabels, java.time.LocalDate.now(),balancePrefs.getString("mib_time",null)?.takeIf { it.isNotBlank() })
                                     Text(estimatedBalance?.let(Money::format) ?: "Estimate unavailable",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
                                     Text("Estimated current balance · recorded activity",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text("Last verified bank balance: ${Money.format(anchorMinor)} · $anchorDate",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1177,17 +1178,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             Text("Recognized text: ${screenshotExtract.take(300)}",style=MaterialTheme.typography.bodySmall)
                         }
                         OutlinedTextField(value=balanceDate,onValueChange={balanceDate=it},label={Text("Balance date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                        OutlinedTextField(value=balanceTime,onValueChange={balanceTime=it},label={Text("Snapshot time (HH:mm:ss, optional)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         OutlinedTextField(value=balanceAmount,onValueChange={balanceAmount=it},label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth(),singleLine=true)
                         Button(onClick={
                             val date=runCatching { java.time.LocalDate.parse(balanceDate) }.getOrNull()
                             val amount=Money.parseLaari(balanceAmount)
-                            if(date==null || date>java.time.LocalDate.now() || amount==null) notice="Enter a valid date and non-negative MVR balance"
+                            if(date==null || date>java.time.LocalDate.now() || amount==null || (balanceTime.isNotBlank() && runCatching { java.time.LocalTime.parse(balanceTime) }.isFailure)) notice="Enter a valid date, optional HH:mm:ss time, and MVR balance"
                             else {
                                 savedBalanceDate=date.toString()
                                 savedBalanceMinor=amount
                                 balanceSource=if(screenshotPending) "MIB screenshot (user confirmed)" else "Manual"
                                 screenshotPending=false
-                                balancePrefs.edit().putString("mib_date",savedBalanceDate).putString("mib_amount",balanceAmount).putLong("mib_minor",amount).putString("mib_source",balanceSource).apply()
+                                balancePrefs.edit().putString("mib_date",savedBalanceDate).putString("mib_amount",balanceAmount).putLong("mib_minor",amount).putString("mib_time",balanceTime).putString("mib_source",balanceSource).apply()
                                 notice="MIB balance reference saved"
                             }
                         }) { Text("Save verified balance") }
