@@ -50,19 +50,39 @@ jobs:
           MIB_RELEASE_KEY_ALIAS: ${{ secrets.MIB_RELEASE_KEY_ALIAS }}
           MIB_RELEASE_KEY_PASSWORD: ${{ secrets.MIB_RELEASE_KEY_PASSWORD }}
         run: gradle :app:assembleRelease --stacktrace
+      - name: Verify APK archive, signature, and package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          # Verify every compressed entry, including native OCR libraries.
+          unzip -t "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$BUILD_TOOLS/apksigner"
+          test -x "$BUILD_TOOLS/aapt"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | grep '^package:'
+          sha256sum "$APK" | tee apk.sha256
+
       - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: BudgetTracker-release-apk
-          path: app/build/outputs/apk/release/*-release.apk
+          path: |
+            app/build/outputs/apk/release/*-release.apk
+            apk.sha256
 
       - name: Publish installable APK release
         if: success() && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           cp app/build/outputs/apk/release/app-release.apk BudgetTracker.apk
-          gh release create "build-${GITHUB_RUN_NUMBER}" BudgetTracker.apk \
+          sha256sum BudgetTracker.apk | tee BudgetTracker.apk.sha256
+          unzip -t BudgetTracker.apk >/dev/null
+          gh release create "build-${GITHUB_RUN_NUMBER}" BudgetTracker.apk BudgetTracker.apk.sha256 \
             --title "Budget Tracker build ${GITHUB_RUN_NUMBER}" \
             --notes "Install this APK over the previous version. Keep the existing app installed to preserve local data." \
             --latest
