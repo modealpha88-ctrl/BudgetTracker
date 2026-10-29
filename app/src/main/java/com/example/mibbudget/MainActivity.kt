@@ -1127,23 +1127,29 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 else if(anchorAmount==Long.MIN_VALUE || anchorDay==null)
                                     Text("Save a dated ${accountChoice} balance snapshot first.",style=MaterialTheme.typography.bodySmall)
                                 else {
-                                    val movement=transactions.filter { tx ->
-                                        FinanceCalculations.assignedAccount(tx,accountLabels)==accountChoice &&
-                                        (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
-                                         else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
-                                    }.sumOf { it.amountLaari }
-                                    val estimate=if(requested.isAfter(anchorDay)) anchorAmount+movement else anchorAmount-movement
-                                    val affected=transactions.count { tx ->
-                                        FinanceCalculations.assignedAccount(tx,accountLabels)==accountChoice &&
-                                        (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
-                                         else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
+                                    val snapshotTime=balancePrefs.getString("${key}_time","").orEmpty()
+                                    val snapshotClock=runCatching { java.time.LocalTime.parse(snapshotTime) }.getOrNull()
+                                    val hasSameDayClock=requested==anchorDay && snapshotClock!=null
+                                    val eligible: (Tx) -> Boolean = { tx ->
+                                        val txDate=runCatching { java.time.LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
+                                        val txClock=runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()
+                                        when {
+                                            txDate==null -> false
+                                            requested.isAfter(anchorDay) -> txDate.isAfter(anchorDay) && !txDate.isAfter(requested) ||
+                                                (txDate==anchorDay && snapshotClock!=null && txClock!=null && txClock.isAfter(snapshotClock))
+                                            requested.isBefore(anchorDay) -> txDate.isAfter(requested) && !txDate.isAfter(anchorDay) &&
+                                                (txDate!=anchorDay || snapshotClock==null || (txClock!=null && !txClock.isAfter(snapshotClock)))
+                                            else -> hasSameDayClock && txDate==anchorDay && txClock!=null && txClock.isAfter(snapshotClock)
+                                        }
                                     }
-                                    val unassigned=transactions.count { tx ->
-                                        (accountLabels[tx.fingerprint] ?: "Unassigned")=="Unassigned" &&
-                                        (if(requested.isAfter(anchorDay)) tx.timestamp.take(10)>anchorDate && tx.timestamp.take(10)<=historicalBalanceDate
-                                         else tx.timestamp.take(10)>historicalBalanceDate && tx.timestamp.take(10)<=anchorDate)
-                                    }
+                                    val matched=transactions.filter(eligible)
+                                    val included=matched.filter { FinanceCalculations.assignedAccount(it,accountLabels)==accountChoice }
+                                    val movement=included.sumOf { it.amountLaari }
+                                    val estimate=if(requested.isBefore(anchorDay)) anchorAmount-movement else anchorAmount+movement
+                                    val affected=included.size
+                                    val unassigned=matched.count { FinanceCalculations.assignedAccount(it,accountLabels)=="Unassigned" }
                                     Text(Money.format(estimate),style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                                    if(requested==anchorDay && snapshotClock==null) Text("Add the verified snapshot time to include purchases later on this date.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                     Text("${affected} assigned transactions included · ${unassigned} unassigned records excluded",style=MaterialTheme.typography.bodySmall)
                                     if(unassigned>0) Text("Some transactions have no account assignment. The balance may be incomplete.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                     if(requested.isAfter(java.time.LocalDate.now())) Text("Future dates are projections, not verified balances.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
