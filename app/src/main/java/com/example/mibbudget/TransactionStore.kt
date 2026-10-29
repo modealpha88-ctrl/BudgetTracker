@@ -77,7 +77,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     }
 
 
-    data class StatementBalance(val amountLaari: Long, val date: String, val reference: String)
+    data class StatementBalance(val amountLaari: Long, val date: String, val reference: String, val time: String? = null, val confidence: String = "Date only; end-of-day assumed")
 
     /** The final non-opening-balance row is the statement's closing balance. */
     fun statementBalance(text: String): StatementBalance? {
@@ -91,7 +91,14 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val raw=last[6].trim().replace(",","")
         val amount=Money.parseLaari(raw.removePrefix("-").removePrefix("+")) ?: return null
         val date=runCatching { java.time.LocalDate.parse(last[0].trim().take(10)).toString() }.getOrNull() ?: return null
-        return StatementBalance(if(raw.startsWith("-")) -amount else amount,date,last[3].trim())
+        // The final running balance is associated with this row, not the CSV file's
+        // filesystem creation/modification time (which can be export/download time).
+        // Only trust a clock actually embedded in the statement row.
+        val dateField=last[0].trim()
+        val embeddedClock=Regex("""(?:T|\\s)(\\d{2}:\\d{2}(?::\\d{2})?)""").find(dateField)?.groupValues?.get(1)
+            ?.let { runCatching { java.time.LocalTime.parse(it).toString() }.getOrNull() }
+        return StatementBalance(if(raw.startsWith("-")) -amount else amount,date,last[3].trim(),embeddedClock,
+            if(embeddedClock!=null) "Transaction timestamp in CSV" else "Date only; end-of-day assumed")
     }
 
     data class CsvMatch(val line: Int, val amountLaari: Long, val date: String, val description: String,
