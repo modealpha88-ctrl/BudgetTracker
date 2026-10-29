@@ -30,6 +30,13 @@ class ReviewQueue(context: Context) {
         require(status in listOf("PENDING","APPROVED","REJECTED","RESOLVED"))
         save(all().map { if(it.id==id) it.copy(status=status) else it })
     }
+    @Synchronized
+    fun approveAllPending():Int {
+        val entries=all()
+        val count=entries.count { it.status=="PENDING" }
+        if(count>0) save(entries.map { if(it.status=="PENDING") it.copy(status="APPROVED") else it })
+        return count
+    }
     fun addCsv(csv:String,review:TransactionStore.CsvReview) {
         val hash=MessageDigest.getInstance("SHA-256").digest(csv.toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
         add(review.matches.filter { it.status=="MISSING" || it.status=="POSSIBLE" }.map { row ->
