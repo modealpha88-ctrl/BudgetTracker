@@ -807,6 +807,28 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 Text("Automatic SMS imports save recognized MIB transfers and purchases. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
 
+                var showSmsFormats by remember { mutableStateOf(false) }
+                OutlinedButton(onClick={showSmsFormats=!showSmsFormats},modifier=Modifier.fillMaxWidth()) {
+                    Text(if(showSmsFormats) "Hide supported SMS types" else "View supported SMS types (7)")
+                }
+                if(showSmsFormats) {
+                    Text("Built-in SMS templates — no example message or initial setup required.",
+                        style=MaterialTheme.typography.bodySmall)
+                    listOf(
+                        "MIB POS purchase" to "Expense · Your POS PURCHASE ...",
+                        "MIB e-commerce purchase" to "Expense · Your E-COMMERCE TRX ...",
+                        "MIB outgoing Favara" to "Debit · Favara Transfer from your account ...",
+                        "MIB incoming Favara" to "Credit · Favara Transfer to your account ...",
+                        "MIB incoming fund transfer" to "Credit · Fund Transfer to your account ...",
+                        "MIB declined card transaction" to "Declined log · Your last transaction ... has declined ...",
+                        "BML card purchase" to "Foreign-currency record · Transaction from ... was processed."
+                    ).forEach { (name, detail) ->
+                        Text(name,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold)
+                        Text(detail,style=MaterialTheme.typography.bodySmall)
+                    }
+                    Text("Other formats are ignored until supported. SMS access requires Android permission; import results are deduplicated.",
+                        style=MaterialTheme.typography.bodySmall)
+                }
                 Text("Import previous bank SMS", style=MaterialTheme.typography.titleMedium)
                 Text("Scan only SMS stored on this phone. No message bodies are saved or uploaded. Review imported transactions for accuracy.", style=MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
