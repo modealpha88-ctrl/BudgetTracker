@@ -709,18 +709,39 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 1 -> {
-                    Text("Enable SMS access. Built-in bank templates require no sample messages.",color=Color.White)
-                    Button(onClick={
-                        if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) {
-                            monitoring=true;prefs.edit().putBoolean("enabled",true).apply()
-                        } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
-                    },modifier=Modifier.fillMaxWidth()) { Text("Allow automatic SMS import") }
-                    Button(onClick={
-                        if(context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED) historyRequested=true
-                        else historyLauncher.launch(Manifest.permission.READ_SMS)
-                    },modifier=Modifier.fillMaxWidth()) { Text("Scan previous SMS (optional)") }
-                    Button(enabled=context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED,
-                        onClick={setupStage=2;setupPrefs.edit().putInt("stage",2).apply()},modifier=Modifier.fillMaxWidth()) { Text("Continue") }
+                    Text("Connect your bank messages",style=MaterialTheme.typography.headlineSmall,color=Color.White)
+                    Text("Follow these steps to import MIB and BML messages. Built-in templates recognize supported transaction types automatically.",color=Color(0xFFE0DEEA))
+                    Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF242230)),shape=RoundedCornerShape(20.dp)) {
+                        Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                            Text("1  ·  Allow incoming bank SMS",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("Grant SMS permission when Android asks. This lets Budget Tracker detect new transactions.",color=Color.White)
+                            Button(onClick={
+                                if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) {
+                                    monitoring=true;prefs.edit().putBoolean("enabled",true).apply();permissionRefresh++
+                                } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                            },modifier=Modifier.fillMaxWidth()) { Text(if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) "SMS access granted" else "Allow automatic SMS import") }
+                            Text("2  ·  Choose how far back to scan",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("Select the history period before scanning. Existing transactions are checked for duplicates.",color=Color.White)
+                            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                listOf(1L,3L,12L).forEach { months ->
+                                    FilterChip(selected=historyMonths==months,onClick={historyMonths=months},label={Text("${months}m")})
+                                }
+                            }
+                            Text("3  ·  Import previous bank messages",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("Allow read access to your SMS inbox, then wait for the scan to finish. This step is optional.",color=Color.White)
+                            Button(enabled=!importingHistory,onClick={
+                                if(context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED) historyRequested=true
+                                else historyLauncher.launch(Manifest.permission.READ_SMS)
+                            },modifier=Modifier.fillMaxWidth()) { Text(if(importingHistory) "Scanning SMS…" else "Scan previous SMS") }
+                            if(importingHistory) LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
+                            Text("4  ·  Continue to transaction review",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("After importing, continue to check your transactions and balances.",color=Color.White)
+                        }
+                    }
+                    Button(enabled=!importingHistory,onClick={setupStage=2;setupPrefs.edit().putInt("stage",2).apply()},modifier=Modifier.fillMaxWidth()) {
+                        Text("Continue to transaction review")
+                    }
+                    Text("SMS access can also be enabled later in Import & Access. If your phone restricts permissions, open Android Settings → Apps → Budget Tracker → Permissions.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
                 }
                 2 -> {
                     Text("Review imported transactions and duplicates. The transaction review inbox remains available after setup.",color=Color.White)
