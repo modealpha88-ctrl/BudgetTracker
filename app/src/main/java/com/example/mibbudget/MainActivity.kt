@@ -1726,7 +1726,25 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             confirmButton={TextButton(onClick={
                                 val ids=confirmDuplicateIds
                                 confirmDuplicateIds=emptyList()
-                                runCatching { store.mergeExactDuplicates(ids) }.onSuccess { count ->
+                                val matching=store.exactDuplicateGroups().firstOrNull { group -> group.map { it.id }.toSet()==ids.toSet() }.orEmpty()
+                                val keeper=matching.firstOrNull()
+                                // Only enrich missing metadata; conflicting recipient identities are not silently overwritten.
+                                val recipientValues=matching.mapNotNull { recipientPrefs.getString(it.fingerprint,null)?.trim()?.takeIf(String::isNotBlank) }.distinct()
+                                val counterpartyValues=matching.mapNotNull { counterpartyPrefs.getString(it.fingerprint,null)?.takeIf { value -> value.isNotBlank() && value!="Unclassified" } }.distinct()
+                                val vendorValues=matching.filterNot { VendorProfiles.isTransfer(it.description,it.category) }.map { VendorProfiles.vendor(it.description) }.filter { it.isNotBlank() }.distinct()
+                                if(recipientValues.size>1 || counterpartyValues.size>1 || vendorValues.size>1) {
+                                    notice="Conflicting merchant or recipient information: review these transactions individually before merging."
+                                } else runCatching { store.mergeExactDuplicates(ids) }.onSuccess { count ->
+                                    if(keeper!=null) {
+                                        val recipient=recipientValues.singleOrNull()
+                                        if(recipient!=null && recipientPrefs.getString(keeper.fingerprint,null).isNullOrBlank())
+                                            recipientPrefs.edit().putString(keeper.fingerprint,recipient).commit()
+                                        val kind=counterpartyValues.singleOrNull()
+                                        if(kind!=null && counterpartyPrefs.getString(keeper.fingerprint,"Unclassified")=="Unclassified")
+                                            counterpartyPrefs.edit().putString(keeper.fingerprint,kind).commit()
+                                    }
+                                    recipientRevision++
+                                    counterpartyRevision++
                                     lastMergedKeeper=ids.first()
                                     revision++
                                     notice="Archived $count duplicate records. Undo is available below."
