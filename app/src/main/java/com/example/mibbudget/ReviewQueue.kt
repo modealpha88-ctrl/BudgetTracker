@@ -30,13 +30,6 @@ class ReviewQueue(context: Context) {
         require(status in listOf("PENDING","APPROVED","REJECTED","RESOLVED"))
         save(all().map { if(it.id==id) it.copy(status=status) else it })
     }
-    @Synchronized
-    fun approveAllPending():Int {
-        val entries=all()
-        val count=entries.count { it.status=="PENDING" }
-        if(count>0) save(entries.map { if(it.status=="PENDING") it.copy(status="APPROVED") else it })
-        return count
-    }
     /** Atomic review-status transition. Does not insert financial transactions. */
     @Synchronized fun approveAllPending(): Int {
         val entries=all()
