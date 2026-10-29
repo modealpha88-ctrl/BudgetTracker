@@ -676,7 +676,55 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             if(tab==0) {
             Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/modealpha88-ctrl/BudgetTracker/releases/latest")))},modifier=Modifier.fillMaxWidth()) { Text("Update App") }
+            val improvementPrefs = remember { context.getSharedPreferences("improvement_preferences", android.content.Context.MODE_PRIVATE) }
+            var showReleaseTools by remember { mutableStateOf(improvementPrefs.getBoolean("show_release_link", true)) }
+            var showFeedbackPreview by remember { mutableStateOf(false) }
+            var includeMerchantRules by remember { mutableStateOf(false) }
+            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(checked=showReleaseTools, onCheckedChange={ value ->
+                    showReleaseTools=value
+                    improvementPrefs.edit().putBoolean("show_release_link", value).apply()
+                })
+                Text("Show optional release updates", modifier=Modifier.weight(1f))
+            }
+            if (showReleaseTools) {
+                OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/modealpha88-ctrl/BudgetTracker/releases/latest")))},
+                    modifier=Modifier.fillMaxWidth()) { Text("Check releases (optional)") }
+                Text("Updates are never installed automatically. Review the release before updating.",
+                    style=MaterialTheme.typography.bodySmall)
+            }
+            OutlinedButton(onClick={showFeedbackPreview=!showFeedbackPreview}, modifier=Modifier.fillMaxWidth()) {
+                Text("Share app improvement feedback (optional)")
+            }
+            if (showFeedbackPreview) {
+                Text("Nothing is sent automatically. Preview the summary and choose an app to share it.",
+                    style=MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Checkbox(checked=includeMerchantRules,onCheckedChange={includeMerchantRules=it})
+                    Text("Include saved merchant names and category preferences")
+                }
+                val rules = if (includeMerchantRules) store.shareableMerchantPreferences() else emptyList()
+                val report = buildString {
+                    appendLine("Budget Tracker improvement feedback")
+                    appendLine("App version: ${context.packageManager.getPackageInfo(context.packageName, 0).versionName}")
+                    appendLine("Transaction count: ${transactions.size}")
+                    appendLine("Merchant preference rules: ${store.shareableMerchantPreferences().size}")
+                    if (includeMerchantRules) {
+                        appendLine("Merchant preferences (explicitly included):")
+                        rules.forEach { (merchant, category) -> appendLine("$merchant -> $category") }
+                    }
+                    appendLine("No transaction amounts, balances, card numbers, account numbers, SMS contents or transaction timestamps are included.")
+                }
+                Text(report.take(5000),style=MaterialTheme.typography.bodySmall)
+                Button(onClick={
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type="text/plain"; putExtra(Intent.EXTRA_SUBJECT,"Budget Tracker improvement feedback")
+                        putExtra(Intent.EXTRA_TEXT,report)
+                    }
+                    context.startActivity(Intent.createChooser(intent,"Share improvement feedback"))
+                },modifier=Modifier.fillMaxWidth()) { Text("Choose where to share") }
+            }
             }
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(start=14.dp,end=6.dp,top=6.dp,bottom=6.dp),
