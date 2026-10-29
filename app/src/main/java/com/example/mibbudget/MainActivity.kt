@@ -1212,7 +1212,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             placeholder={Text("+1360.00, -13.00, -16.00, -8.50, -38.16")},
                             modifier=Modifier.fillMaxWidth(),minLines=2
                         )
-                        val referenceAmounts=bankReferenceAmounts.split(',', '\\n').map { it.trim() }.filter { it.isNotBlank() }
+                        val referenceAmounts=bankReferenceAmounts.split(',', '\n').map { it.trim() }.filter { it.isNotBlank() }
                         val parsedReferenceAmounts=referenceAmounts.map { raw ->
                             val amount=Money.parseLaari(raw.removePrefix("+").removePrefix("-"))
                             if(amount==null) null else if(raw.startsWith("-")) -amount else amount
