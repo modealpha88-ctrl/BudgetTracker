@@ -259,8 +259,8 @@ internal fun MidnightMoreScreen(
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                             Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Midnight Emerald")
-                                    Text("AMOLED dark mode",style=MaterialTheme.typography.bodySmall,
+                                    Text("Midnight Aurora")
+                                    Text("Multi-accent AMOLED theme",style=MaterialTheme.typography.bodySmall,
                                         color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
