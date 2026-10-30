@@ -345,53 +345,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }
     var revision by remember { mutableIntStateOf(0) }
     val transactions = store.all()
-    // Discover one eligible merchant per refresh, off the UI thread. Rate-limit requests
-    // and never transmit transaction amounts, card numbers, or full SMS contents.
-    LaunchedEffect(revision,onlineMerchantDiscovery) {
-        if (!onlineMerchantDiscovery) return@LaunchedEffect
-        val discoveryPrefs = context.getSharedPreferences("merchant_discovery_attempts",android.content.Context.MODE_PRIVATE)
-        val candidates = transactions.asSequence()
-            .filter { MerchantDiscoveryPolicy.eligible(context,it.description,it.category) }
-            .distinctBy { VendorProfiles.key(it.description) }
-            .toList()
-        discoveryRunning = true
-        discoveryChecked = 0
-        discoveryMatched = 0
-        try {
-        for (candidate in candidates) {
-            if (!MerchantDiscoveryPolicy.enabled(context)) break
-            val key = VendorProfiles.key(candidate.description)
-            val previous = discoveryPrefs.getLong(key,0L)
-            if (System.currentTimeMillis() - previous < 24L*60*60*1000) continue
-            discoveryPrefs.edit().putLong(key,System.currentTimeMillis()).apply()
-            val matched = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching { MerchantWebDiscovery.apply(context,candidate.description,candidate.category) }.getOrDefault(false)
-            }
-            discoveryChecked++
-            if (matched) { discoveryMatched++; socialRevision++; avatarRevision++ }
-            kotlinx.coroutines.delay(1500)
-        }
-        } finally { discoveryRunning = false }
-    }
-    LaunchedEffect(merchantSearchRequest) {
-        val request = merchantSearchRequest ?: return@LaunchedEffect
-        merchantSearchStatus = "Searching official business listings…"
-        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { MerchantWebDiscovery.apply(context,request.first,request.second) }
-        }
-        freeMerchantResults = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { FreeMerchantSources.search(request.first,request.second) }.getOrDefault(emptyList())
-        }
-        merchantSearchStatus = when {
-            result.isFailure -> "Search error: " + (result.exceptionOrNull()?.message ?: "Network unavailable")
-            result.getOrDefault(false) -> "Verified match saved"
-            else -> "No independently verified match found"
-        }
-        context.getSharedPreferences("merchant_discovery_results",android.content.Context.MODE_PRIVATE)
-            .edit().putString(VendorProfiles.key(request.first),merchantSearchStatus).apply()
-        if (result.getOrDefault(false)) { socialRevision++; avatarRevision++ }
-        merchantSearchRequest = null
-    }
     // Once the first CSV has established a baseline, subsequent imports never require another CSV.
     // Existing installations with CSV records are migrated automatically without altering transactions.
     val setupPrefs = remember { context.getSharedPreferences("initial_csv_setup", android.content.Context.MODE_PRIVATE) }
@@ -2692,7 +2645,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     val avatarPath=remember(avatarRevision,socialRevision,vendorKey) { if (AutomaticVendorIdentity.isManuallyUnassigned(context,t.description)) null else vendorAvatarPrefs.getString(vendorKey,null) }
                                     val avatar=remember(avatarPath) { avatarPath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
                                     if(avatar!=null) Image(bitmap=avatar,contentDescription="Vendor icon",modifier=Modifier.size(42.dp),contentScale=ContentScale.Crop)
-                                    else Text(if(t.category.contains("Transfer",true)) "↗" else VendorProfiles.vendor(t.description).split(Regex("\\s+")).filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.ifBlank { "▤" },color=MaterialTheme.colorScheme.onSecondaryContainer)
+                                    else Text(MerchantIcons.icon(t.description,t.category),style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     val savedName=recipientPrefs.getString(t.fingerprint,null).orEmpty()
@@ -3074,88 +3027,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Text(TransactionPresentation.label(selectedTransaction.description),style=MaterialTheme.typography.titleMedium)
                                 if(!isTransfer) {
-                                    val matchedProfile=remember(socialRevision,selectedTransaction.description) {
-                                        VendorProfiles.get(context,selectedTransaction.description)
-                                    }
-                                    Text("Automatic merchant profile",style=MaterialTheme.typography.titleSmall)
-                                    Text(if(!onlineMerchantDiscovery) "Discovery off — enable below to search"
-                                        else if(discoveryRunning) "Searching merchants · $discoveryChecked checked · $discoveryMatched matched"
-                                        else "Discovery idle · $discoveryChecked checked · $discoveryMatched matched",
-                                        style=MaterialTheme.typography.bodySmall)
-                                    val savedDiscoveryStatus = remember(socialRevision,merchantSearchStatus,selectedTransaction.description) {
-                                        context.getSharedPreferences("merchant_discovery_results",android.content.Context.MODE_PRIVATE)
-                                            .getString(VendorProfiles.key(selectedTransaction.description),"Not searched yet")
-                                    }
-                                    Text(if(merchantSearchRequest?.first==selectedTransaction.description) merchantSearchStatus
-                                        else savedDiscoveryStatus ?: "Not searched yet",style=MaterialTheme.typography.bodySmall)
-                                    OutlinedButton(enabled=onlineMerchantDiscovery && merchantSearchRequest==null,
-                                        onClick={ merchantSearchRequest=selectedTransaction.description to selectedTransaction.category }) {
-                                        Text(if(merchantSearchRequest?.first==selectedTransaction.description) "Searching…" else "Search this merchant now")
-                                    }
-                                    if (freeMerchantResults.isNotEmpty()) {
-                                        Text("Public directory candidates · review before confirming",style=MaterialTheme.typography.titleSmall)
-                                        freeMerchantResults.forEach { place ->
-                                            Text(place.name+" · "+place.source,style=MaterialTheme.typography.bodySmall)
-                                            if(place.website!=null) Text(place.website,style=MaterialTheme.typography.bodySmall)
-                                            if(place.social!=null) Text(place.social,style=MaterialTheme.typography.bodySmall)
-                                        }
-                                    }
-                                    Text(if(matchedProfile==null) "Social profile: Not verified"
-                                        else "Social profile: User-confirmed · ${matchedProfile.platform}",
-                                        style=MaterialTheme.typography.bodyMedium)
-                                    if(matchedProfile!=null) {
-                                        Text(matchedProfile.socialUrl,style=MaterialTheme.typography.bodySmall)
-                                        OutlinedButton(onClick={
-                                            context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(matchedProfile.socialUrl)))
-                                        }) { Text("View linked social profile") }
-                                    }
-                                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                        OutlinedButton(onClick={
-                                            socialUrl=matchedProfile?.socialUrl.orEmpty()
-                                            socialEvidence=matchedProfile?.evidenceUrl.orEmpty()
-                                            showSocialMatch=true
-                                        }) { Text("Verify social profile") }
-                                        OutlinedButton(onClick={avatarPicker.launch("image/*")}) { Text("Set vendor picture") }
-                                    }
-                                    if(showSocialMatch) {
-                                        Text("Match: ${VendorProfiles.vendor(selectedTransaction.description)}",style=MaterialTheme.typography.titleSmall)
-                                        Text("Find the business's official account and confirm it is linked from an independent official website. Similar names alone are not proof.",style=MaterialTheme.typography.bodySmall)
-                                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                            Checkbox(checked=onlineMerchantDiscovery,onCheckedChange={
-                                                onlineMerchantDiscovery=it
-                                                MerchantDiscoveryPolicy.setEnabled(context,it)
-                                            })
-                                            Text("Allow online merchant discovery (shares merchant names only)")
-                                        }
-                                        OutlinedButton(onClick={
-                                            val query=java.net.URLEncoder.encode((AutomaticVendorIdentity.discoveryQuery(selectedTransaction.description,selectedTransaction.category) ?: "Maldives business")+" Instagram Facebook","UTF-8")
-                                            context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.google.com/search?q="+query)))
-                                        }) { Text("Search public social profiles") }
-                                        OutlinedTextField(value=socialUrl,onValueChange={socialUrl=it.take(500)},
-                                            label={Text("Social profile HTTPS URL")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-                                        OutlinedTextField(value=socialEvidence,onValueChange={socialEvidence=it.take(500)},
-                                            label={Text("Independent official website evidence URL")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-                                        Text("Saving confirms you checked that the business website links to this exact profile. The app does not independently authenticate the link.",style=MaterialTheme.typography.bodySmall)
-                                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                            TextButton(onClick={showSocialMatch=false}) { Text("Cancel") }
-                                            Button(onClick={
-                                                val error=VendorProfiles.validate(socialUrl.trim(),socialEvidence.trim())
-                                                if(error!=null) notice=error
-                                                else {
-                                                    VendorProfiles.save(context,selectedTransaction.description,socialUrl.trim(),socialEvidence.trim())
-                                                    socialRevision++
-                                                    showSocialMatch=false
-                                                    notice="Vendor profile saved as user-confirmed"
-                                                }
-                                            }) { Text("Confirm match") }
-                                        }
-                                        if(matchedProfile!=null) TextButton(onClick={
-                                            VendorProfiles.remove(context,selectedTransaction.description)
-                                            socialRevision++
-                                            showSocialMatch=false
-                                        }) { Text("Remove linked profile") }
-                                    }
-                                    Text("Verified business website icons are downloaded automatically when available. You can also set a picture from your gallery. Social network profile photos are not downloaded.",style=MaterialTheme.typography.bodySmall)
+                                    Text("Business icon",style=MaterialTheme.typography.titleSmall)
+                                    Text(MerchantIcons.icon(selectedTransaction.description,selectedTransaction.category)+"  "+
+                                        VendorProfiles.vendor(selectedTransaction.description),style=MaterialTheme.typography.headlineSmall)
+                                    Text("Chosen automatically from the merchant name and spending category. No online searches or social verification.",style=MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(onClick={avatarPicker.launch("image/*")}) { Text("Set custom picture") }
                                 }
                                 if(isTransfer) {
                                     Text("Recipient: "+recipient.ifBlank { "Not identified" },
