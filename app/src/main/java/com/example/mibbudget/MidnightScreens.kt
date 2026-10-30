@@ -44,24 +44,6 @@ internal fun MidnightHomeScreen(
                     val monthlyIn=monthlyTransactions.filter {
                         it.amountLaari>0 && it.category!="Internal Transfer"
                     }.sumOf { it.amountLaari }
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                        Card(Modifier.weight(1f),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                                Text("Income · This month",style=MaterialTheme.typography.labelMedium,
-                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(Money.format(monthlyIn),style=MaterialTheme.typography.titleLarge,
-                                    fontWeight=FontWeight.Bold)
-                            }
-                        }
-                        Card(Modifier.weight(1f),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                                Text("Spent · This month",style=MaterialTheme.typography.labelMedium,
-                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(Money.format(monthlyOut),style=MaterialTheme.typography.titleLarge,
-                                    fontWeight=FontWeight.Bold)
-                            }
-                        }
-                    }
                     Text("THIS MONTH",style=MaterialTheme.typography.labelMedium,
                         color=MaterialTheme.colorScheme.onSurfaceVariant,fontWeight=FontWeight.Bold)
                     PremiumMonthlyInsightStats(income=monthlyIn,expenses=monthlyOut)
