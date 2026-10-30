@@ -46,6 +46,7 @@ object MerchantWebDiscovery {
         val match = discover(description, category) ?: return false
         if (!MerchantDiscoveryPolicy.eligible(context, description, category)) return false
         AutomaticVendorIdentity.confirmProfile(context, description, match.social, match.website)
+        runCatching { MerchantPictureCache.saveIfAbsent(context, description, match.website) }
         return true
     }
 }
