@@ -258,6 +258,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var socialEvidence by remember { mutableStateOf("") }
     var showSocialMatch by remember { mutableStateOf(false) }
     var socialRevision by remember { mutableIntStateOf(0) }
+    var onlineMerchantDiscovery by remember { mutableStateOf(MerchantDiscoveryPolicy.enabled(context)) }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val chosen=store.all().firstOrNull { it.id==selectedTransactionId }
         if(uri!=null && chosen!=null) try {
@@ -338,7 +339,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val transactions = store.all()
     // Discover one eligible merchant per refresh, off the UI thread. Rate-limit requests
     // and never transmit transaction amounts, card numbers, or full SMS contents.
-    LaunchedEffect(revision) {
+    LaunchedEffect(revision,onlineMerchantDiscovery) {
         val discoveryPrefs = context.getSharedPreferences("merchant_discovery_attempts",android.content.Context.MODE_PRIVATE)
         val candidates = transactions.asSequence()
             .filter { MerchantDiscoveryPolicy.eligible(context,it.description,it.category) }
@@ -3062,6 +3063,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     if(showSocialMatch) {
                                         Text("Match: ${VendorProfiles.vendor(selectedTransaction.description)}",style=MaterialTheme.typography.titleSmall)
                                         Text("Find the business's official account and confirm it is linked from an independent official website. Similar names alone are not proof.",style=MaterialTheme.typography.bodySmall)
+                                        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                            Checkbox(checked=onlineMerchantDiscovery,onCheckedChange={
+                                                onlineMerchantDiscovery=it
+                                                MerchantDiscoveryPolicy.setEnabled(context,it)
+                                            })
+                                            Text("Allow online merchant discovery (shares merchant names only)")
+                                        }
                                         OutlinedButton(onClick={
                                             val query=java.net.URLEncoder.encode((AutomaticVendorIdentity.discoveryQuery(selectedTransaction.description,selectedTransaction.category) ?: "Maldives business")+" Instagram Facebook","UTF-8")
                                             context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.google.com/search?q="+query)))
