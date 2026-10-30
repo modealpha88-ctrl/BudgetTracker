@@ -340,20 +340,21 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     // and never transmit transaction amounts, card numbers, or full SMS contents.
     LaunchedEffect(revision) {
         val discoveryPrefs = context.getSharedPreferences("merchant_discovery_attempts",android.content.Context.MODE_PRIVATE)
-        val candidate = transactions.asSequence()
+        val candidates = transactions.asSequence()
             .filter { MerchantDiscoveryPolicy.eligible(context,it.description,it.category) }
             .distinctBy { VendorProfiles.key(it.description) }
-            .firstOrNull {
+            .filter {
                 val key = VendorProfiles.key(it.description)
                 System.currentTimeMillis() - discoveryPrefs.getLong(key,0L) > 24L*60*60*1000
-            }
-        if (candidate != null) {
+            }.take(5).toList()
+        for (candidate in candidates) {
             val key = VendorProfiles.key(candidate.description)
             discoveryPrefs.edit().putLong(key,System.currentTimeMillis()).apply()
             val matched = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching { MerchantWebDiscovery.apply(context,candidate.description,candidate.category) }.getOrDefault(false)
             }
             if (matched) { socialRevision++; avatarRevision++ }
+            kotlinx.coroutines.delay(1200)
         }
     }
     // Once the first CSV has established a baseline, subsequent imports never require another CSV.
