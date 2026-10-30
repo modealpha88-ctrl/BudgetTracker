@@ -12,7 +12,7 @@ object MerchantWebDiscovery {
     private fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9]"), "")
     private fun read(url: String): String {
         val u = URL(url)
-        if (u.protocol != "https" || u.userInfo != null) return ""
+        if (u.protocol != "https" || u.userInfo != null || u.host == "localhost" || u.host.endsWith(".local") || u.host.matches(Regex("([0-9]{1,3}\\\\.){3}[0-9]{1,3}"))) return ""
         val c = u.openConnection() as HttpURLConnection
         c.connectTimeout = 4000
         c.readTimeout = 4000
