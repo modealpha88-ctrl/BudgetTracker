@@ -1089,299 +1089,83 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             }
             Spacer(Modifier.height(14.dp))
             if (!onboardingRequired) when(tab) {
-                0 -> {
-                    // A focused financial home. The legacy dashboard is preserved under More.
-                    Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Your money, with clarity",style=MaterialTheme.typography.bodyMedium,
-                        color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    val balances=reconciledAccountBalances(context,transactions,accountLabels)
-                    Card(
-                        modifier=Modifier.fillMaxWidth(),
-                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
-                        shape=RoundedCornerShape(26.dp)
-                    ) {
-                        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                            Text("YOUR ACCOUNTS",style=MaterialTheme.typography.labelMedium,
-                                color=MaterialTheme.colorScheme.onPrimaryContainer)
-                            listOf("MIB","BML","Cash").forEach { bank ->
-                                val value=balances[bank]
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
-                                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                    Text(bank,style=MaterialTheme.typography.titleMedium,
-                                        color=MaterialTheme.colorScheme.onPrimaryContainer)
-                                    Text(if(value==null || value==Long.MIN_VALUE) "Not reconciled" else Money.format(value),
-                                        fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onPrimaryContainer)
-                                }
-                            }
-                            Text("Balances use your saved account snapshots and recorded movements.",
-                                style=MaterialTheme.typography.bodySmall,
-                                color=MaterialTheme.colorScheme.onPrimaryContainer)
-                            Button(onClick={tab=5},modifier=Modifier.fillMaxWidth()) { Text("Open accounts") }
-                        }
-                    }
-                    val monthlyOut=monthlyTransactions.filter {
-                        it.amountLaari<0 && it.category!="Internal Transfer"
-                    }.sumOf { -it.amountLaari }
-                    val monthlyIn=monthlyTransactions.filter {
-                        it.amountLaari>0 && it.category!="Internal Transfer"
-                    }.sumOf { it.amountLaari }
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                        Card(Modifier.weight(1f),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                                Text("Income · This month",style=MaterialTheme.typography.labelMedium,
-                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(Money.format(monthlyIn),style=MaterialTheme.typography.titleLarge,
-                                    fontWeight=FontWeight.Bold)
-                            }
-                        }
-                        Card(Modifier.weight(1f),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                                Text("Spent · This month",style=MaterialTheme.typography.labelMedium,
-                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(Money.format(monthlyOut),style=MaterialTheme.typography.titleLarge,
-                                    fontWeight=FontWeight.Bold)
-                            }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                        OutlinedButton(onClick={tab=4},modifier=Modifier.weight(1f)) { Text("Safe to spend") }
-                        OutlinedButton(onClick={tab=6},modifier=Modifier.weight(1f)) { Text("Insights") }
-                    }
-                    if(pendingBml.isNotEmpty()) Card(
-                        onClick={tab=2},
-                        modifier=Modifier.fillMaxWidth(),
-                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.secondaryContainer)
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("${pendingBml.size} BML credit(s) need review",
-                                style=MaterialTheme.typography.titleMedium)
-                            Text("Review incoming payments before including them in balances.",
-                                style=MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
-                        verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Recent activity",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-                        TextButton(onClick={tab=1}) { Text("See all") }
-                    }
-                    val recent=transactions.sortedByDescending { it.timestamp }.take(6)
-                    if(recent.isEmpty()) Text("Your transactions will appear here after importing a bank statement.")
-                    recent.forEach { tx ->
-                        Card(onClick={selectedTransactionId=tx.id},modifier=Modifier.fillMaxWidth(),
-                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
-                            Row(Modifier.padding(14.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),
-                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text(MerchantIcons.icon(tx.description,tx.category),
-                                    style=MaterialTheme.typography.headlineSmall)
-                                Column(Modifier.weight(1f)) {
-                                    Text(TransactionPresentation.label(tx.description),
-                                        maxLines=1,style=MaterialTheme.typography.bodyLarge)
-                                    Text("${tx.category} · ${tx.timestamp.take(10)}",
-                                        style=MaterialTheme.typography.bodySmall,
-                                        color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text(Money.format(tx.amountLaari),
-                                    style=MaterialTheme.typography.labelLarge,
-                                    color=if(tx.amountLaari>0) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
-                    }
-                    OutlinedButton(onClick={tab=8},modifier=Modifier.fillMaxWidth()) {
-                        Text("Advanced dashboard & reconciliation tools")
-                    }
-                }
-                5 -> {
-                    Text("Accounts",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Reconciled balances, snapshots and account history",
-                        color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    val balances=reconciledAccountBalances(context,transactions,accountLabels)
-                    listOf("MIB","BML","Cash").forEach { bank ->
-                        val value=balances[bank]
-                        val assignedCount=transactions.count { tx ->
-                            FinanceCalculations.assignedAccount(tx,accountLabels)==bank
-                        }
-                        Card(onClick={
-                            selectedAccountCard=bank
-                            accountChoice=bank
-                            dedicatedAccountOpen=true
-                        },modifier=Modifier.fillMaxWidth(),
-                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                            Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text(bank,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-                                    Text("View details ›",style=MaterialTheme.typography.labelMedium,
-                                        color=MaterialTheme.colorScheme.primary)
-                                }
-                                Text(if(value==null || value==Long.MIN_VALUE) "Balance not set" else Money.format(value),
-                                    style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                                Text("${assignedCount} transactions · Tap for history and balance reconciliation",
-                                    style=MaterialTheme.typography.bodySmall,
-                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                OutlinedButton(onClick={
-                                    accountFilter=bank
-                                    showAdvancedFilters=true
-                                    tab=1
-                                },modifier=Modifier.fillMaxWidth()) { Text("View $bank transactions") }
-                            }
-                        }
-                    }
-                    OutlinedButton(onClick={tab=8},modifier=Modifier.fillMaxWidth()) {
-                        Text("Advanced balance & internal transfer tools")
-                    }
-                    OutlinedButton(onClick={tab=4},modifier=Modifier.fillMaxWidth()) {
-                        Text("Cash wallet & financial planning")
-                    }
-                }
-                6 -> {
-                    Text("Insights",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Spending patterns and merchant analysis",
-                        color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
-                        verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Text(selectedMonth.toString(),style=MaterialTheme.typography.titleMedium)
-                        Row {
-                            TextButton(onClick={selectedMonth=selectedMonth.minusMonths(1)}) { Text("‹") }
-                            TextButton(onClick={selectedMonth=selectedMonth.plusMonths(1)}) { Text("›") }
-                        }
-                    }
-                    val expenses=monthlyTransactions.filter {
-                        it.amountLaari<0 && it.category!="Internal Transfer"
-                    }
-                    val spent=expenses.sumOf { -it.amountLaari }
-                    val incomeThisMonth=monthlyTransactions.filter {
-                        it.amountLaari>0 && it.category!="Internal Transfer"
-                    }.sumOf { it.amountLaari }
-                    Card(Modifier.fillMaxWidth(),
-                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)) {
-                        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                            Text("Monthly cash flow",style=MaterialTheme.typography.titleMedium)
-                            Text(Money.format(incomeThisMonth-spent),
-                                style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                            Text("Income ${Money.format(incomeThisMonth)} · Spent ${Money.format(spent)}",
-                                style=MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                            Text("Spending by category",style=MaterialTheme.typography.titleMedium)
-                            if(expenses.isEmpty()) Text("No expenses in this month.")
-                            else SpendingBreakdown(
-                                expenses=expenses,
-                                initialStyle="Treemap",
-                                onStyleChange={},
-                                onCategory={ selected ->
-                                    categoryFilter=selected
-                                    categoryDrilldownMonth=selectedMonth
-                                    transactionFilter="Expenses"
-                                    accountFilter="All accounts"
-                                    searchText=""
-                                    showAdvancedFilters=true
-                                    tab=1
-                                },
-                                onMerchant={ selected,merchant ->
-                                    categoryFilter=selected
-                                    categoryDrilldownMonth=selectedMonth
-                                    transactionFilter="Expenses"
-                                    accountFilter="All accounts"
-                                    searchText=merchant
-                                    showAdvancedFilters=true
-                                    tab=1
-                                }
-                            )
-                        }
-                    }
-                    Text("Top spending categories",style=MaterialTheme.typography.titleMedium)
-                    expenses.groupBy { it.category }.mapValues { (_,items) ->
-                        items.sumOf { -it.amountLaari }
-                    }.toList().sortedByDescending { it.second }.take(5).forEach { (categoryName,total) ->
-                        Card(onClick={
-                            categoryFilter=categoryName
-                            categoryDrilldownMonth=selectedMonth
-                            transactionFilter="Expenses"
-                            accountFilter="All accounts"
-                            showAdvancedFilters=true
-                            tab=1
-                        },modifier=Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text(categoryName)
-                                    Text(Money.format(total))
-                                }
-                                LinearProgressIndicator(
-                                    progress={if(spent>0) (total.toFloat()/spent).coerceIn(0f,1f) else 0f},
-                                    modifier=Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                    OutlinedButton(onClick={tab=4},modifier=Modifier.fillMaxWidth()) {
-                        Text("Forecasts, calendar & monthly reports")
-                    }
-                }
-                7 -> {
-                    Text("More",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Tools, planning and preferences",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    listOf(
-                        Triple(3,"Budgets","Monthly limits, rollover and categories"),
-                        Triple(4,"Plan & reports","Safe-to-spend, savings, calendar and PDF reports"),
-                        Triple(2,"Import & access","CSV, SMS, notifications and reconciliation review"),
-                        Triple(8,"Advanced dashboard","Detailed balances, receipts and remaining tools")
-                    ).forEach { (route,label,description) ->
-                        Card(onClick={tab=route},modifier=Modifier.fillMaxWidth(),
-                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
-                            Row(Modifier.fillMaxWidth().padding(16.dp),
-                                horizontalArrangement=Arrangement.SpaceBetween,
-                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                                    Text(label,style=MaterialTheme.typography.titleMedium)
-                                    Text(description,style=MaterialTheme.typography.bodySmall,
-                                        color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text("›",style=MaterialTheme.typography.headlineSmall,
-                                    color=MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                    }
-                    Text("Appearance & privacy",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Midnight Emerald")
-                                    Text("AMOLED dark mode",style=MaterialTheme.typography.bodySmall,
-                                        color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
-                            }
-                            HorizontalDivider()
-                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("Biometric app lock",modifier=Modifier.weight(1f))
-                                Switch(checked=lockEnabled,onCheckedChange={ enabled ->
-                                    if(!enabled || ((context.getSystemService(android.content.Context.KEYGUARD_SERVICE)
-                                                as android.app.KeyguardManager).isDeviceSecure ||
-                                            BiometricManager.from(context).canAuthenticate(
-                                                BiometricManager.Authenticators.BIOMETRIC_STRONG
-                                            )==BiometricManager.BIOMETRIC_SUCCESS)) {
-                                        lockEnabled=enabled
-                                        securityPrefs.edit().putBoolean("biometric_lock",enabled).apply()
-                                        unlocked=true
-                                    } else notice="Set up biometrics or a device screen lock before enabling app lock"
-                                })
-                            }
-                            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("Hide sensitive screenshots",modifier=Modifier.weight(1f))
-                                Switch(checked=screenshotPrivacy,onCheckedChange={
-                                    screenshotPrivacy=it
-                                    securityPrefs.edit().putBoolean("screenshot_privacy",it).apply()
-                                })
-                            }
-                            Text("Your transactions and account data remain stored locally.",
-                                style=MaterialTheme.typography.bodySmall,
-                                color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
+                0 -> MidnightHomeScreen(
+                    context=context,
+                    transactions=transactions,
+                    monthlyTransactions=monthlyTransactions,
+                    accountLabels=accountLabels,
+                    pendingBmlCount=pendingBml.size,
+                    onAccounts={tab=5},
+                    onPlanning={tab=4},
+                    onInsights={tab=6},
+                    onReview={tab=2},
+                    onActivity={tab=1},
+                    onTransaction={selectedTransactionId=it},
+                    onAdvanced={tab=8}
+                )
+                5 -> MidnightAccountsScreen(
+                    context=context,
+                    transactions=transactions,
+                    accountLabels=accountLabels,
+                    onOpenAccount={bank ->
+                        selectedAccountCard=bank
+                        accountChoice=bank
+                        dedicatedAccountOpen=true
+                    },
+                    onAccountTransactions={bank ->
+                        accountFilter=bank
+                        showAdvancedFilters=true
+                        tab=1
+                    },
+                    onAdvanced={tab=8},
+                    onPlanning={tab=4}
+                )
+                6 -> MidnightInsightsScreen(
+                    monthlyTransactions=monthlyTransactions,
+                    selectedMonth=selectedMonth,
+                    onMonthChange={selectedMonth=it},
+                    onCategory={selected ->
+                        categoryFilter=selected
+                        categoryDrilldownMonth=selectedMonth
+                        transactionFilter="Expenses"
+                        accountFilter="All accounts"
+                        searchText=""
+                        showAdvancedFilters=true
+                        tab=1
+                    },
+                    onMerchant={selected,merchant ->
+                        categoryFilter=selected
+                        categoryDrilldownMonth=selectedMonth
+                        transactionFilter="Expenses"
+                        accountFilter="All accounts"
+                        searchText=merchant
+                        showAdvancedFilters=true
+                        tab=1
+                    },
+                    onPlanning={tab=4}
+                )
+                7 -> MidnightMoreScreen(
+                    darkTheme=darkTheme,
+                    setDarkTheme=setDarkTheme,
+                    lockEnabled=lockEnabled,
+                    onLockChange={enabled ->
+                        if(!enabled || ((context.getSystemService(android.content.Context.KEYGUARD_SERVICE)
+                                        as android.app.KeyguardManager).isDeviceSecure ||
+                                BiometricManager.from(context).canAuthenticate(
+                                    BiometricManager.Authenticators.BIOMETRIC_STRONG
+                                )==BiometricManager.BIOMETRIC_SUCCESS)) {
+                            lockEnabled=enabled
+                            securityPrefs.edit().putBoolean("biometric_lock",enabled).apply()
+                            unlocked=true
+                        } else notice="Set up biometrics or a device screen lock before enabling app lock"
+                    },
+                    screenshotPrivacy=screenshotPrivacy,
+                    onScreenshotPrivacyChange={enabled ->
+                        screenshotPrivacy=enabled
+                        securityPrefs.edit().putBoolean("screenshot_privacy",enabled).apply()
+                    },
+                    onNavigate={tab=it}
+                )
                 4 -> {
                     FinancialPlanningScreen(
                         context = context,
