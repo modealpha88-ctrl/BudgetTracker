@@ -3042,7 +3042,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         Text("Match: ${VendorProfiles.vendor(selectedTransaction.description)}",style=MaterialTheme.typography.titleSmall)
                                         Text("Find the business's official account and confirm it is linked from an independent official website. Similar names alone are not proof.",style=MaterialTheme.typography.bodySmall)
                                         OutlinedButton(onClick={
-                                            val query=java.net.URLEncoder.encode(VendorProfiles.vendor(selectedTransaction.description)+" Maldives official Instagram Facebook","UTF-8")
+                                            val query=java.net.URLEncoder.encode((AutomaticVendorIdentity.discoveryQuery(selectedTransaction.description,selectedTransaction.category) ?: "Maldives business")+" Instagram Facebook","UTF-8")
                                             context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.google.com/search?q="+query)))
                                         }) { Text("Search public social profiles") }
                                         OutlinedTextField(value=socialUrl,onValueChange={socialUrl=it.take(500)},
