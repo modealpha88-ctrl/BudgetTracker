@@ -3101,7 +3101,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
-                                Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,"Unclassified")}",style=MaterialTheme.typography.bodyMedium)
+                                Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,null) ?: if (!VendorProfiles.isTransfer(selectedTransaction.description,selectedTransaction.category)) "Business" else "Unclassified"}",style=MaterialTheme.typography.bodyMedium)
                                 Box {
                                     OutlinedButton(onClick={counterpartyEditExpanded=true}) { Text("Classify business / individual") }
                                     DropdownMenu(expanded=counterpartyEditExpanded,onDismissRequest={counterpartyEditExpanded=false}) {
