@@ -800,6 +800,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         return
     }
     val mainScrollState = rememberScrollState()
+    // Each destination opens at the top, instead of inheriting another screen's scroll position.
+    LaunchedEffect(tab) { mainScrollState.scrollTo(0) }
     Scaffold(floatingActionButton = {
         if(!onboardingRequired && tab==1) FloatingActionButton(
             onClick={showTransactionForm=true},
@@ -1086,7 +1088,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
             }
             Spacer(Modifier.height(14.dp))
-            when(tab) {
+            if (!onboardingRequired) when(tab) {
                 0 -> {
                     // A focused financial home. The legacy dashboard is preserved under More.
                     Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
