@@ -2,6 +2,8 @@ package com.example.mibbudget
 
 import android.content.Context
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -27,7 +29,7 @@ internal fun MidnightHomeScreen(
     onTransaction: (Long) -> Unit,
     onAdvanced: () -> Unit
 ) {
-    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     // A focused financial home. The legacy dashboard is preserved under More.
                     Text("BUDGET TRACKER",style=MaterialTheme.typography.labelLarge,
                         color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
@@ -109,8 +111,8 @@ internal fun MidnightAccountsScreen(
     onPlanning: () -> Unit
 ) {
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                    Text("Accounts",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Reconciled balances, snapshots and account history",
+                    Text("Your accounts",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.ExtraBold)
+                    Text("Your balances and account activity in one place",
                         color=MaterialTheme.colorScheme.onSurfaceVariant)
                     val balances=reconciledAccountBalances(context,transactions,accountLabels)
                     listOf("MIB","BML","Cash").forEach { bank ->
@@ -119,10 +121,13 @@ internal fun MidnightAccountsScreen(
                             FinanceCalculations.assignedAccount(tx,accountLabels)==bank
                         }
                         Card(onClick={onOpenAccount(bank)},modifier=Modifier.fillMaxWidth(),
+                            shape=RoundedCornerShape(28.dp),
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
                             Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text(bank,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                                    Text(when(bank) { "MIB" -> "●  MIB"; "BML" -> "●  BML"; else -> "●  Cash wallet" },
+                                        style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,
+                                        color=when(bank) { "MIB" -> MaterialTheme.colorScheme.primary; "BML" -> MaterialTheme.colorScheme.tertiary; else -> Color(0xFFF5C17C) })
                                     Text("View details ›",style=MaterialTheme.typography.labelMedium,
                                         color=MaterialTheme.colorScheme.primary)
                                 }
@@ -135,7 +140,7 @@ internal fun MidnightAccountsScreen(
                             }
                         }
                     }
-                    OutlinedButton(onClick=onAdvanced,modifier=Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick=onAdvanced,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(24.dp)) {
                         Text("Advanced balance & internal transfer tools")
                     }
                     OutlinedButton(onClick=onPlanning,modifier=Modifier.fillMaxWidth()) {
@@ -155,8 +160,8 @@ internal fun MidnightInsightsScreen(
     onPlanning: () -> Unit
 ) {
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                    Text("Insights",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Spending patterns and merchant analysis",
+                    Text("Your insights",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.ExtraBold)
+                    Text("Understand where your money goes",
                         color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
                         verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -174,6 +179,7 @@ internal fun MidnightInsightsScreen(
                         it.amountLaari>0 && it.category!="Internal Transfer"
                     }.sumOf { it.amountLaari }
                     Card(Modifier.fillMaxWidth(),
+                        shape=RoundedCornerShape(28.dp),
                         colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)) {
                         Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(7.dp)) {
                             Text("Monthly cash flow",style=MaterialTheme.typography.titleMedium)
@@ -183,8 +189,9 @@ internal fun MidnightInsightsScreen(
                                 style=MaterialTheme.typography.bodySmall)
                         }
                     }
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                    Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(26.dp),
+                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                             Text("Spending by category",style=MaterialTheme.typography.titleMedium)
                             if(expenses.isEmpty()) Text("No expenses in this month.")
                             else SpendingBreakdown(
@@ -200,7 +207,9 @@ internal fun MidnightInsightsScreen(
                     expenses.groupBy { it.category }.mapValues { (_,items) ->
                         items.sumOf { -it.amountLaari }
                     }.toList().sortedByDescending { it.second }.take(5).forEach { (categoryName,total) ->
-                        Card(onClick={onCategory(categoryName)},modifier=Modifier.fillMaxWidth()) {
+                        Card(onClick={onCategory(categoryName)},modifier=Modifier.fillMaxWidth(),
+                            shape=RoundedCornerShape(22.dp),
+                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                                     Text(categoryName)
@@ -231,8 +240,8 @@ internal fun MidnightMoreScreen(
     onNavigate: (Int) -> Unit
 ) {
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                    Text("More",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Tools, planning and preferences",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("More to explore",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.ExtraBold)
+                    Text("Your tools, preferences and money management",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     listOf(
                         Triple(3,"Budgets","Monthly limits, rollover and categories"),
                         Triple(4,"Plan & reports","Safe-to-spend, savings, calendar and PDF reports"),
@@ -240,8 +249,9 @@ internal fun MidnightMoreScreen(
                         Triple(8,"Advanced dashboard","Detailed balances, receipts and remaining tools")
                     ).forEach { (route,label,description) ->
                         Card(onClick={onNavigate(route)},modifier=Modifier.fillMaxWidth(),
+                            shape=RoundedCornerShape(24.dp),
                             colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
-                            Row(Modifier.fillMaxWidth().padding(16.dp),
+                            Row(Modifier.fillMaxWidth().padding(20.dp),
                                 horizontalArrangement=Arrangement.SpaceBetween,
                                 verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -255,11 +265,12 @@ internal fun MidnightMoreScreen(
                         }
                     }
                     Text("Appearance & privacy",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(26.dp),
+                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                             Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Midnight Aurora")
+                                    Text("Midnight Aurora",fontWeight=FontWeight.SemiBold)
                                     Text("Multi-accent AMOLED theme",style=MaterialTheme.typography.bodySmall,
                                         color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
