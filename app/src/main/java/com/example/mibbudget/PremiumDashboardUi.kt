@@ -302,3 +302,43 @@ internal fun PremiumAccountsOverview(balances: Map<String, Long>, onAccounts: ()
         }
     }
 }
+
+/** Last seven days of the selected month, using recorded expenses only. */
+@Composable
+internal fun PremiumWeeklySpendBars(entries: List<Tx>, selectedMonth: java.time.YearMonth) {
+    val today = java.time.LocalDate.now()
+    val end = if (selectedMonth == java.time.YearMonth.from(today)) today else selectedMonth.atEndOfMonth()
+    val days = (6 downTo 0).map { end.minusDays(it.toLong()) }
+    val byDay = entries.filter { it.amountLaari < 0L && it.category != "Internal Transfer" }
+        .groupBy { it.timestamp.take(10) }
+        .mapValues { (_, rows) -> rows.sumOf { -it.amountLaari } }
+    val values = days.map { byDay[it.toString()] ?: 0L }
+    val peak = values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("7-DAY SPENDING", style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Recorded transactions", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.Bottom) {
+            days.forEachIndexed { index, day ->
+                val ratio = (values[index].toDouble() / peak.toDouble()).toFloat().coerceIn(0f, 1f)
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Box(Modifier.fillMaxWidth().height(49.dp), contentAlignment = Alignment.BottomCenter) {
+                        Box(Modifier.fillMaxWidth(0.65f).height((5f + 44f * ratio).dp)
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(if (values[index] > 0L) Ice.copy(alpha = 0.37f + ratio * 0.63f)
+                                        else MaterialTheme.colorScheme.outlineVariant))
+                    }
+                    Text(day.dayOfWeek.getDisplayName(
+                        java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH).take(2),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
