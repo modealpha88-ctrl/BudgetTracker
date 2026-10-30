@@ -829,6 +829,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     onClick={tab=route},
                     icon={Icon(icons[index],contentDescription=labels[index])},
                     label={Text(labels[index])},
+                    colors=NavigationBarItemDefaults.colors(
+                        selectedIconColor=MaterialTheme.colorScheme.primary,
+                        selectedTextColor=MaterialTheme.colorScheme.primary,
+                        indicatorColor=MaterialTheme.colorScheme.primaryContainer,
+                        unselectedIconColor=MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor=MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
                     alwaysShowLabel=true
                 )
             }
@@ -1238,16 +1245,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         val accountKey=selectedAccountCard.lowercase(java.util.Locale.ROOT)
                         val anchorDateForCard=balancePrefs.getString("${accountKey}_date","").orEmpty()
+                        val balanceCardRevision=accountBalanceRevision
                         val projectedMinor=reconciledAccountBalances(context, transactions, accountLabels)[selectedAccountCard]
-                        PremiumAccountSnapshotCard(
-                            bank=selectedAccountCard,
-                            amount=projectedMinor,
-                            anchorDate=anchorDateForCard.ifBlank { "your latest verified" },
-                            onClick={
-                                accountChoice=selectedAccountCard
-                                dedicatedAccountOpen=true
-                            }
-                        )
+                        key(balanceCardRevision) {
+                            PremiumAccountSnapshotCard(
+                                bank=selectedAccountCard,
+                                amount=projectedMinor,
+                                anchorDate=anchorDateForCard.ifBlank { "your latest verified" },
+                                onClick={
+                                    accountChoice=selectedAccountCard
+                                    dedicatedAccountOpen=true
+                                }
+                            )
+                        }
                     }
                     if(showSpendingInsights) {
                         val monthExpenses=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
