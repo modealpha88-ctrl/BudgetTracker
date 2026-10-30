@@ -2656,7 +2656,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     val avatarPath=remember(avatarRevision,socialRevision,vendorKey) { if (AutomaticVendorIdentity.isManuallyUnassigned(context,t.description)) null else vendorAvatarPrefs.getString(vendorKey,null) }
                                     val avatar=remember(avatarPath) { avatarPath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
                                     if(avatar!=null) Image(bitmap=avatar,contentDescription="Vendor icon",modifier=Modifier.size(42.dp),contentScale=ContentScale.Crop)
-                                    else Text(if(t.category.contains("Transfer",true)) "↗" else vendorKey.split("_").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.ifBlank { "▤" },color=MaterialTheme.colorScheme.onSecondaryContainer)
+                                    else Text(if(t.category.contains("Transfer",true)) "↗" else VendorProfiles.vendor(t.description).split(Regex("\\s+")).filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.ifBlank { "▤" },color=MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     val savedName=recipientPrefs.getString(t.fingerprint,null).orEmpty()
