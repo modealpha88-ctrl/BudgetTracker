@@ -353,7 +353,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             val matched = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching { MerchantWebDiscovery.apply(context,candidate.description,candidate.category) }.getOrDefault(false)
             }
-            if (matched) socialRevision++
+            if (matched) { socialRevision++; avatarRevision++ }
         }
     }
     // Once the first CSV has established a baseline, subsequent imports never require another CSV.
