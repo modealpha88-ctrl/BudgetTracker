@@ -26,7 +26,9 @@ object MerchantWebDiscovery {
         if (AutomaticVendorIdentity.discoveryQuery(description, category) == null) return null
         val name = VendorProfiles.vendor(description)
         val query = URLEncoder.encode("$name Maldives", "UTF-8")
-        val data = JSONArray(read("https://nominatim.openstreetmap.org/search?format=json&extratags=1&limit=5&q=$query"))
+        val response = read("https://nominatim.openstreetmap.org/search?format=json&extratags=1&limit=5&q=$query")
+        if (response.isBlank()) return null
+        val data = JSONArray(response)
         for (i in 0 until data.length()) {
             val item = data.getJSONObject(i)
             val found = item.optString("name").ifBlank { item.optString("display_name").substringBefore(",") }
