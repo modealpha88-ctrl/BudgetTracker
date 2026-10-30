@@ -624,10 +624,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     if(lockEnabled && !unlocked) {
-        val landingAccent = Color(0xFFB5A0FF)
+        val landingAccent = Color(0xFF35D49A)
         Column(
             modifier = Modifier.fillMaxSize()
-                .background(Color(0xFF08090F))
+                .background(Color(0xFF050B09))
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 28.dp, vertical = 36.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
@@ -640,7 +640,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Spacer(Modifier.height(32.dp))
                 Box(
                     modifier = Modifier.size(92.dp)
-                        .background(Color(0xFF211B36), RoundedCornerShape(28.dp)),
+                        .background(Color(0xFF123D2D), RoundedCornerShape(28.dp)),
                     contentAlignment = androidx.compose.ui.Alignment.Center
                 ) {
                     Text("M", style = MaterialTheme.typography.displayMedium,
@@ -658,13 +658,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Spacer(Modifier.height(10.dp))
                 Text("Track your spending, manage your accounts and stay on top of your budget.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFB7B8C6),
+                    color = Color(0xFFA7BDB1),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             Column(
                 modifier = Modifier.fillMaxWidth()
                     .padding(vertical = 28.dp)
-                    .background(Color(0xFF151621), RoundedCornerShape(24.dp))
+                    .background(Color(0xFF182720), RoundedCornerShape(24.dp))
                     .padding(22.dp),
                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
             ) {
@@ -673,7 +673,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Spacer(Modifier.height(8.dp))
                 Text("Unlock to view your private financial dashboard",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFB7B8C6),
+                    color = Color(0xFFA7BDB1),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 Spacer(Modifier.height(24.dp))
                 Button(
@@ -683,7 +683,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     },
                     modifier = Modifier.fillMaxWidth().height(54.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = landingAccent,
-                        contentColor = Color(0xFF111018)),
+                        contentColor = Color(0xFF101B17)),
                     shape = RoundedCornerShape(16.dp)
                 ) { Text("Unlock with biometrics", fontWeight = FontWeight.SemiBold) }
                 Spacer(Modifier.height(10.dp))
@@ -704,27 +704,27 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             }
             Text("Protected by your device's authentication",
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF9395A8),
+                color = Color(0xFFA7BDB1),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
         return
     }
     if (onboardingRequired) {
-        Column(Modifier.fillMaxSize().background(Color(0xFF0C0C14))
+        Column(Modifier.fillMaxSize().background(Color(0xFF0A1510))
             .verticalScroll(rememberScrollState()).padding(horizontal=24.dp,vertical=40.dp),
             verticalArrangement=Arrangement.spacedBy(18.dp)) {
             Text("Welcome to Budget Tracker",style=MaterialTheme.typography.headlineMedium,color=Color.White,fontWeight=FontWeight.Bold)
-            Text("STEP ${setupStage+1} OF 4  ·  INITIAL SETUP",style=MaterialTheme.typography.titleMedium,color=Color(0xFFC4B5FD))
+            Text("STEP ${setupStage+1} OF 4  ·  INITIAL SETUP",style=MaterialTheme.typography.titleMedium,color=Color(0xFF9BE8C5))
             LinearProgressIndicator(progress={ (setupStage+1)/4f },modifier=Modifier.fillMaxWidth())
             when(setupStage) {
                 0 -> {
                     Text("Connect your transaction history",style=MaterialTheme.typography.headlineSmall,color=Color.White)
-                    Text("Import a CSV statement once to establish your starting balance and transaction history.",color=Color(0xFFE0DEEA))
+                    Text("Import a CSV statement once to establish your starting balance and transaction history.",color=Color(0xFFE3F4EA))
                     Button(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))},modifier=Modifier.fillMaxWidth()) { Text("Choose CSV statement") }
                     csvReview?.let { review ->
                         Text("Statement ready to import",style=MaterialTheme.typography.titleLarge,color=Color.White)
-                        Text("${review.missing} new transactions  ·  ${review.confirmed} matched  ·  ${review.possible} to review later",color=Color(0xFFE0DEEA))
-                        Text("Possible duplicates are excluded. Confirm below to save new transactions and move to step 2.",color=Color(0xFFBBB8CA))
+                        Text("${review.missing} new transactions  ·  ${review.confirmed} matched  ·  ${review.possible} to review later",color=Color(0xFFE3F4EA))
+                        Text("Possible duplicates are excluded. Confirm below to save new transactions and move to step 2.",color=Color(0xFFA7BDB1))
                         Button(onClick={
                             val data=csvText
                             if(data!=null) {
@@ -736,18 +736,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 setupStage=1;setupPrefs.edit().putInt("stage",1).apply()
                             }
                         },modifier=Modifier.fillMaxWidth()) { Text("Import ${review.missing} transactions & continue") }
-                        Text("Preview: first 3 new transactions",color=Color(0xFFB8A9F8))
+                        Text("Preview: first 3 new transactions",color=Color(0xFF9BE8C5))
                         review.matches.filter { it.status=="MISSING" }.take(3).forEach { item ->
-                            Text("${item.date}  ·  ${Money.format(item.amountLaari)}  ·  ${item.description.take(48)}",color=Color(0xFFD9D6E5),style=MaterialTheme.typography.bodySmall)
+                            Text("${item.date}  ·  ${Money.format(item.amountLaari)}  ·  ${item.description.take(48)}",color=Color(0xFFD6F7E6),style=MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
                 1 -> {
                     Text("Connect your bank messages",style=MaterialTheme.typography.headlineSmall,color=Color.White)
-                    Text("Follow these steps to import MIB and BML messages. Built-in templates recognize supported transaction types automatically.",color=Color(0xFFE0DEEA))
-                    Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF242230)),shape=RoundedCornerShape(20.dp)) {
+                    Text("Follow these steps to import MIB and BML messages. Built-in templates recognize supported transaction types automatically.",color=Color(0xFFE3F4EA))
+                    Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF243A30)),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                            Text("1  ·  Allow incoming bank SMS",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("1  ·  Allow incoming bank SMS",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
                             Text("Grant SMS permission when Android asks. This lets Budget Tracker detect new transactions.",color=Color.White)
                             Button(onClick={
                                 if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) {
@@ -756,17 +756,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             },modifier=Modifier.fillMaxWidth()) { Text(if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) "SMS access granted" else "Allow automatic SMS import") }
                             val receiveSmsGranted = context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED
                             val readSmsGranted = context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED
-                            Text("Permission status: incoming SMS ${if(receiveSmsGranted) "allowed" else "not allowed"} · SMS history ${if(readSmsGranted) "allowed" else "not allowed"}",color=Color(0xFFE0DEEA),style=MaterialTheme.typography.bodySmall)
+                            Text("Permission status: incoming SMS ${if(receiveSmsGranted) "allowed" else "not allowed"} · SMS history ${if(readSmsGranted) "allowed" else "not allowed"}",color=Color(0xFFE3F4EA),style=MaterialTheme.typography.bodySmall)
                             OutlinedButton(onClick=openSmsPermissionSettings,modifier=Modifier.fillMaxWidth()) { Text("Open Budget Tracker app permissions") }
-                            Text("If Android blocks or no longer shows a permission prompt, use the app settings above and return here.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
-                            Text("2  ·  Choose how far back to scan",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("If Android blocks or no longer shows a permission prompt, use the app settings above and return here.",color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
+                            Text("2  ·  Choose how far back to scan",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
                             Text("Select the history period before scanning. Existing transactions are checked for duplicates.",color=Color.White)
                             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                 listOf(1L,3L,12L).forEach { months ->
                                     FilterChip(selected=historyMonths==months,onClick={historyMonths=months},label={Text("${months}m")})
                                 }
                             }
-                            Text("3  ·  Import previous bank messages",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("3  ·  Import previous bank messages",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
                             Text("Allow read access to your SMS inbox, then wait for the scan to finish. This step is optional.",color=Color.White)
                             Button(enabled=!importingHistory,onClick={
                                 if(context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED) historyRequested=true
@@ -774,15 +774,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             },modifier=Modifier.fillMaxWidth()) { Text(if(importingHistory) "Scanning SMS…" else "Scan previous SMS") }
                             if(importingHistory) LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
                             OutlinedButton(onClick=openNotificationAccessSettings,modifier=Modifier.fillMaxWidth()) { Text("Open notification access settings (BML)") }
-                            Text("Notification access is separate from SMS permission. Enable Budget Tracker if your bank sends transaction notifications.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
-                            Text("4  ·  Continue to transaction review",color=Color(0xFFC4B5FD),fontWeight=FontWeight.Bold)
+                            Text("Notification access is separate from SMS permission. Enable Budget Tracker if your bank sends transaction notifications.",color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
+                            Text("4  ·  Continue to transaction review",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
                             Text("After importing, continue to check your transactions and balances.",color=Color.White)
                         }
                     }
                     Button(enabled=!importingHistory,onClick={setupStage=2;setupPrefs.edit().putInt("stage",2).apply()},modifier=Modifier.fillMaxWidth()) {
                         Text("Continue to transaction review")
                     }
-                    Text("On some OnePlus devices, restricted settings may need to be allowed from the app information screen before notification access becomes available. Android controls whether that option is offered.",color=Color(0xFFBBB8CA),style=MaterialTheme.typography.bodySmall)
+                    Text("On some OnePlus devices, restricted settings may need to be allowed from the app information screen before notification access becomes available. Android controls whether that option is offered.",color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
                 }
                 2 -> {
                     Text("Review imported transactions and duplicates. The transaction review inbox remains available after setup.",color=Color.White)
@@ -795,7 +795,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
             }
             if(setupStage>0) TextButton(onClick={setupStage--;setupPrefs.edit().putInt("stage",setupStage).apply()}) { Text("Back") }
-            if(notice.isNotBlank()) Text(notice,style=MaterialTheme.typography.bodySmall,color=Color(0xFFD9D6E5))
+            if(notice.isNotBlank()) Text(notice,style=MaterialTheme.typography.bodySmall,color=Color(0xFFD6F7E6))
         }
         return
     }
@@ -1148,7 +1148,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         OutlinedButton(onClick={tab=6},modifier=Modifier.weight(1f)) { Text("Insights") }
                     }
                     if(pendingBml.isNotEmpty()) Card(
-                        onClick={tab=1},
+                        onClick={tab=2},
                         modifier=Modifier.fillMaxWidth(),
                         colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.secondaryContainer)
                     ) {
