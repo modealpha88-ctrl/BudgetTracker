@@ -36,6 +36,9 @@ object AutomaticVendorIdentity {
         }
         val saved = VendorProfiles.get(context, description)
         if (saved != null) return Resolution(merchant, Source.VERIFIED_SAVED, saved.socialUrl)
+        val picture = context.getSharedPreferences("vendor_avatar_files", Context.MODE_PRIVATE)
+            .getString(VendorProfiles.key(description), null)
+        if (picture != null && java.io.File(picture).isFile) return Resolution(merchant, Source.MANUAL_PROFILE)
         return Resolution(merchant, Source.GENERIC)
     }
 }
