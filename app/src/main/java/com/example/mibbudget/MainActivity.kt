@@ -1193,9 +1193,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     )
                 }
                 8 -> {
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Overview",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-                        TextButton(onClick={showDashboardOptions=!showDashboardOptions}) { Text("Customize") }
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
+                        verticalAlignment=androidx.compose.ui.Alignment.Bottom) {
+                        Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                            Text("YOUR FINANCIAL PULSE",style=MaterialTheme.typography.labelMedium,
+                                color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
+                            Text("Overview",style=MaterialTheme.typography.headlineMedium,
+                                fontWeight=FontWeight.ExtraBold)
+                        }
+                        TextButton(onClick={showDashboardOptions=!showDashboardOptions}) {
+                            Text(if(showDashboardOptions) "Done" else "Customize")
+                        }
                     }
                     if(showDashboardOptions) {
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp)) {
@@ -1218,60 +1226,43 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     HomePlanningHighlights(context, transactions, accountLabels, store, planningLayoutRevision)
                     if(showAccountCards) {
-                        Text("Accounts",style=MaterialTheme.typography.titleMedium)
-                        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("YOUR ACCOUNTS",style=MaterialTheme.typography.labelLarge,
+                            fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             listOf("MIB","BML","Cash").forEach { bank ->
-                                FilterChip(selected=selectedAccountCard==bank,onClick={
+                                PremiumAccountPill(bank=bank,selected=selectedAccountCard==bank,onClick={
                                     selectedAccountCard=bank
                                     dashboardPrefs.edit().putString("account_card",bank).apply()
-                                },label={Text(bank)})
+                                })
                             }
                         }
                         val accountKey=selectedAccountCard.lowercase(java.util.Locale.ROOT)
-                        val minor=balancePrefs.getLong("${accountKey}_minor",Long.MIN_VALUE)
-                        val accountRefresh=accountBalanceRevision
                         val anchorDateForCard=balancePrefs.getString("${accountKey}_date","").orEmpty()
-                        val anchorDayForCard=runCatching { java.time.LocalDate.parse(anchorDateForCard) }.getOrNull()
-                        val todayForCard=java.time.LocalDate.now()
-                        val cardMovements=if(anchorDayForCard!=null && !anchorDayForCard.isAfter(todayForCard))
-                            transactions.filter { tx ->
-                                FinanceCalculations.assignedAccount(tx,accountLabels)==selectedAccountCard &&
-                                tx.timestamp.take(10)>anchorDateForCard &&
-                                tx.timestamp.take(10)<=todayForCard.toString()
-                            }.sumOf { it.amountLaari } else 0L
                         val projectedMinor=reconciledAccountBalances(context, transactions, accountLabels)[selectedAccountCard]
-                            ?: Long.MIN_VALUE
-                        Card(onClick={
-                            accountChoice=selectedAccountCard
-                            dedicatedAccountOpen=true
-                        },
-                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
-                            modifier=Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Text("$selectedAccountCard · Account snapshot",color=MaterialTheme.colorScheme.primary)
-                                Text(if(projectedMinor==Long.MIN_VALUE) "Balance not set" else Money.format(projectedMinor),
-                                    style=MaterialTheme.typography.headlineMedium)
-                                Text(if(projectedMinor==Long.MIN_VALUE) "Tap to set balance" else
-                                    "Estimated today · ${anchorDateForCard} verified snapshot + recorded movements",
-                                    style=MaterialTheme.typography.bodySmall)
-                                Text("Tap to manage balance →",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
+                        PremiumAccountSnapshotCard(
+                            bank=selectedAccountCard,
+                            amount=projectedMinor,
+                            anchorDate=anchorDateForCard.ifBlank { "your latest verified" },
+                            onClick={
+                                accountChoice=selectedAccountCard
+                                dedicatedAccountOpen=true
                             }
-                        }
+                        )
                     }
                     if(showSpendingInsights) {
                         val monthExpenses=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
                         val monthIncome=monthlyTransactions.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }
                         val monthOut=monthExpenses.sumOf { -it.amountLaari }
-                        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(26.dp),
+                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
+                            Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                                Text("Monthly insights",style=MaterialTheme.typography.titleMedium)
+                                Text("MONTHLY INSIGHTS",style=MaterialTheme.typography.labelLarge,
+                                    fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
                                 TextButton(onClick={insightsExpanded=!insightsExpanded;dashboardPrefs.edit().putBoolean("insights_expanded",insightsExpanded).apply()}) { Text(if(insightsExpanded) "Collapse ↑" else "Expand ↓") }
                             }
                             if(insightsExpanded) {
-                            Text("Income: ${Money.format(monthIncome)}")
-                            Text("Expenses: ${Money.format(monthOut)}")
-                            LinearProgressIndicator(progress={if(monthIncome>0) (monthOut.toFloat()/monthIncome).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
-                            Text(if(monthIncome>0) "${monthOut*100/monthIncome}% of recorded income spent" else "No recorded income this month",style=MaterialTheme.typography.bodySmall)
+                            PremiumMonthlyInsightStats(income=monthIncome,expenses=monthOut)
                             HorizontalDivider()
                             var spendingChartStyle by remember { mutableStateOf(dashboardPrefs.getString("spending_chart_style","Pie") ?: "Pie") }
                             SpendingBreakdown(
