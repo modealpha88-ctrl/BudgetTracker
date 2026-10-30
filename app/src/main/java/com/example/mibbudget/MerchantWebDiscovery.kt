@@ -12,14 +12,14 @@ object MerchantWebDiscovery {
     private fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9]"), "")
     private fun read(url: String): String {
         val u = URL(url)
-        if (u.protocol != "https" || u.userInfo != null || u.host == "localhost" || u.host.endsWith(".local") || u.host.matches(Regex("([0-9]{1,3}\\\\.){3}[0-9]{1,3}"))) return ""
+        if (u.protocol != "https" || u.userInfo != null || u.host == "localhost" || u.host.endsWith(".local") || u.host.matches(Regex("[0-9.]+"))) return ""
         val c = u.openConnection() as HttpURLConnection
         c.connectTimeout = 4000
         c.readTimeout = 4000
         c.instanceFollowRedirects = false
         c.setRequestProperty("User-Agent", "BudgetTracker/0.2")
         return try {
-            if (c.responseCode != 200) "" else c.inputStream.bufferedReader().use { it.readText().take(120000) }
+            if (c.responseCode != 200) "" else c.inputStream.bufferedReader().use { reader -> val chars = CharArray(120000); val n = reader.read(chars); if (n < 0) "" else String(chars, 0, n) }
         } finally { c.disconnect() }
     }
     fun discover(description: String, category: String): Match? {
