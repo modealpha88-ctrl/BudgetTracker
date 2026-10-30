@@ -1273,6 +1273,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                             if(insightsExpanded) {
                             PremiumMonthlyInsightStats(income=monthIncome,expenses=monthOut)
+                            PremiumWeeklySpendBars(entries=monthExpenses,selectedMonth=selectedMonth)
                             HorizontalDivider()
                             var spendingChartStyle by remember { mutableStateOf(dashboardPrefs.getString("spending_chart_style","Pie") ?: "Pie") }
                             SpendingBreakdown(
