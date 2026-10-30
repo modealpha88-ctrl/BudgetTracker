@@ -12,7 +12,7 @@ object FreeMerchantSources {
         if (AutomaticVendorIdentity.discoveryQuery(description,category)==null) return emptyList()
         val name = VendorProfiles.vendor(description).trim()
         if (name.length !in 3..70) return emptyList()
-        val escaped = Regex.escape(name).replace("\\E","").replace("\\Q","")
+        val escaped = name.replace(Regex("[^A-Za-z0-9 ]"), ".")
         val q = "[out:json][timeout:12];nwr[\"name\"~\"^$escaped$\",i](4.0,72.0,8.0,74.0);out tags 15;"
         val endpoint = "https://overpass.kumi.systems/api/interpreter?data=" + URLEncoder.encode(q,"UTF-8")
         val c = URL(endpoint).openConnection() as HttpURLConnection
