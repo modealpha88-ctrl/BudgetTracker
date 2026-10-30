@@ -23,6 +23,11 @@ object AutomaticVendorIdentity {
         preferences(context).edit().remove("unassigned_" + VendorProfiles.key(description)).apply()
     }
 
+    fun confirmProfile(context: Context, description: String, social: String, evidence: String) {
+        VendorProfiles.save(context, description, social, evidence)
+        clearManualUnassigned(context, description)
+    }
+
     fun isManuallyUnassigned(context: Context, description: String): Boolean =
         preferences(context).getBoolean("unassigned_" + VendorProfiles.key(description), false)
 
