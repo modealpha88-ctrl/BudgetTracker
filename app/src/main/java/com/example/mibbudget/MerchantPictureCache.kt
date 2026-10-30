@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.InetAddress
 
 /** Download a small icon only from the verified merchant website. */
 object MerchantPictureCache {
@@ -15,6 +16,8 @@ object MerchantPictureCache {
         if (prefs.getString(key, null) != null) return false
         val site = URL(website)
         if (site.protocol != "https" || site.userInfo != null || site.host == "localhost" || site.host.endsWith(".local") || site.host.matches(Regex("[0-9.]+"))) return false
+        val addresses = InetAddress.getAllByName(site.host)
+        if (addresses.isEmpty() || addresses.any { it.isAnyLocalAddress || it.isLoopbackAddress || it.isSiteLocalAddress || it.isLinkLocalAddress || it.isMulticastAddress }) return false
         val icon = URL(site.protocol, site.host, "/favicon.ico")
         val c = icon.openConnection() as HttpURLConnection
         c.connectTimeout = 4000
