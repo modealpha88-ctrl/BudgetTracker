@@ -254,19 +254,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val recipientPrefs=remember { context.getSharedPreferences("transaction_recipients",android.content.Context.MODE_PRIVATE) }
     val vendorAvatarPrefs=remember { context.getSharedPreferences("vendor_avatar_files",android.content.Context.MODE_PRIVATE) }
     var avatarRevision by remember { mutableIntStateOf(0) }
-    var socialUrl by remember { mutableStateOf("") }
-    var socialEvidence by remember { mutableStateOf("") }
-    var showSocialMatch by remember { mutableStateOf(false) }
+
+
+
     var socialRevision by remember { mutableIntStateOf(0) }
-    var onlineMerchantDiscovery by remember { mutableStateOf(MerchantDiscoveryPolicy.enabled(context)) }
-    var discoveryRunning by remember { mutableStateOf(false) }
-    var discoveryChecked by remember { mutableIntStateOf(0) }
-    var discoveryMatched by remember { mutableIntStateOf(0) }
-    var merchantSearchRequest by remember { mutableStateOf<Pair<String,String>?>(null) }
-    var merchantSearchStatus by remember { mutableStateOf("") }
-    var googlePlacesKey by remember { mutableStateOf(GoogleMerchantPlaces.key(context)) }
-    var googlePlacesResults by remember { mutableStateOf<List<GoogleMerchantPlaces.Candidate>>(emptyList()) }
-    var freeMerchantResults by remember { mutableStateOf<List<FreeMerchantSources.Candidate>>(emptyList()) }
+
+
+
+
+
+
+
+
+
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val chosen=store.all().firstOrNull { it.id==selectedTransactionId }
         if(uri!=null && chosen!=null) try {
