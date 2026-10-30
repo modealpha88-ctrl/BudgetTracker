@@ -2633,7 +2633,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 })
                                 Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.secondaryContainer,RoundedCornerShape(14.dp)),contentAlignment=androidx.compose.ui.Alignment.Center) {
                                     val vendorKey=VendorProfiles.key(t.description)
-                                    val avatarPath=remember(avatarRevision,vendorKey) { vendorAvatarPrefs.getString(vendorKey,null) }
+                                    val avatarPath=remember(avatarRevision,socialRevision,vendorKey) { if (AutomaticVendorIdentity.isManuallyUnassigned(context,t.description)) null else vendorAvatarPrefs.getString(vendorKey,null) }
                                     val avatar=remember(avatarPath) { avatarPath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
                                     if(avatar!=null) Image(bitmap=avatar,contentDescription="Vendor icon",modifier=Modifier.size(42.dp),contentScale=ContentScale.Crop)
                                     else Text(if(t.category.contains("Transfer",true)) "↗" else vendorKey.split("_").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.ifBlank { "▤" },color=MaterialTheme.colorScheme.onSecondaryContainer)
