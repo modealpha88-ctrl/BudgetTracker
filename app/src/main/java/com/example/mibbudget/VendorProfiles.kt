@@ -15,7 +15,7 @@ object VendorProfiles {
                        val platform: String, val verifiedAt: Long)
     fun vendor(description: String): String {
         val label=TransactionPresentation.label(description)
-        return label.removePrefix("POS purchase: ").removePrefix("POS Payment: ")
+        return label.replace(Regex("^(?:POS purchase|POS Payment|E-commerce purchase|E-commerce payment|E-COMMERCE TRX|Card purchase|Purchase)\\s*:\\s*", RegexOption.IGNORE_CASE), "")
             .substringBefore(" | ").trim().uppercase(Locale.ROOT)
     }
     fun key(description: String): String = vendor(description).replace(Regex("[^A-Z0-9]"),"_").take(80)
