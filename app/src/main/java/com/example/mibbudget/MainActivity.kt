@@ -259,6 +259,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var showSocialMatch by remember { mutableStateOf(false) }
     var socialRevision by remember { mutableIntStateOf(0) }
     var onlineMerchantDiscovery by remember { mutableStateOf(MerchantDiscoveryPolicy.enabled(context)) }
+    var discoveryRunning by remember { mutableStateOf(false) }
+    var discoveryChecked by remember { mutableIntStateOf(0) }
+    var discoveryMatched by remember { mutableIntStateOf(0) }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val chosen=store.all().firstOrNull { it.id==selectedTransactionId }
         if(uri!=null && chosen!=null) try {
@@ -346,6 +349,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             .filter { MerchantDiscoveryPolicy.eligible(context,it.description,it.category) }
             .distinctBy { VendorProfiles.key(it.description) }
             .toList()
+        discoveryRunning = true
+        discoveryChecked = 0
+        discoveryMatched = 0
+        try {
         for (candidate in candidates) {
             if (!MerchantDiscoveryPolicy.enabled(context)) break
             val key = VendorProfiles.key(candidate.description)
@@ -355,9 +362,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             val matched = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching { MerchantWebDiscovery.apply(context,candidate.description,candidate.category) }.getOrDefault(false)
             }
-            if (matched) { socialRevision++; avatarRevision++ }
+            discoveryChecked++
+            if (matched) { discoveryMatched++; socialRevision++; avatarRevision++ }
             kotlinx.coroutines.delay(1500)
         }
+        } finally { discoveryRunning = false }
     }
     // Once the first CSV has established a baseline, subsequent imports never require another CSV.
     // Existing installations with CSV records are migrated automatically without altering transactions.
@@ -3044,6 +3053,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     val matchedProfile=remember(socialRevision,selectedTransaction.description) {
                                         VendorProfiles.get(context,selectedTransaction.description)
                                     }
+                                    Text("Automatic merchant profile",style=MaterialTheme.typography.titleSmall)
+                                    Text(if(!onlineMerchantDiscovery) "Discovery off — enable below to search"
+                                        else if(discoveryRunning) "Searching merchants · $discoveryChecked checked · $discoveryMatched matched"
+                                        else "Discovery idle · $discoveryChecked checked · $discoveryMatched matched",
+                                        style=MaterialTheme.typography.bodySmall)
                                     Text(if(matchedProfile==null) "Social profile: Not verified"
                                         else "Social profile: User-confirmed · ${matchedProfile.platform}",
                                         style=MaterialTheme.typography.bodyMedium)
@@ -3099,7 +3113,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                             showSocialMatch=false
                                         }) { Text("Remove linked profile") }
                                     }
-                                    Text("Profile pictures are assigned from your gallery after checking the vendor identity. They are not downloaded automatically from social networks.",style=MaterialTheme.typography.bodySmall)
+                                    Text("Verified business website icons are downloaded automatically when available. You can also set a picture from your gallery. Social network profile photos are not downloaded.",style=MaterialTheme.typography.bodySmall)
                                 }
                                 if(isTransfer) {
                                     Text("Recipient: "+recipient.ifBlank { "Not identified" },
