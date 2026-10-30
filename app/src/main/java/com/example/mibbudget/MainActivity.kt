@@ -340,17 +340,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     // Discover one eligible merchant per refresh, off the UI thread. Rate-limit requests
     // and never transmit transaction amounts, card numbers, or full SMS contents.
     LaunchedEffect(revision,onlineMerchantDiscovery) {
-        val discoveryPrefs = context.getSharedPreferences("merchant_discovery_attempts",android.content.Context.MODE_PRIVATE)
         if (!onlineMerchantDiscovery) return@LaunchedEffect
+        val discoveryPrefs = context.getSharedPreferences("merchant_discovery_attempts",android.content.Context.MODE_PRIVATE)
         val candidates = transactions.asSequence()
             .filter { MerchantDiscoveryPolicy.eligible(context,it.description,it.category) }
             .distinctBy { VendorProfiles.key(it.description) }
-            .filter {
-                val key = VendorProfiles.key(it.description)
-                System.currentTimeMillis() - discoveryPrefs.getLong(key,0L) > 24L*60*60*1000
-            }.take(25).toList()
+            .toList()
         for (candidate in candidates) {
+            if (!MerchantDiscoveryPolicy.enabled(context)) break
             val key = VendorProfiles.key(candidate.description)
+            val previous = discoveryPrefs.getLong(key,0L)
+            if (System.currentTimeMillis() - previous < 24L*60*60*1000) continue
             discoveryPrefs.edit().putLong(key,System.currentTimeMillis()).apply()
             val matched = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching { MerchantWebDiscovery.apply(context,candidate.description,candidate.category) }.getOrDefault(false)
