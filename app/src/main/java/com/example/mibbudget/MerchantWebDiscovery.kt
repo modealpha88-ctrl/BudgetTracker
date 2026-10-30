@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.InetAddress
 import java.net.URLEncoder
 
 /** Conservative public directory matching. Run on a background dispatcher only. */
@@ -13,6 +14,9 @@ object MerchantWebDiscovery {
     private fun read(url: String): String {
         val u = URL(url)
         if (u.protocol != "https" || u.userInfo != null || u.host == "localhost" || u.host.endsWith(".local") || u.host.matches(Regex("[0-9.]+"))) return ""
+        if (u.host.contains(":") || u.host.matches(Regex("[0-9.]+"))) return ""
+        val addresses = InetAddress.getAllByName(u.host)
+        if (addresses.isEmpty() || addresses.any { it.isAnyLocalAddress || it.isLoopbackAddress || it.isSiteLocalAddress || it.isLinkLocalAddress || it.isMulticastAddress }) return ""
         val c = u.openConnection() as HttpURLConnection
         c.connectTimeout = 4000
         c.readTimeout = 4000
