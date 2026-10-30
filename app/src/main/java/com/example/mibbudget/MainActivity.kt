@@ -262,6 +262,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var discoveryRunning by remember { mutableStateOf(false) }
     var discoveryChecked by remember { mutableIntStateOf(0) }
     var discoveryMatched by remember { mutableIntStateOf(0) }
+    var merchantSearchRequest by remember { mutableStateOf<Pair<String,String>?>(null) }
+    var merchantSearchStatus by remember { mutableStateOf("") }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val chosen=store.all().firstOrNull { it.id==selectedTransactionId }
         if(uri!=null && chosen!=null) try {
@@ -367,6 +369,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             kotlinx.coroutines.delay(1500)
         }
         } finally { discoveryRunning = false }
+    }
+    LaunchedEffect(merchantSearchRequest) {
+        val request = merchantSearchRequest ?: return@LaunchedEffect
+        merchantSearchStatus = "Searching official business listings…"
+        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { MerchantWebDiscovery.apply(context,request.first,request.second) }
+        }
+        merchantSearchStatus = when {
+            result.isFailure -> "Search error: " + (result.exceptionOrNull()?.message ?: "Network unavailable")
+            result.getOrDefault(false) -> "Verified match saved"
+            else -> "No independently verified match found"
+        }
+        context.getSharedPreferences("merchant_discovery_results",android.content.Context.MODE_PRIVATE)
+            .edit().putString(VendorProfiles.key(request.first),merchantSearchStatus).apply()
+        if (result.getOrDefault(false)) { socialRevision++; avatarRevision++ }
+        merchantSearchRequest = null
     }
     // Once the first CSV has established a baseline, subsequent imports never require another CSV.
     // Existing installations with CSV records are migrated automatically without altering transactions.
