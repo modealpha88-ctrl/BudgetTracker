@@ -121,30 +121,20 @@ fun HomePlanningHighlights(
     val predicted = FinanceCalculations.spendingForecast(entries, month, LocalDate.now())
     order.filterNot { it in hidden }.forEach { title ->
         when (title) {
-            "Safe to spend" -> PlanningCard("Safe to spend") {
+            "Safe to spend" -> {
                 val available = balances.values.sumOf { it.coerceAtLeast(0L) }
                 val safe = (available - reserved - bills).coerceIn(0L, available)
-                if (balances.isEmpty()) Text("Not available: add a verified account snapshot.")
-                else Text(Money.format(safe), style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary)
-                TextButton(onClick = { showSafeBreakdown = !showSafeBreakdown }) {
-                    Text(if (showSafeBreakdown) "Hide balance breakdown" else "View balance breakdown")
-                }
-                if (showSafeBreakdown) {
-                    planningAccountNames.forEach { name ->
-                        Text("$name: " + (balances[name]?.let(Money::format) ?: "No verified snapshot"))
-                    }
-                    Text("Available funds: ${Money.format(available)}")
-                    Text("Reserved savings: -${Money.format(reserved)}")
-                    Text("Unpaid recurring bills: -${Money.format(bills)}")
-                    if (balances.values.any { it < 0L }) Text("Negative account balances excluded from spendable funds.")
-                    Text("Reconciled estimates, not live bank data.")
-                }
+                PremiumSafeToSpendCard(
+                    safe = if (balances.isEmpty()) null else safe,
+                    available = available,
+                    reserved = reserved,
+                    bills = bills,
+                    balances = balances,
+                    expanded = showSafeBreakdown,
+                    onToggle = { showSafeBreakdown = !showSafeBreakdown }
+                )
             }
-            "Forecast" -> PlanningCard("Month-end spending forecast") {
-                Text(Money.format(predicted), style = MaterialTheme.typography.titleLarge)
-                Text("Based on recorded month-to-date expense pace.", style = MaterialTheme.typography.bodySmall)
-            }
+            "Forecast" -> PremiumForecastCard(predicted)
             "Cash" -> if (balances.containsKey("Cash")) PlanningCard("Cash wallet") {
                 Text(balances["Cash"]?.let(Money::format) ?: "Cash opening balance not set",
                     style = MaterialTheme.typography.titleMedium)
