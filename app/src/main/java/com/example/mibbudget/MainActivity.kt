@@ -2289,22 +2289,26 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 1 -> {
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
+                        verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Column {
-                            Text("Transactions",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                            Text("${transactions.size} transactions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Activity",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
+                            Text("${transactions.size} transactions · Search, review and organize",
+                                style=MaterialTheme.typography.bodySmall,
+                                color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         TextButton(onClick={tab=2}) { Text("Import") }
                     }
-                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp),
-                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
-                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                            Text("Transactions",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
-                            Text("Search, select and organize your money",
-                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick={tab=0},modifier=Modifier.weight(1f)) { Text("Overview") }
-                                Button(onClick={showTransactionForm=true},modifier=Modifier.weight(1f)) { Text("+ Add") }
+                    Card(Modifier.fillMaxWidth(),
+                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh),
+                        shape=RoundedCornerShape(22.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(14.dp),
+                            horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Button(onClick={showTransactionForm=true},
+                                modifier=Modifier.weight(1f)) { Text("+ Add transaction") }
+                            OutlinedButton(onClick={showAdvancedFilters=!showAdvancedFilters},
+                                modifier=Modifier.weight(1f)) {
+                                Text(if(showAdvancedFilters) "Hide filters" else "Find & filter")
                             }
                         }
                     }
