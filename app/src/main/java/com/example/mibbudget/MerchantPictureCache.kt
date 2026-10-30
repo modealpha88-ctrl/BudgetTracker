@@ -14,7 +14,7 @@ object MerchantPictureCache {
         val prefs = context.getSharedPreferences("vendor_avatar_files", Context.MODE_PRIVATE)
         if (prefs.getString(key, null) != null) return false
         val site = URL(website)
-        if (site.protocol != "https" || site.userInfo != null) return false
+        if (site.protocol != "https" || site.userInfo != null || site.host == "localhost" || site.host.endsWith(".local") || site.host.matches(Regex("[0-9.]+"))) return false
         val icon = URL(site.protocol, site.host, "/favicon.ico")
         val c = icon.openConnection() as HttpURLConnection
         c.connectTimeout = 4000
@@ -32,6 +32,9 @@ object MerchantPictureCache {
                 }
                 output.toByteArray()
             }
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            if (options.outWidth !in 1..1024 || options.outHeight !in 1..1024) return false
             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return false
             val scaled = Bitmap.createScaledBitmap(bitmap, 128, 128, true)
             val file = File(context.filesDir, "merchant_auto_$key.jpg")
