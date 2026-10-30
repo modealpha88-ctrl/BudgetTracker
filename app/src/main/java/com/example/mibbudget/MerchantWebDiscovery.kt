@@ -33,6 +33,8 @@ object MerchantWebDiscovery {
             val item = data.getJSONObject(i)
             val found = item.optString("name").ifBlank { item.optString("display_name").substringBefore(",") }
             if (norm(name) != norm(found)) continue
+            val country = item.optString("display_name")
+            if (!country.contains("Maldives",ignoreCase=true)) continue
             val tags = item.optJSONObject("extratags") ?: continue
             val site = tags.optString("website").ifBlank { tags.optString("contact:website") }
             if (!site.startsWith("https://")) continue
