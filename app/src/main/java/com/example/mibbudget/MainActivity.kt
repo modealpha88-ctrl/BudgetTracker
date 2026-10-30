@@ -3179,7 +3179,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 val recordedDate = runCatching { java.time.LocalDate.parse(selectedTransaction.timestamp.take(10)) }.getOrNull()
                                 if(bankDate!=null && recordedDate!=null && bankDate!=recordedDate) {
-                                    Text("Date mismatch: bank description says $bankDate; stored transaction date is $recordedDate. Review import date and timezone before correcting.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                                    Text("Date mismatch: bank description says $bankDate; stored transaction date is $recordedDate.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                                    val datePrefs = remember { context.getSharedPreferences("bank_date_review",android.content.Context.MODE_PRIVATE) }
+                                    var confirmedDate by remember(selectedTransaction.fingerprint) { mutableStateOf(datePrefs.getString(selectedTransaction.fingerprint,"")) }
+                                    Text(if(confirmedDate==bankDate.toString()) "Bank date confirmed for review" else "Confirm against your bank statement before changing the ledger.",style=MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(onClick={
+                                        datePrefs.edit().putString(selectedTransaction.fingerprint,bankDate.toString()).apply()
+                                        confirmedDate=bankDate.toString()
+                                    }) { Text("Confirm bank date") }
                                 }
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
