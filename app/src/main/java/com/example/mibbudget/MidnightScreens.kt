@@ -29,34 +29,15 @@ internal fun MidnightHomeScreen(
 ) {
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
                     // A focused financial home. The legacy dashboard is preserved under More.
-                    Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                    Text("Your money, with clarity",style=MaterialTheme.typography.bodyMedium,
+                    Text("BUDGET TRACKER",style=MaterialTheme.typography.labelLarge,
+                        color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
+                    Text("Your money, in focus",style=MaterialTheme.typography.headlineMedium,
+                        fontWeight=FontWeight.ExtraBold)
+                    Text("Accounts, spending and activity at a glance",
+                        style=MaterialTheme.typography.bodySmall,
                         color=MaterialTheme.colorScheme.onSurfaceVariant)
                     val balances=reconciledAccountBalances(context,transactions,accountLabels)
-                    Card(
-                        modifier=Modifier.fillMaxWidth(),
-                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
-                        shape=RoundedCornerShape(26.dp)
-                    ) {
-                        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                            Text("YOUR ACCOUNTS",style=MaterialTheme.typography.labelMedium,
-                                color=MaterialTheme.colorScheme.onPrimaryContainer)
-                            listOf("MIB","BML","Cash").forEach { bank ->
-                                val value=balances[bank]
-                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
-                                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                    Text(bank,style=MaterialTheme.typography.titleMedium,
-                                        color=MaterialTheme.colorScheme.onPrimaryContainer)
-                                    Text(if(value==null || value==Long.MIN_VALUE) "Not reconciled" else Money.format(value),
-                                        fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onPrimaryContainer)
-                                }
-                            }
-                            Text("Balances use your saved account snapshots and recorded movements.",
-                                style=MaterialTheme.typography.bodySmall,
-                                color=MaterialTheme.colorScheme.onPrimaryContainer)
-                            Button(onClick=onAccounts,modifier=Modifier.fillMaxWidth()) { Text("Open accounts") }
-                        }
-                    }
+                    PremiumAccountsOverview(balances=balances,onAccounts=onAccounts)
                     val monthlyOut=monthlyTransactions.filter {
                         it.amountLaari<0 && it.category!="Internal Transfer"
                     }.sumOf { -it.amountLaari }
@@ -81,6 +62,9 @@ internal fun MidnightHomeScreen(
                             }
                         }
                     }
+                    Text("THIS MONTH",style=MaterialTheme.typography.labelMedium,
+                        color=MaterialTheme.colorScheme.onSurfaceVariant,fontWeight=FontWeight.Bold)
+                    PremiumMonthlyInsightStats(income=monthlyIn,expenses=monthlyOut)
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick=onPlanning,modifier=Modifier.weight(1f)) { Text("Safe to spend") }
                         OutlinedButton(onClick=onInsights,modifier=Modifier.weight(1f)) { Text("Insights") }
