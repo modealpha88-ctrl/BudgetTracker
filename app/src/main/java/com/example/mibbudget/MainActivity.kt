@@ -264,6 +264,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var discoveryMatched by remember { mutableIntStateOf(0) }
     var merchantSearchRequest by remember { mutableStateOf<Pair<String,String>?>(null) }
     var merchantSearchStatus by remember { mutableStateOf("") }
+    var googlePlacesKey by remember { mutableStateOf(GoogleMerchantPlaces.key(context)) }
+    var googlePlacesResults by remember { mutableStateOf<List<GoogleMerchantPlaces.Candidate>>(emptyList()) }
     val avatarPicker=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val chosen=store.all().firstOrNull { it.id==selectedTransactionId }
         if(uri!=null && chosen!=null) try {
@@ -375,6 +377,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         merchantSearchStatus = "Searching official business listings…"
         val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching { MerchantWebDiscovery.apply(context,request.first,request.second) }
+        }
+        googlePlacesResults = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { GoogleMerchantPlaces.search(context,request.first,request.second) }.getOrDefault(emptyList())
         }
         merchantSearchStatus = when {
             result.isFailure -> "Search error: " + (result.exceptionOrNull()?.message ?: "Network unavailable")
@@ -3085,6 +3090,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     OutlinedButton(enabled=onlineMerchantDiscovery && merchantSearchRequest==null,
                                         onClick={ merchantSearchRequest=selectedTransaction.description to selectedTransaction.category }) {
                                         Text(if(merchantSearchRequest?.first==selectedTransaction.description) "Searching…" else "Search this merchant now")
+                                    }
+                                    if (googlePlacesKey.isBlank()) {
+                                        Text("Google Maps search requires a Places API key.",style=MaterialTheme.typography.bodySmall)
+                                    }
+                                    OutlinedTextField(value=googlePlacesKey,onValueChange={googlePlacesKey=it},
+                                        label={Text("Google Places API key")},singleLine=true,
+                                        modifier=Modifier.fillMaxWidth())
+                                    OutlinedButton(onClick={ GoogleMerchantPlaces.setKey(context,googlePlacesKey) }) { Text("Save Google Places key") }
+                                    if (googlePlacesResults.isNotEmpty()) {
+                                        Text("Google Maps candidates (not automatically verified)",style=MaterialTheme.typography.titleSmall)
+                                        googlePlacesResults.forEach { place ->
+                                            Text(place.name+" · "+place.address,style=MaterialTheme.typography.bodySmall)
+                                            if(place.website!=null) Text(place.website,style=MaterialTheme.typography.bodySmall)
+                                        }
                                     }
                                     Text(if(matchedProfile==null) "Social profile: Not verified"
                                         else "Social profile: User-confirmed · ${matchedProfile.platform}",
