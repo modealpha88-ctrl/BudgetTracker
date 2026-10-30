@@ -3076,6 +3076,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         else if(discoveryRunning) "Searching merchants · $discoveryChecked checked · $discoveryMatched matched"
                                         else "Discovery idle · $discoveryChecked checked · $discoveryMatched matched",
                                         style=MaterialTheme.typography.bodySmall)
+                                    val savedDiscoveryStatus = remember(socialRevision,merchantSearchStatus,selectedTransaction.description) {
+                                        context.getSharedPreferences("merchant_discovery_results",android.content.Context.MODE_PRIVATE)
+                                            .getString(VendorProfiles.key(selectedTransaction.description),"Not searched yet")
+                                    }
+                                    Text(if(merchantSearchRequest?.first==selectedTransaction.description) merchantSearchStatus
+                                        else savedDiscoveryStatus ?: "Not searched yet",style=MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(enabled=onlineMerchantDiscovery && merchantSearchRequest==null,
+                                        onClick={ merchantSearchRequest=selectedTransaction.description to selectedTransaction.category }) {
+                                        Text(if(merchantSearchRequest?.first==selectedTransaction.description) "Searching…" else "Search this merchant now")
+                                    }
                                     Text(if(matchedProfile==null) "Social profile: Not verified"
                                         else "Social profile: User-confirmed · ${matchedProfile.platform}",
                                         style=MaterialTheme.typography.bodyMedium)
