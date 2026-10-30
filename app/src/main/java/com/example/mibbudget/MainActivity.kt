@@ -3143,6 +3143,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         }) { Text("Save recipient") }
                                     }
                                 }
+                                val bankDate = Regex("""(?<!\\d)(\\d{2})[-/](\\d{2})[-/](\\d{4})(?!\\d)""")
+                                    .find(selectedTransaction.description)?.let { match ->
+                                        runCatching {
+                                            java.time.LocalDate.of(match.groupValues[3].toInt(),match.groupValues[2].toInt(),match.groupValues[1].toInt())
+                                        }.getOrNull()
+                                    }
+                                val recordedDate = runCatching { java.time.LocalDate.parse(selectedTransaction.timestamp.take(10)) }.getOrNull()
+                                if(bankDate!=null && recordedDate!=null && bankDate!=recordedDate) {
+                                    Text("Date mismatch: bank description says $bankDate; stored transaction date is $recordedDate. Review import date and timezone before correcting.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                                }
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
                                 Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,null) ?: if (!VendorProfiles.isTransfer(selectedTransaction.description,selectedTransaction.category)) "Business" else "Unclassified"}",style=MaterialTheme.typography.bodyMedium)
