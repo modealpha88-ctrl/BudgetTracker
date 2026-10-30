@@ -3102,6 +3102,20 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 Text("${selectedTransaction.category} • ${selectedTransaction.timestamp}")
                                 Text("Account: ${accountLabels[selectedTransaction.fingerprint] ?: "Unassigned"}")
                                 Text("Counterparty: ${counterpartyPrefs.getString(selectedTransaction.fingerprint,null) ?: if (!VendorProfiles.isTransfer(selectedTransaction.description,selectedTransaction.category)) "Business" else "Unclassified"}",style=MaterialTheme.typography.bodyMedium)
+                                if (!VendorProfiles.isTransfer(selectedTransaction.description,selectedTransaction.category)) {
+                                    val identity = remember(socialRevision,selectedTransaction.description) {
+                                        AutomaticVendorIdentity.resolve(context,selectedTransaction.description,selectedTransaction.category)
+                                    }
+                                    Text("Merchant: " + identity.merchant,style=MaterialTheme.typography.bodySmall)
+                                    OutlinedButton(onClick={
+                                        if (AutomaticVendorIdentity.isManuallyUnassigned(context,selectedTransaction.description))
+                                            AutomaticVendorIdentity.clearManualUnassigned(context,selectedTransaction.description)
+                                        else AutomaticVendorIdentity.setManuallyUnassigned(context,selectedTransaction.description)
+                                        socialRevision++
+                                    }) {
+                                        Text(if (identity.source == AutomaticVendorIdentity.Source.MANUAL_UNASSIGNED) "Restore automatic matching" else "Mark merchant unassigned")
+                                    }
+                                }
                                 Box {
                                     OutlinedButton(onClick={counterpartyEditExpanded=true}) { Text("Classify business / individual") }
                                     DropdownMenu(expanded=counterpartyEditExpanded,onDismissRequest={counterpartyEditExpanded=false}) {
