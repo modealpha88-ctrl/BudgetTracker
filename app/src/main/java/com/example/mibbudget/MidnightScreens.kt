@@ -20,6 +20,7 @@ internal fun MidnightHomeScreen(
     transactions: List<Tx>,
     monthlyTransactions: List<Tx>,
     accountLabels: Map<String, String>,
+    savedRecipients: Map<String, String>,
     pendingBmlCount: Int,
     onAccounts: () -> Unit,
     onPlanning: () -> Unit,
@@ -80,7 +81,7 @@ internal fun MidnightHomeScreen(
                                 Text(MerchantIcons.icon(tx.description,tx.category),
                                     style=MaterialTheme.typography.headlineSmall)
                                 Column(Modifier.weight(1f)) {
-                                    Text(TransactionPresentation.label(tx.description),
+                                    Text(TransactionPresentation.displayLabel(tx.description,tx.category,savedRecipients[tx.fingerprint]),
                                         maxLines=1,style=MaterialTheme.typography.bodyLarge)
                                     Text("${tx.category} · ${tx.timestamp.take(10)}",
                                         style=MaterialTheme.typography.bodySmall,
