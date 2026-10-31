@@ -32,7 +32,7 @@ class MibSmsReceiver : BroadcastReceiver() {
                 val candidate = BankSmsParser.parse(body) ?: continue
                 // Sender names/numbers can be spoofed: the parser is not bank authentication.
                 store.add(candidate.amountLaari, candidate.category, candidate.description,
-                    candidate.fingerprint, candidate.transactionTime)
+                    candidate.fingerprint, candidate.transactionTime, sourceAccount = "MIB")
             }
         }
     }
