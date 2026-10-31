@@ -1101,6 +1101,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     transactions=transactions,
                     monthlyTransactions=monthlyTransactions,
                     accountLabels=accountLabels,
+                    savedRecipients=remember(recipientRevision,transactions) {
+                        transactions.mapNotNull { tx ->
+                            recipientPrefs.getString(tx.fingerprint,null)?.trim()
+                                ?.takeIf { it.isNotBlank() }?.let { tx.fingerprint to it }
+                        }.toMap()
+                    },
                     pendingBmlCount=pendingBml.size,
                     onAccounts={tab=5},
                     onPlanning={tab=4},
