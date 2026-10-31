@@ -17,6 +17,15 @@ object TransactionPresentation {
             if(h in 0..23 && m in 0..59 && (h!=0 || m!=0)) "%02d:%02d".format(java.util.Locale.US,h,m) else null
         }
     }
+    /** A manually confirmed recipient is a display identity, regardless of category. */
+    fun displayLabel(description: String, category: String, savedRecipient: String?): String {
+        val recipient = savedRecipient?.trim().orEmpty()
+        val transfer = description.contains("transfer", ignoreCase = true) ||
+            category.equals("Transfer", ignoreCase = true) ||
+            category.equals("Internal Transfer", ignoreCase = true)
+        return if (transfer && recipient.isNotEmpty()) "Transfer · $recipient" else label(description)
+    }
+
     fun label(description: String): String {
         val value=description.trim()
         if(value.startsWith("Internet banking transfer:",true)) {
