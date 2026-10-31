@@ -375,6 +375,23 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         readableDatabase.rawQuery("SELECT fingerprint,label FROM account_labels",null).use { c ->
             while(c.moveToNext()) out[c.getString(0)]=c.getString(1)
         }
+        // Legacy MIB SMS imports used bare SHA-256 fingerprints rather than mib-.
+        // Explicit account selections always take precedence over inference.
+        readableDatabase.rawQuery(
+            "SELECT fingerprint, description FROM transactions WHERE length(fingerprint)=64", null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val fingerprint = cursor.getString(0)
+                val description = cursor.getString(1)
+                val knownMibSms = description.equals("Favara transfer", true) ||
+                    description.equals("Favara incoming transfer", true) ||
+                    description.startsWith("Fund transfer received (Ref:", true) ||
+                    description.startsWith("POS purchase:", true) ||
+                    description.startsWith("E-commerce purchase:", true)
+                if (fingerprint.matches(Regex("[0-9a-fA-F]{64}")) &&
+                    knownMibSms && !out.containsKey(fingerprint)) out[fingerprint] = "MIB"
+            }
+        }
         return out
     }
     fun setGoal(name: String, target: Long, saved: Long) {
