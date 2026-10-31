@@ -4,6 +4,20 @@ package com.example.mibbudget
 object MerchantIcons {
     fun icon(description: String, category: String): String {
         val name = VendorProfiles.vendor(description).lowercase()
+        // User-selected category wins over guesses made from the bank description.
+        val selected = category.trim().lowercase()
+        when {
+            selected.contains("food") || selected.contains("dining") || selected.contains("restaurant") -> return "🍽"
+            selected.contains("transport") || selected.contains("travel") -> return "🚗"
+            selected.contains("shopping") || selected.contains("grocer") -> return "🛍"
+            selected.contains("health") || selected.contains("medical") -> return "✚"
+            selected.contains("bill") || selected.contains("utilit") -> return "💡"
+            selected.contains("entertain") -> return "🎬"
+            selected.contains("education") -> return "📚"
+            selected.contains("salary") || selected.contains("income") -> return "↓"
+            selected.contains("savings") -> return "💰"
+            selected.contains("internal transfer") || selected == "transfer" || selected == "transfers" -> return "↗"
+        }
         if (VendorProfiles.isTransfer(description, category)) return "↗"
         return when {
             Regex("cafe|coffee|tea|espresso|bakery|bake|pastry").containsMatchIn(name) -> "☕"
