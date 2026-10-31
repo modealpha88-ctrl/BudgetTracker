@@ -2757,15 +2757,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     selectedInternalIds=if(checked) selectedInternalIds+t.id else selectedInternalIds-t.id
                                 })
                                 Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.secondaryContainer,RoundedCornerShape(14.dp)),contentAlignment=androidx.compose.ui.Alignment.Center) {
-                                    val vendorKey=VendorProfiles.key(t.description)
-                                    val avatarPath=remember(avatarRevision,socialRevision,vendorKey) { if (AutomaticVendorIdentity.isManuallyUnassigned(context,t.description)) null else vendorAvatarPrefs.getString(vendorKey,null) }
-                                    val avatar=remember(avatarPath) { avatarPath?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
-                                    if(avatar!=null) Image(bitmap=avatar,contentDescription="Vendor icon",modifier=Modifier.size(42.dp),contentScale=ContentScale.Crop)
-                                    else Text(MerchantIcons.icon(t.description,t.category),style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.onSecondaryContainer)
+                                    // Category icon must follow the user's current classification, not
+                                    // a stale merchant avatar or the original bank transfer template.
+                                    Text(MerchantIcons.icon(t.description,t.category),
+                                        style=MaterialTheme.typography.titleLarge,
+                                        color=MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     val savedName=recipientPrefs.getString(t.fingerprint,null).orEmpty()
-                                    val displayMerchant=if(savedName.isNotBlank() && t.category.contains("Transfer",true)) "Transfer · $savedName" else merchant
+                                    // Recipient identity is independent of the spending category.
+                                    val displayMerchant=TransactionPresentation.displayLabel(
+                                        t.description, t.category, savedName
+                                    )
                                     Text(displayMerchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
                                     val displayTime=TransactionPresentation.time(t.description,t.timestamp)
                                     Text(displayTime ?: "Time not recorded",
