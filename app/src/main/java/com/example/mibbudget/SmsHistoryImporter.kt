@@ -34,7 +34,7 @@ object SmsHistoryImporter {
                 }
                 val candidate=BankSmsParser.parse(body)
                 if(candidate==null) { ignored++; continue }
-                if(store.add(candidate.amountLaari,candidate.category,candidate.description,candidate.fingerprint,candidate.transactionTime)) imported++ else duplicates++
+                if(store.add(candidate.amountLaari,candidate.category,candidate.description,candidate.fingerprint,candidate.transactionTime,sourceAccount="MIB")) imported++ else duplicates++
             }
         }
         return Result(scanned,imported,duplicates,ignored)
