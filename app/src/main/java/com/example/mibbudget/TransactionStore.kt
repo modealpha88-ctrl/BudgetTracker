@@ -649,7 +649,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         }
         return out
     }
-    fun add(amountLaari: Long, category: String, description: String, fingerprint: String = "manual-${java.util.UUID.randomUUID()}", transactionTime: String? = null): Boolean {
+    fun add(amountLaari: Long, category: String, description: String, fingerprint: String = "manual-${java.util.UUID.randomUUID()}", transactionTime: String? = null, sourceAccount: String? = null): Boolean {
         require(amountLaari != 0L && amountLaari != Long.MIN_VALUE)
         val db = writableDatabase
         // Never discard a genuine payment just because its amount matches another.
@@ -663,7 +663,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             put("amount_laari", amountLaari); put("category", (if(amountLaari < 0L && category != "Internal Transfer") (merchantCategoryRule(description) ?: category) else category).take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
         }
         val inserted=db.insertWithOnConflict("transactions", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
-        if(inserted && fingerprint.startsWith("mib-",ignoreCase=true)) {
+        if(inserted && (sourceAccount == "MIB" || fingerprint.startsWith("mib-",ignoreCase=true))) {
             val account=ContentValues().apply { put("fingerprint",fingerprint);put("label","MIB") }
             db.insertWithOnConflict("account_labels",null,account,SQLiteDatabase.CONFLICT_IGNORE)
         }
