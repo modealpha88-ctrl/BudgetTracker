@@ -1397,14 +1397,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         "MIB",savedMinor,snapshotDate,transactions,accountLabels,java.time.LocalDate.now(),snapshotClock) else null
                     val cashflowOpening=if(reconciledClosing!=null) reconciledClosing-incoming+outgoing else openingBalance
                     val cashflowClosing=reconciledClosing ?: ((cashflowOpening ?: 0L)+incoming-outgoing)
-                    Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(24.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primary)) { Column(Modifier.padding(22.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Text("MONTHLY CASH FLOW", style=MaterialTheme.typography.labelLarge, color=Color.White.copy(alpha=0.8f))
-                        Text(Money.format(cashflowClosing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=Color.White)
-                        Text("Opening MIB balance · ${cashflowOpening?.let(Money::format) ?: "Unavailable"} · ${openingDay}",color=Color.White)
-                        if (cashflowOpening == null) Text("No verified MIB balance snapshot; showing transaction net only.",color=Color.White)
-                        Text("↑  Income   ${Money.format(incoming)}",color=Color.White)
-                        Text("↓  Expenses   ${Money.format(outgoing)}",color=Color.White)
-                        Text("Opening balance + monthly net · estimate, not verified bank balance. Carry-forward is not income.",style=MaterialTheme.typography.labelSmall,color=Color.White.copy(alpha=0.7f))
+                    Card(Modifier.fillMaxWidth(), shape=RoundedCornerShape(24.dp), colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)) { Column(Modifier.padding(22.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("MONTHLY CASH FLOW", style=MaterialTheme.typography.labelLarge, color=MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha=0.82f))
+                        Text(Money.format(cashflowClosing),style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("Opening MIB balance · ${cashflowOpening?.let(Money::format) ?: "Unavailable"} · ${openingDay}",color=MaterialTheme.colorScheme.onPrimaryContainer)
+                        if (cashflowOpening == null) Text("No verified MIB balance snapshot; showing transaction net only.",color=MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("↑  Income   ${Money.format(incoming)}",color=MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("↓  Expenses   ${Money.format(outgoing)}",color=MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("Opening balance + monthly net · estimate, not verified bank balance. Carry-forward is not income.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha=0.72f))
                     } }
                         val anchorDate=balancePrefs.getString("mib_date","").orEmpty()
                         val anchorMinor=balancePrefs.getLong("mib_minor",Long.MIN_VALUE)
