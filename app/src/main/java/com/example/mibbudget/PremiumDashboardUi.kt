@@ -126,10 +126,10 @@ internal fun PremiumSafeToSpendCard(
 @Composable
 private fun AuroraBreakdownRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = SoftMuted,
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f))
         Text(value, style = MaterialTheme.typography.bodySmall,
-            color = SoftWhite, fontWeight = FontWeight.Medium)
+            color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -189,8 +189,8 @@ internal fun PremiumAccountSnapshotCard(
     onClick: () -> Unit
 ) {
     val accent = when (bank) {
-        "MIB" -> Mint
-        "BML" -> Ice
+        "MIB" -> MaterialTheme.colorScheme.primary
+        "BML" -> MaterialTheme.colorScheme.tertiary
         else -> Gold
     }
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth(),
@@ -209,10 +209,10 @@ internal fun PremiumAccountSnapshotCard(
                 }
                 Text(amount?.let(Money::format) ?: "Balance not set",
                     style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold, color = SoftWhite)
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 Text(if (amount == null) "Set a verified balance to start tracking this account"
                      else "Estimated today · Based on $anchorDate snapshot + recorded movements",
-                    style = MaterialTheme.typography.bodySmall, color = SoftMuted)
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(1.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Manage balance & history", style = MaterialTheme.typography.labelLarge,
