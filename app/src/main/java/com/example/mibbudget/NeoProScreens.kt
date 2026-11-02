@@ -249,7 +249,7 @@ internal fun NeoProHomeScreen(
 }
 
 @Composable
-private fun NeoTransactionRow(tx: Tx, savedRecipient: String?, onClick: () -> Unit) {
+internal fun NeoTransactionRow(tx: Tx, savedRecipient: String?, onClick: () -> Unit) {
     Card(onClick = onClick, shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
