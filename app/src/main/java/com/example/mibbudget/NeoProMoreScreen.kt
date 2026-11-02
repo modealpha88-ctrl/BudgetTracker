@@ -73,12 +73,19 @@ internal fun NeoProMoreScreen(
     onLockChange: (Boolean) -> Unit,
     screenshotPrivacy: Boolean,
     onScreenshotPrivacyChange: (Boolean) -> Unit,
+    transactionCount: Int,
     onNavigate: (Int) -> Unit
 ) {
     var appearanceOpen by remember { mutableStateOf(false) }
+    var privacyOpen by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        if (!appearanceOpen) {
+        if (privacyOpen) {
+            TextButton(onClick = { privacyOpen = false }, contentPadding = PaddingValues(0.dp)) {
+                Text("‹  More")
+            }
+            PrivacyFeedbackScreen(LocalContext.current, transactionCount)
+        } else if (!appearanceOpen) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("YOUR FINANCIAL TOOLKIT", color = colors.primary,
                     style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
@@ -120,6 +127,25 @@ internal fun NeoProMoreScreen(
                         Text("Appearance & privacy", fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleMedium)
                         Text("${BankingAppearance.selected} · ${if (darkTheme) "AMOLED dark" else "Light"}",
+                            style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                    }
+                    Text("›", color = colors.primary, style = MaterialTheme.typography.titleLarge)
+                }
+            }
+            Card(onClick = { privacyOpen = true }, shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer)) {
+                Row(Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(15.dp))
+                        .background(colors.primary.copy(alpha = 0.13f)),
+                        contentAlignment = Alignment.Center) {
+                        Text("◇", style = MaterialTheme.typography.titleLarge, color = colors.primary)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("Privacy & diagnostics", fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium)
+                        Text("Consent, feedback and local data controls",
                             style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                     }
                     Text("›", color = colors.primary, style = MaterialTheme.typography.titleLarge)
