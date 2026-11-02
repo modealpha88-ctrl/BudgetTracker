@@ -20,11 +20,14 @@ private val planningAccountNames = listOf("MIB", "BML", "Cash")
 private val planningHighlights = listOf("Safe to spend", "Forecast", "Cash", "Bills")
 
 @Composable
-private fun PlanningCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun PlanningCard(title: String, highlighted: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        colors = CardDefaults.cardColors(
+            containerColor = if (highlighted) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainer
+        )
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -194,8 +197,11 @@ fun FinancialPlanningScreen(
     val forecast = FinanceCalculations.spendingForecast(entries, selectedMonth, today)
     val previousSpent = FinanceCalculations.monthExpenses(entries, selectedMonth.minusMonths(1))
 
-    Text("Financial planning", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-    Text("Forecasts and balances are estimates from recorded transactions, never live bank data.",
+    Text("PLANNING / FORECAST", style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+    Text("Financial planning", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+    Text("Safe-to-spend, forecasts and balances use recorded activity, never live bank data.",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -205,12 +211,19 @@ fun FinancialPlanningScreen(
             enabled = selectedMonth < currentMonth) { Text("Next ›") }
     }
 
-    PlanningCard("Safe-to-spend estimate") {
+    PlanningCard("Safe-to-spend estimate", highlighted = true) {
         if (balances.isEmpty()) {
             Text("Not available: save a dated balance snapshot for at least one account.")
         } else {
-            Text(Money.format(safeToSpend), style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary)
+            Text(Money.format(safeToSpend), style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer)
+            if (knownTotal > 0L) LinearProgressIndicator(
+                progress = { (safeToSpend.toFloat() / knownTotal).coerceIn(0f,1f) },
+                modifier = Modifier.fillMaxWidth().height(7.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
             balances.forEach { (name, amount) -> Text("$name estimated: ${Money.format(amount)}") }
             Text("Less virtual savings allocations: ${Money.format(totalReserved)}")
             Text("Less unpaid recurring templates: ${Money.format(unpaidBills)}")
