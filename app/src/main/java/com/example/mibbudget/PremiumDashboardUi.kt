@@ -232,18 +232,7 @@ internal fun PremiumMonthlyInsightStats(income: Long, expenses: Long) {
         PremiumStatTile("INCOME", Money.format(income), Mint, Modifier.weight(1f))
         PremiumStatTile("SPENT", Money.format(expenses), Gold, Modifier.weight(1f))
     }
-    Spacer(Modifier.height(9.dp))
-    LinearProgressIndicator(
-        progress = { ratio.coerceIn(0.0, 1.0).toFloat() },
-        modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(50)),
-        color = if (ratio > 1.0) Color(0xFFFF898E) else Mint,
-        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-    )
-    Text(if (income > 0L) "$percent% of recorded income spent"
-         else "No recorded income this month",
-        style = MaterialTheme.typography.bodySmall,
-        color = if (ratio > 1.0) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.onSurfaceVariant)
+
 }
 
 @Composable
