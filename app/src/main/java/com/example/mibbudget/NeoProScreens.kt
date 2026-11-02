@@ -475,7 +475,7 @@ internal fun NeoProInsightsScreen(
                 Text("Spending breakdown", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 if (expenses.isEmpty()) Text("No expenses recorded in this month.")
                 else SpendingBreakdown(expenses = expenses, initialStyle = "Treemap",
-                    onStyleChange = {}, onCategory = onCategory, onMerchant = onMerchant)
+                    onStyleChange = {}, onCategory = onCategory, onMerchant = onMerchant, showTitle = false)
             }
         }
         NeoSectionTitle("Top categories", "Planning", onPlanning)
