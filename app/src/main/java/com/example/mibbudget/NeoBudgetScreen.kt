@@ -1,6 +1,11 @@
 package com.example.mibbudget
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,8 +38,12 @@ internal fun NeoBudgetScreen(
                     }
                     val totalSpent=monthlyTransactions.filter { it.amountLaari<0 && it.category in budgetCategories }
                         .sumOf { -it.amountLaari }
-                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
-                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(25.dp),
+                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer)) {
+                        Column(Modifier.fillMaxWidth().background(
+                            Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.surfaceContainerHigh)))
+                            .padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text("This month's spending",style=MaterialTheme.typography.titleMedium)
                             Text(Money.format(totalSpent),style=MaterialTheme.typography.headlineMedium)
                             Text(if(totalLimit>0) "Combined category limits: ${Money.format(totalLimit)}" else "No category limits set yet",
@@ -54,15 +63,36 @@ internal fun NeoBudgetScreen(
                         val baseLimit=budgets[cat] ?: 0L
                         val limit=FinanceCalculations.effectiveLimit(
                             cat,selectedMonth,baseLimit,transactions,rolloverEnabled)
-                        Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(16.dp)) {
-                            Column(Modifier.padding(horizontal=14.dp,vertical=12.dp),
+                        val accent = when(cat) {
+                            "Food", "Fast Food" -> Color(0xFFFFB47D)
+                            "Groceries" -> Color(0xFF73D4AF)
+                            "Shopping" -> Color(0xFFBD9CFA)
+                            "Transport" -> Color(0xFF84CAFC)
+                            "Bills" -> Color(0xFF7FD0D3)
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+                        val symbol = when(cat) {
+                            "Food", "Fast Food" -> "◈"
+                            "Groceries" -> "▧"
+                            "Shopping" -> "▣"
+                            "Transport" -> "⇄"
+                            "Bills" -> "▤"
+                            "Health" -> "♥"
+                            else -> "◉"
+                        }
+                        Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(19.dp),
+                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                            Column(Modifier.padding(horizontal=14.dp,vertical=11.dp),
                                 verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
                                     horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                    Box(contentAlignment=androidx.compose.ui.Alignment.Center,modifier=Modifier.size(42.dp)) {
-                                        CircularProgressIndicator(progress={if(limit>0) (spent.toFloat()/limit).coerceIn(0f,1f) else 0f},
-                                            modifier=Modifier.fillMaxSize(),strokeWidth=4.dp)
-                                        Text(if(limit>0) "${spent*100/limit}%" else "—",style=MaterialTheme.typography.labelSmall)
+                                    Box(contentAlignment=androidx.compose.ui.Alignment.Center,
+                                        modifier=Modifier.size(44.dp).clip(CircleShape).background(accent.copy(alpha=0.12f))) {
+                                        if(limit>0) CircularProgressIndicator(
+                                            progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },
+                                            modifier=Modifier.fillMaxSize(),strokeWidth=3.dp,color=accent)
+                                        Text(symbol,style=MaterialTheme.typography.titleMedium,color=accent,
+                                            fontWeight=FontWeight.Bold)
                                     }
                                     Column(Modifier.weight(1f)) {
                                         Text(cat,style=MaterialTheme.typography.titleMedium)
@@ -77,7 +107,9 @@ internal fun NeoBudgetScreen(
                                 }
                                 if(limit>0) LinearProgressIndicator(
                                     progress={ (spent.toFloat()/limit).coerceIn(0f,1f) },
-                                    modifier=Modifier.fillMaxWidth())
+                                    modifier=Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                                    color=accent,
+                                    trackColor=MaterialTheme.colorScheme.surfaceContainerHigh)
                                 if(limit>0 && spent>limit) Text("Over budget by ${Money.format(spent-limit)}",
                                     color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                 if(editingBudgetCategory==cat) {
