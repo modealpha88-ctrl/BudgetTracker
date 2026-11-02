@@ -32,7 +32,8 @@ internal fun NeoTransactionIcon(tx: Tx) {
             .background(accent.copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center
     ) {
-        Text(MerchantIcons.icon(tx.description, tx.category),
+        val icon = MerchantIcons.icon(tx.description, tx.category)
+        Text(if (icon == "↗" && tx.amountLaari > 0L) "↙" else icon,
             style = MaterialTheme.typography.titleLarge)
     }
 }
