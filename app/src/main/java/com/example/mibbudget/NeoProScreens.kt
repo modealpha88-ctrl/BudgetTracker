@@ -275,7 +275,7 @@ internal fun NeoTransactionRow(tx: Tx, savedRecipient: String?, onClick: () -> U
             Box(Modifier.size(43.dp).clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
                 contentAlignment = Alignment.Center) {
-                Text(MerchantIcons.icon(tx.description, tx.category), style = MaterialTheme.typography.titleMedium)
+                Text(MerchantIcons.icon(tx.description, tx.category), style = MaterialTheme.typography.titleLarge)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(TransactionPresentation.displayLabel(tx.description, tx.category, savedRecipient),
@@ -398,10 +398,12 @@ internal fun NeoProAccountsScreen(
             verticalAlignment = Alignment.CenterVertically) {
             banks.forEachIndexed { index, _ ->
                 val active = index == selectedAccountIndex
-                Box(Modifier.padding(horizontal = 5.dp).size(if (active) 11.dp else 8.dp)
-                    .clip(CircleShape)
-                    .background(if (active) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.35f))
-                    .clickable { carouselScope.launch { carousel.animateScrollToItem(index) } })
+                Box(Modifier.size(36.dp)
+                    .clickable { carouselScope.launch { carousel.animateScrollToItem(index) } },
+                    contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(if (active) 11.dp else 8.dp).clip(CircleShape)
+                        .background(if (active) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.35f)))
+                }
             }
         }
         NeoSectionTitle("Account tools")
