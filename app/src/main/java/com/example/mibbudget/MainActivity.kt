@@ -1096,7 +1096,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             }
             Spacer(Modifier.height(4.dp))
             if (!onboardingRequired) when(tab) {
-                0 -> MidnightHomeScreen(
+                0 -> NeoProHomeScreen(
                     context=context,
                     transactions=transactions,
                     monthlyTransactions=monthlyTransactions,
@@ -1114,9 +1114,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     onReview={tab=2},
                     onActivity={tab=1},
                     onTransaction={selectedTransactionId=it},
-                    onAdvanced={tab=8}
+                    onAdvanced={tab=8},
+                    onAdd={showTransactionForm=true;tab=1},
+                    onImport={tab=2}
                 )
-                5 -> MidnightAccountsScreen(
+                5 -> NeoProAccountsScreen(
                     context=context,
                     transactions=transactions,
                     accountLabels=accountLabels,
@@ -1133,7 +1135,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     onAdvanced={tab=8},
                     onPlanning={tab=4}
                 )
-                6 -> MidnightInsightsScreen(
+                6 -> NeoProInsightsScreen(
                     monthlyTransactions=monthlyTransactions,
                     selectedMonth=selectedMonth,
                     onMonthChange={selectedMonth=it},
