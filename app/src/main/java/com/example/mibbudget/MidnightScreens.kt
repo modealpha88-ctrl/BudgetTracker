@@ -32,7 +32,7 @@ internal fun MidnightHomeScreen(
     onTransaction: (Long) -> Unit,
     onAdvanced: () -> Unit
 ) {
-    Column(verticalArrangement=Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
                     // A focused financial home. The legacy dashboard is preserved under More.
                     Text("BUDGET TRACKER",style=MaterialTheme.typography.labelLarge,
                         color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
@@ -159,11 +159,19 @@ internal fun MidnightAccountsScreen(
     onAdvanced: () -> Unit,
     onPlanning: () -> Unit
 ) {
-    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
+                    Text("ACCOUNTS • OVERVIEW", style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
                     Text("Your accounts",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.ExtraBold)
                     Text("Your balances and account activity in one place",
                         color=MaterialTheme.colorScheme.onSurfaceVariant)
                     val balances=reconciledAccountBalances(context,transactions,accountLabels)
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        listOf("3 accounts","Balance history","Reconciliation").forEach { label ->
+                            Surface(shape=RoundedCornerShape(14.dp),color=MaterialTheme.colorScheme.surfaceContainerHigh) {
+                                Text(label,Modifier.padding(horizontal=9.dp,vertical=8.dp),style=MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
                     listOf("MIB","BML","Cash").forEach { bank ->
                         val value=balances[bank]
                         val assignedCount=transactions.count { tx ->
@@ -182,10 +190,13 @@ internal fun MidnightAccountsScreen(
                                 }
                                 Text(if(value==null || value==Long.MIN_VALUE) "Balance not set" else Money.format(value),
                                     style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-                                Text("${assignedCount} transactions · Tap for history and balance reconciliation",
+                                Text("${assignedCount} transactions · History & reconciliation",
                                     style=MaterialTheme.typography.bodySmall,
                                     color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                OutlinedButton(onClick={onAccountTransactions(bank)},modifier=Modifier.fillMaxWidth()) { Text("View $bank transactions") }
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()) {
+                                    Button(onClick={onOpenAccount(bank)},modifier=Modifier.weight(1f)) { Text("Account details") }
+                                    OutlinedButton(onClick={onAccountTransactions(bank)},modifier=Modifier.weight(1f)) { Text("Transactions") }
+                                }
                             }
                         }
                     }
@@ -208,7 +219,8 @@ internal fun MidnightInsightsScreen(
     onMerchant: (String, String) -> Unit,
     onPlanning: () -> Unit
 ) {
-    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
+                    Text("INSIGHTS • ANALYTICS",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
                     Text("Your insights",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.ExtraBold)
                     Text("Understand where your money goes",
                         color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -252,7 +264,10 @@ internal fun MidnightInsightsScreen(
                             )
                         }
                     }
-                    Text("Top spending categories",style=MaterialTheme.typography.titleMedium)
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                        Text("Top spending categories",style=MaterialTheme.typography.titleMedium)
+                        Text("${expenses.size} expenses",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
+                    }
                     expenses.groupBy { it.category }.mapValues { (_,items) ->
                         items.sumOf { -it.amountLaari }
                     }.toList().sortedByDescending { it.second }.take(5).forEach { (categoryName,total) ->
@@ -288,7 +303,8 @@ internal fun MidnightMoreScreen(
     onScreenshotPrivacyChange: (Boolean) -> Unit,
     onNavigate: (Int) -> Unit
 ) {
-    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
+                    Text("YOUR FINANCIAL TOOLKIT",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
                     Text("More to explore",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.ExtraBold)
                     Text("Your tools, preferences and money management",color=MaterialTheme.colorScheme.onSurfaceVariant)
                     listOf(
