@@ -2117,7 +2117,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     Text(if(showChangeHistory) "Hide" else "Review ${recentChanges.size}")
                                 }
                             }
-                            Text("New additions, edits and deletions are recorded. Undo checks for newer changes before touching the ledger.",
+                            if(showChangeHistory) Text("New additions, edits and deletions are recorded. Undo checks for newer changes before touching the ledger.",
                                 style=MaterialTheme.typography.bodySmall)
                             if(showChangeHistory) {
                                 if(recentChanges.isEmpty()) Text("No recorded transaction changes yet.")
