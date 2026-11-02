@@ -60,7 +60,7 @@ private fun NeoShortcut(symbol: String, label: String, onClick: () -> Unit, modi
     Card(onClick = onClick, modifier = modifier,
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        Column(Modifier.fillMaxWidth().padding(vertical = if(BankingAppearance.density=="Compact") 9.dp else if(BankingAppearance.density=="Comfortable") 18.dp else 13.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp))
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
@@ -96,7 +96,7 @@ private fun NeoSpendingBars(entries: List<Tx>) {
 @Composable
 private fun NeoMoneyTile(label: String, amount: Long, accent: Color, modifier: Modifier = Modifier) {
     Column(modifier.clip(RoundedCornerShape(19.dp))
-        .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(15.dp),
+        .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(BankingAppearance.cardPadding),
         verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.Bold)
         Text(Money.format(amount), style = MaterialTheme.typography.titleMedium,
@@ -150,6 +150,35 @@ private fun NeoMonthlyPulse(income: Long, spent: Long, onPlanning: () -> Unit) {
                     contentPadding = PaddingValues(0.dp)
                 ) {
                     Text("Safe-to-spend & planning  ↗", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+/** Figures are computed from the local ledger, never from demonstration mockup amounts. */
+@Composable
+private fun NeoRecordedComparisons(entries: List<Tx>) {
+    val scheme = MaterialTheme.colorScheme
+    val month = YearMonth.now()
+    val forecast = FinanceCalculations.spendingForecast(entries, month, LocalDate.now())
+    val previous = FinanceCalculations.monthExpenses(entries, month.minusMonths(1))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+        listOf(
+            Triple("MONTH-END FORECAST", forecast, "Projected expenses"),
+            Triple("PREVIOUS MONTH", previous, "Recorded expenses")
+        ).forEach { (heading, value, detail) ->
+            Card(Modifier.weight(1f), shape = RoundedCornerShape(17.dp),
+                colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)) {
+                Column(Modifier.padding(BankingAppearance.cardPadding),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(heading, color = scheme.primary, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    Text(Money.format(value), style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                    Text(detail, style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant)
                 }
             }
         }
@@ -213,7 +242,7 @@ internal fun NeoProHomeScreen(
     val income = monthlyTransactions.filter { it.amountLaari > 0 && it.category != "Internal Transfer" }
         .sumOf { it.amountLaari }
     val scheme = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(BankingAppearance.screenGap)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("BUDGET TRACKER", color = scheme.primary, style = MaterialTheme.typography.labelMedium,
@@ -231,13 +260,18 @@ internal fun NeoProHomeScreen(
                 Brush.linearGradient(listOf(scheme.primaryContainer, scheme.surfaceContainerHigh)))) {
                 Box(Modifier.align(Alignment.TopEnd).offset(x = 44.dp, y = (-48).dp)
                     .size(170.dp).clip(CircleShape).background(scheme.primary.copy(alpha = 0.09f)))
-                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(BankingAppearance.cardPadding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically) {
                         Text("${primaryBank ?: "ACCOUNTS"} • PROJECTED BALANCE",
                             style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
-                            color = scheme.onSurfaceVariant)
-                        Text("↗", style = MaterialTheme.typography.titleLarge, color = scheme.primary)
+                            modifier = Modifier.weight(1f), color = scheme.onSurfaceVariant)
+                        Surface(shape = RoundedCornerShape(12.dp),
+                            color = scheme.primary.copy(alpha = 0.16f)) {
+                            Text("ESTIMATE", Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                color = scheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                     Text(balance?.let(Money::format) ?: "Balance not set",
                         style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.ExtraBold,
@@ -266,6 +300,7 @@ internal fun NeoProHomeScreen(
             NeoMoneyTile("INCOME", income, scheme.primary, Modifier.weight(1f))
             NeoMoneyTile("SPENT", spent, neoPeach, Modifier.weight(1f))
         }
+        NeoRecordedComparisons(transactions)
         NeoMonthlyPulse(income = income, spent = spent, onPlanning = onPlanning)
         NeoMixStrip(monthlyTransactions, onInsights)
         if (pendingBmlCount > 0) Card(onClick = onReview,
@@ -331,14 +366,18 @@ private fun NeoAccountCard(
 ) {
     val scheme = MaterialTheme.colorScheme
     val tint = when (bank) { "MIB" -> scheme.primary; "BML" -> neoBlue; else -> neoPeach }
-    Card(onClick = onOpen, modifier = modifier.height(221.dp),
+    Card(onClick = onOpen, modifier = modifier.height(when(BankingAppearance.density) {
+        "Compact" -> 196.dp
+        "Comfortable" -> 252.dp
+        else -> 221.dp
+    }),
         shape = RoundedCornerShape(27.dp),
         colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerHigh)) {
         Box(Modifier.fillMaxSize().background(
             Brush.linearGradient(listOf(tint.copy(alpha = 0.21f), scheme.surfaceContainerHigh)))) {
             Box(Modifier.align(Alignment.TopEnd).offset(x = 38.dp, y = (-40).dp).size(140.dp)
                 .clip(CircleShape).background(tint.copy(alpha = 0.14f)))
-            Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            Column(Modifier.fillMaxSize().padding(BankingAppearance.cardPadding), verticalArrangement = Arrangement.SpaceBetween) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     Box(Modifier.size(11.dp).clip(CircleShape).background(tint))
@@ -372,6 +411,44 @@ private fun NeoAccountCard(
     }
 }
 
+/** Complete account overview is visible even when the swipeable carousel is on one bank. */
+@Composable
+private fun NeoAccountSummaryRow(
+    bank: String,
+    amount: Long?,
+    count: Int,
+    snapshotDate: String?,
+    onOpen: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val tint = when(bank) { "MIB" -> scheme.primary; "BML" -> neoBlue; else -> neoPeach }
+    Card(onClick = onOpen, shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)) {
+        Row(Modifier.fillMaxWidth().padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(42.dp).clip(RoundedCornerShape(13.dp))
+                .background(tint.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                Text(if(bank == "Cash") "◇" else "▣",
+                    style = MaterialTheme.typography.titleMedium, color = tint)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(if(bank == "Cash") "Cash wallet" else bank,
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(if(amount == null) "Snapshot not set" else
+                    "${count} transactions · Snapshot ${snapshotDate ?: "on file"}",
+                    maxLines = 1, style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant)
+            }
+            Text(amount?.let(Money::format) ?: "Set balance",
+                style = MaterialTheme.typography.labelMedium,
+                color = if(amount != null) scheme.onSurface else scheme.primary,
+                maxLines = 1)
+            Text("›", style = MaterialTheme.typography.titleMedium, color = scheme.primary)
+        }
+    }
+}
+
 @Composable
 private fun NeoCountTile(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
     Column(modifier.clip(RoundedCornerShape(18.dp))
@@ -398,7 +475,7 @@ internal fun NeoProAccountsScreen(
         transactions.count { FinanceCalculations.assignedAccount(it, accountLabels) == bank }
     }
     val scheme = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(17.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(BankingAppearance.screenGap)) {
         NeoHeader("ACCOUNTS / WALLETS", "Your accounts", "Estimated balances, account activity and reconciliation")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             NeoCountTile("BALANCE ESTIMATES", "${balances.size} / 3", scheme.primary, Modifier.weight(1f))
@@ -443,6 +520,18 @@ internal fun NeoProAccountsScreen(
                         .background(if (active) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.35f)))
                 }
             }
+        }
+        NeoSectionTitle("Account overview")
+        val anchors = context.getSharedPreferences("balance_anchor", Context.MODE_PRIVATE)
+        banks.forEach { bank ->
+            val date = anchors.getString("${bank.lowercase(Locale.ROOT)}_date", null)
+            NeoAccountSummaryRow(
+                bank = bank,
+                amount = balances[bank],
+                count = counts[bank] ?: 0,
+                snapshotDate = date,
+                onOpen = { onOpenAccount(bank) }
+            )
         }
         NeoSectionTitle("Account tools")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
