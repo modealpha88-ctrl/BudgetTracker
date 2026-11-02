@@ -258,6 +258,19 @@ internal fun NeoProHomeScreen(
     }
 }
 
+/** Human-readable, stable timestamp without exposing raw ISO date-time strings. */
+private fun neoActivityDate(timestamp: String): String {
+    val day = runCatching { LocalDate.parse(timestamp.take(10)) }.getOrNull()
+        ?: return timestamp.take(16).replace("T", " ")
+    val dayLabel = when (day) {
+        LocalDate.now() -> "Today"
+        LocalDate.now().minusDays(1) -> "Yesterday"
+        else -> "${day.dayOfMonth} ${day.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)}"
+    }
+    val time = timestamp.drop(11).take(5).takeIf { it.matches(Regex("""\\d{2}:\\d{2}""")) }
+    return if (time == null) dayLabel else "$dayLabel · $time"
+}
+
 @Composable
 internal fun NeoTransactionRow(tx: Tx, savedRecipient: String?, onClick: () -> Unit) {
     Card(onClick = onClick, shape = RoundedCornerShape(18.dp),
@@ -273,7 +286,7 @@ internal fun NeoTransactionRow(tx: Tx, savedRecipient: String?, onClick: () -> U
                 Text(TransactionPresentation.displayLabel(tx.description, tx.category, savedRecipient),
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                Text("${tx.category} · ${tx.timestamp.take(16).replace("T", " ")}",
+                Text("${tx.category} · ${neoActivityDate(tx.timestamp)}",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(Money.format(tx.amountLaari), style = MaterialTheme.typography.labelMedium,
@@ -291,7 +304,7 @@ private fun NeoAccountCard(
     onTransactions: () -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
-    val tint = when (bank) { "MIB" -> scheme.primary; "BML" -> scheme.tertiary; else -> neoPeach }
+    val tint = when (bank) { "MIB" -> scheme.primary; "BML" -> neoBlue; else -> neoPeach }
     Card(onClick = onOpen, modifier = Modifier.width(282.dp).height(221.dp),
         shape = RoundedCornerShape(27.dp),
         colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerHigh)) {
@@ -374,7 +387,7 @@ internal fun NeoProAccountsScreen(
                 colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)) {
                 Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val accent = when (bank) {"MIB" -> scheme.primary; "BML" -> scheme.tertiary; else -> neoPeach }
+                    val accent = when (bank) {"MIB" -> scheme.primary; "BML" -> neoBlue; else -> neoPeach }
                     Box(Modifier.size(40.dp).clip(RoundedCornerShape(14.dp))
                         .background(accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
                         Text(if (bank == "Cash") "◈" else "▣", color = accent,
