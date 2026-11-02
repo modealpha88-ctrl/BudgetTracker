@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 
 /** Presentation-only settings. Never write to TransactionStore from here. */
 internal data class BankingPalette(
@@ -27,6 +28,23 @@ internal val bankingPalettes = listOf(
 internal object BankingAppearance {
     var selected by mutableStateOf("Emerald Finance")
         private set
+    var density by mutableStateOf("Balanced")
+        private set
+
+    val screenGap: Dp
+        get() = when (density) {
+            "Compact" -> 9.dp
+            "Comfortable" -> 21.dp
+            else -> 15.dp
+        }
+
+    val cardPadding: Dp
+        get() = when (density) {
+            "Compact" -> 12.dp
+            "Comfortable" -> 22.dp
+            else -> 17.dp
+        }
+
     private var loaded = false
 
     fun initialize(context: Context) {
@@ -34,6 +52,9 @@ internal object BankingAppearance {
             val stored = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
                 .getString("banking_palette", "Emerald Finance")
             selected = bankingPalettes.firstOrNull { it.label == stored }?.label ?: "Emerald Finance"
+            val storedDensity = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+                .getString("neo_ui_density", "Balanced")
+            density = storedDensity?.takeIf { it in listOf("Compact", "Balanced", "Comfortable") } ?: "Balanced"
             loaded = true
         }
     }
@@ -43,6 +64,13 @@ internal object BankingAppearance {
         selected = name
         context.getSharedPreferences("appearance", Context.MODE_PRIVATE).edit()
             .putString("banking_palette", name).apply()
+    }
+
+    fun selectDensity(context: Context, name: String) {
+        if (name !in listOf("Compact", "Balanced", "Comfortable")) return
+        density = name
+        context.getSharedPreferences("appearance", Context.MODE_PRIVATE).edit()
+            .putString("neo_ui_density", name).apply()
     }
 }
 
