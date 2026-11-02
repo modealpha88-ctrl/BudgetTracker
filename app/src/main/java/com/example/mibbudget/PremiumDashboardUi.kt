@@ -75,32 +75,32 @@ internal fun PremiumSafeToSpendCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(30.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0A342F))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Box(Modifier.fillMaxWidth().background(
-            Brush.linearGradient(listOf(Color(0xFF174E45), Color(0xFF0B3037), Color(0xFF122539)))
+            Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.surfaceContainer))
         )) {
             AuroraDecoration(Modifier.matchParentSize())
             Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
                     Text("SAFE TO SPEND", style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold, color = SoftMuted)
-                    AuroraTag("ESTIMATED")
+                        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    AuroraTag("ESTIMATED", MaterialTheme.colorScheme.primary)
                 }
                 Text(safe?.let(Money::format) ?: "Balance unavailable",
                     style = if (safe != null) MaterialTheme.typography.headlineLarge
                             else MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold, color = SoftWhite)
+                    fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
                 Text("After savings allocations and upcoming recurring bills",
-                    style = MaterialTheme.typography.bodySmall, color = SoftMuted)
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 HorizontalDivider(color = Color.White.copy(alpha = 0.14f))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text("●  From verified snapshots", style = MaterialTheme.typography.labelSmall, color = Mint)
+                    Text("●  From verified snapshots", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     TextButton(onClick = onToggle, contentPadding = PaddingValues(0.dp)) {
                         Text(if (expanded) "Hide details ↑" else "Breakdown ↗",
-                            color = SoftWhite, fontWeight = FontWeight.SemiBold)
+                            color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 if (expanded) {
@@ -116,7 +116,7 @@ internal fun PremiumSafeToSpendCard(
                             style = MaterialTheme.typography.bodySmall, color = Gold)
                     }
                     Text("Estimate only — not a live bank balance. Missing transactions may affect it.",
-                        style = MaterialTheme.typography.bodySmall, color = SoftMuted)
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -136,9 +136,9 @@ private fun AuroraBreakdownRow(label: String, value: String) {
 @Composable
 internal fun PremiumForecastCard(predicted: Long) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF211D3C))) {
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Box(Modifier.fillMaxWidth().background(
-            Brush.linearGradient(listOf(Color(0xFF30264E), Color(0xFF202640), Color(0xFF152436)))
+            Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceContainerHigh))
         )) {
             AuroraDecoration(Modifier.matchParentSize())
             Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
@@ -146,13 +146,13 @@ internal fun PremiumForecastCard(predicted: Long) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
                     Text("MONTH-END FORECAST", style = MaterialTheme.typography.labelMedium,
-                        color = Lavender, fontWeight = FontWeight.Bold)
+                        color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
                     AuroraTag("PROJECTION", Gold)
                 }
                 Text(Money.format(predicted), style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold, color = SoftWhite)
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 Text("Projected expenses at your recorded spending pace",
-                    style = MaterialTheme.typography.bodySmall, color = SoftMuted)
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -161,8 +161,8 @@ internal fun PremiumForecastCard(predicted: Long) {
 @Composable
 internal fun PremiumAccountPill(bank: String, selected: Boolean, onClick: () -> Unit) {
     val accent = when (bank) {
-        "MIB" -> Mint
-        "BML" -> Ice
+        "MIB" -> MaterialTheme.colorScheme.primary
+        "BML" -> MaterialTheme.colorScheme.tertiary
         else -> Gold
     }
     Card(
@@ -197,7 +197,7 @@ internal fun PremiumAccountSnapshotCard(
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Box(Modifier.fillMaxWidth().background(
-            Brush.linearGradient(listOf(Color(0xFF153C38), Color(0xFF142C3C), Color(0xFF172837)))
+            Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceContainerHigh))
         )) {
             AuroraDecoration(Modifier.matchParentSize())
             Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -229,8 +229,8 @@ internal fun PremiumMonthlyInsightStats(income: Long, expenses: Long) {
     val ratio = if (income > 0L) expenses.toDouble() / income.toDouble() else 0.0
     val percent = (ratio * 100.0).toLong()
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        PremiumStatTile("INCOME", Money.format(income), Mint, Modifier.weight(1f))
-        PremiumStatTile("SPENT", Money.format(expenses), Gold, Modifier.weight(1f))
+        PremiumStatTile("INCOME", Money.format(income), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+        PremiumStatTile("SPENT", Money.format(expenses), MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
     }
 
 }
@@ -319,7 +319,7 @@ internal fun PremiumWeeklySpendBars(entries: List<Tx>, selectedMonth: java.time.
                     Box(Modifier.fillMaxWidth().height(49.dp), contentAlignment = Alignment.BottomCenter) {
                         Box(Modifier.fillMaxWidth(0.65f).height((5f + 44f * ratio).dp)
                             .clip(RoundedCornerShape(5.dp))
-                            .background(if (values[index] > 0L) Ice.copy(alpha = 0.37f + ratio * 0.63f)
+                            .background(if (values[index] > 0L) MaterialTheme.colorScheme.primary.copy(alpha = 0.37f + ratio * 0.63f)
                                         else MaterialTheme.colorScheme.outlineVariant))
                     }
                     Text(day.dayOfWeek.getDisplayName(
