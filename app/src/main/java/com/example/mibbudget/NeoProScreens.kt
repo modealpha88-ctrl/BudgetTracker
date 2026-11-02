@@ -296,11 +296,12 @@ private fun NeoAccountCard(
     value: Long?,
     count: Int,
     onOpen: () -> Unit,
-    onTransactions: () -> Unit
+    onTransactions: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val scheme = MaterialTheme.colorScheme
     val tint = when (bank) { "MIB" -> scheme.primary; "BML" -> neoBlue; else -> neoPeach }
-    Card(onClick = onOpen, modifier = Modifier.width(282.dp).height(221.dp),
+    Card(onClick = onOpen, modifier = modifier.height(221.dp),
         shape = RoundedCornerShape(27.dp),
         colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerHigh)) {
         Box(Modifier.fillMaxSize().background(
@@ -365,44 +366,62 @@ internal fun NeoProAccountsScreen(
             NeoCountTile("BALANCES AVAILABLE", "${balances.size} / 3", scheme.primary, Modifier.weight(1f))
             NeoCountTile("TRANSACTIONS", "${transactions.size}", scheme.tertiary, Modifier.weight(1f))
         }
-        Text("Swipe to explore accounts", style = MaterialTheme.typography.labelMedium,
-            color = scheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            banks.forEach { bank ->
-                NeoAccountCard(bank, balances[bank], counts[bank] ?: 0,
-                    onOpen = { onOpenAccount(bank) },
-                    onTransactions = { onAccountTransactions(bank) })
-            }
+
+        val carousel = rememberLazyListState()
+        val carouselScope = rememberCoroutineScope()
+        val selectedAccountIndex = carousel.firstVisibleItemIndex.coerceIn(0, banks.lastIndex)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("SWIPE BETWEEN ACCOUNTS", style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+            Text("${selectedAccountIndex + 1} / ${banks.size}",
+                style = MaterialTheme.typography.labelSmall, color = scheme.primary)
         }
-        NeoSectionTitle("Account overview", "Reconcile", onAdvanced)
-        banks.forEach { bank ->
-            val value = balances[bank]
-            Card(onClick = { onOpenAccount(bank) }, shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)) {
-                Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val accent = when (bank) {"MIB" -> scheme.primary; "BML" -> neoBlue; else -> neoPeach }
-                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(14.dp))
-                        .background(accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                        Text(if (bank == "Cash") "◈" else "▣", color = accent,
-                            style = MaterialTheme.typography.titleMedium)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(if (bank == "Cash") "Cash wallet" else bank,
-                            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                        Text(if (value == null) "Not reconciled" else "${counts[bank] ?: 0} linked transactions",
-                            style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                    }
-                    Text(value?.let(Money::format) ?: "Set balance",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (value == null) scheme.primary else scheme.onSurface)
-                    Text("›", color = scheme.primary)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val cardWidth = maxWidth
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                state = carousel,
+                flingBehavior = rememberSnapFlingBehavior(lazyListState = carousel),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(banks.size) { index ->
+                    val bank = banks[index]
+                    NeoAccountCard(bank, balances[bank], counts[bank] ?: 0,
+                        onOpen = { onOpenAccount(bank) },
+                        onTransactions = { onAccountTransactions(bank) },
+                        modifier = Modifier.width(cardWidth))
                 }
             }
         }
-        OutlinedButton(onClick = onPlanning, modifier = Modifier.fillMaxWidth()) {
-            Text("Cash wallet & financial planning")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically) {
+            banks.forEachIndexed { index, _ ->
+                val active = index == selectedAccountIndex
+                Box(Modifier.padding(horizontal = 5.dp).size(if (active) 11.dp else 8.dp)
+                    .clip(CircleShape)
+                    .background(if (active) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.35f))
+                    .clickable { carouselScope.launch { carousel.animateScrollToItem(index) } })
+            }
+        }
+        NeoSectionTitle("Account tools")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            OutlinedButton(onClick = onAdvanced, modifier = Modifier.weight(1f)) {
+                Text("Reconcile", maxLines = 1)
+            }
+            OutlinedButton(onClick = { onAccountTransactions(banks[selectedAccountIndex]) },
+                modifier = Modifier.weight(1f)) {
+                Text("Transactions", maxLines = 1)
+            }
+        }
+        Card(onClick = onPlanning, shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)) {
+            Row(Modifier.fillMaxWidth().padding(15.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Cash wallet & financial planning", modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium)
+                Text("›", color = scheme.primary)
+            }
         }
     }
 }
