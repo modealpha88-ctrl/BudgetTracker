@@ -880,6 +880,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
             }
             if(!onboardingRequired && tab==8) {
+            var releaseToolsExpanded by remember { mutableStateOf(false) }
+            Card(onClick={releaseToolsExpanded=!releaseToolsExpanded},modifier=Modifier.fillMaxWidth(),
+                shape=RoundedCornerShape(17.dp),
+                colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                Row(Modifier.fillMaxWidth().padding(13.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("App updates & feedback",modifier=Modifier.weight(1f),fontWeight=FontWeight.SemiBold,
+                        style=MaterialTheme.typography.bodyMedium)
+                    Text(if(releaseToolsExpanded) "Hide ↑" else "Expand ↓",color=MaterialTheme.colorScheme.primary,
+                        style=MaterialTheme.typography.labelMedium)
+                }
+            }
+            if(releaseToolsExpanded) {
             Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             val improvementPrefs = remember { context.getSharedPreferences("improvement_preferences", android.content.Context.MODE_PRIVATE) }
@@ -931,7 +943,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     context.startActivity(Intent.createChooser(intent,"Share improvement feedback"))
                 },modifier=Modifier.fillMaxWidth()) { Text("Choose where to share") }
             }
-            }
+            
+            }}
             if(notice.isNotBlank()) Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer), modifier=Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().padding(start=14.dp,end=6.dp,top=6.dp,bottom=6.dp),
                     verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -2240,9 +2253,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Triple(category, limit, rankedExpenses.filter { it.category==category }
                             .sumOf { kotlin.math.abs(it.amountLaari) })
                     }
+                    var rankingsExpandedUi by remember { mutableStateOf(false) }
+                    if (rankingsExpandedUi) {
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Text("Spending rankings",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                            Row(Modifier.fillMaxWidth(), verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text("Spending rankings",modifier=Modifier.weight(1f),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                                TextButton(onClick={rankingsExpandedUi=false}) { Text("Collapse") }
+                            }
                             Text("Previous month: ${Money.format(previousMonthSpend)} · ${if(monthSpend>=previousMonthSpend) "Increase" else "Decrease"} of ${Money.format(kotlin.math.abs(monthSpend-previousMonthSpend))}",
                                 style=MaterialTheme.typography.bodySmall)
                             Text("Total spent: ${Money.format(monthSpend)} · ${rankedExpenses.size} transactions",
@@ -2327,6 +2345,22 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 if(rankedTotals.size>10) Text("Showing top 10 of ${rankedTotals.size} recipients or days")
+                            }
+                        }
+                    }
+                    } else {
+                        Card(onClick={rankingsExpandedUi=true},modifier=Modifier.fillMaxWidth(),
+                            shape=RoundedCornerShape(19.dp),
+                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
+                            Row(Modifier.fillMaxWidth().padding(16.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Spending insights & duplicate review",fontWeight=FontWeight.SemiBold,
+                                        style=MaterialTheme.typography.titleSmall)
+                                    Text("${duplicateCandidates.size} potential duplicate groups · Explore rankings",
+                                        color=MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style=MaterialTheme.typography.bodySmall)
+                                }
+                                Text("›",style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
