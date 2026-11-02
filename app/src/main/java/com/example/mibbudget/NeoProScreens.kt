@@ -272,11 +272,7 @@ internal fun NeoTransactionRow(tx: Tx, savedRecipient: String?, onClick: () -> U
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(43.dp).clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
-                contentAlignment = Alignment.Center) {
-                Text(MerchantIcons.icon(tx.description, tx.category), style = MaterialTheme.typography.titleLarge)
-            }
+            NeoTransactionIcon(tx)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(TransactionPresentation.displayLabel(tx.description, tx.category, savedRecipient),
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
