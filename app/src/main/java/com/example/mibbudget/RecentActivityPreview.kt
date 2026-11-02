@@ -10,6 +10,16 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
+internal fun neoDayHeading(dayKey: String): String {
+    val date = runCatching { LocalDate.parse(dayKey) }.getOrNull()
+    return when (date) {
+        LocalDate.now() -> "Today"
+        LocalDate.now().minusDays(1) -> "Yesterday"
+        null -> dayKey
+        else -> "${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)} ${date.year}"
+    }
+}
+
 /** Read-only, date-grouped Activity preview. Search doesn't alter stored transactions. */
 @Composable
 internal fun RecentActivityPreview(
@@ -49,13 +59,7 @@ internal fun RecentActivityPreview(
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     matching.groupBy { it.timestamp.take(10) }.forEach { (dayKey, dailyTransactions) ->
-        val date = runCatching { LocalDate.parse(dayKey) }.getOrNull()
-        val dayTitle = when (date) {
-            LocalDate.now() -> "Today"
-            LocalDate.now().minusDays(1) -> "Yesterday"
-            null -> dayKey
-            else -> "${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)} ${date.year}"
-        }
+        val dayTitle = neoDayHeading(dayKey)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(dayTitle, style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
