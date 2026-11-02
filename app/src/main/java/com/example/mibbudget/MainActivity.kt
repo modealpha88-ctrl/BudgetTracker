@@ -2106,22 +2106,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    Text("Recent transactions",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
-                    transactions.sortedByDescending { it.timestamp }.take(4).forEach { tx ->
-                        Card(onClick={selectedTransactionId=tx.id}, modifier=Modifier.fillMaxWidth(),
-                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer),
-                            shape=RoundedCornerShape(18.dp)) {
-                            Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
-                                horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                Text(MerchantIcons.icon(tx.description,tx.category),style=MaterialTheme.typography.titleLarge)
-                                Column(Modifier.weight(1f)) {
-                                    Text(tx.description,maxLines=1,style=MaterialTheme.typography.bodyMedium)
-                                    Text(tx.timestamp.take(16),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text(Money.format(tx.amountLaari),style=MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
+                    RecentActivityPreview(transactions) { selectedTransactionId = it }
                     Text("Tools & analysis",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                     var showChangeHistory by remember { mutableStateOf(false) }
                     var pendingUndo by remember { mutableStateOf<TransactionAudit.Entry?>(null) }
