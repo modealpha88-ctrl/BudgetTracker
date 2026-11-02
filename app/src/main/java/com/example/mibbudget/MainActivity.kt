@@ -2125,7 +2125,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    RecentActivityPreview(transactions) { selectedTransactionId = it }
+                    RecentActivityPreview(transactions, savedRecipient = { tx -> recipientPrefs.getString(tx.fingerprint, null) }) { selectedTransactionId = it }
                     Text("Tools & analysis",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                     var showChangeHistory by remember { mutableStateOf(false) }
                     var pendingUndo by remember { mutableStateOf<TransactionAudit.Entry?>(null) }
