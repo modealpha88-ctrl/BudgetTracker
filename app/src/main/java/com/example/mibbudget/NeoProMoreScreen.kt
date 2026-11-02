@@ -1,5 +1,6 @@
 package com.example.mibbudget
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,9 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.sin
 
 /** Compact destination rows match the same navigation rhythm as the other Neo Pro screens. */
 @Composable
@@ -51,25 +55,47 @@ private fun NeoToolsCard(
     }
 }
 
+/** Preview the selected colorway's real dark surfaces with a luminous waveform. */
 @Composable
 private fun NeoColorwayTile(palette: BankingPalette) {
     val context = LocalContext.current
     val active = BankingAppearance.selected == palette.label
     Card(onClick = { BankingAppearance.select(context, palette.label) },
-        shape = RoundedCornerShape(19.dp),
+        shape = RoundedCornerShape(18.dp),
         border = if (active) androidx.compose.foundation.BorderStroke(2.dp, palette.accent) else null,
         colors = CardDefaults.cardColors(containerColor = palette.surface)) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(palette.accent, palette.secondary, palette.raised).forEach { c ->
-                    Box(Modifier.size(18.dp).clip(RoundedCornerShape(6.dp)).background(c))
+        Column(
+            Modifier.fillMaxWidth().background(
+                Brush.verticalGradient(listOf(palette.surface, palette.container)))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(18.dp).clip(RoundedCornerShape(6.dp))
+                    .background(palette.accent))
+                if(active) Text("✓", color = palette.accent,
+                    fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+            }
+            Canvas(Modifier.fillMaxWidth().height(38.dp)) {
+                val path = Path()
+                val steps = 42
+                repeat(steps + 1) { step ->
+                    val x = size.width * step / steps.toFloat()
+                    val wave = sin(step.toDouble() * 0.35).toFloat()
+                    val y = size.height * 0.55f - wave * size.height * 0.27f
+                    if(step == 0) path.moveTo(x,y) else path.lineTo(x,y)
                 }
+                drawPath(path,
+                    brush = Brush.horizontalGradient(listOf(palette.secondary, palette.accent)),
+                    style = Stroke(width = 3.dp.toPx())
+                )
             }
             Text(palette.label, style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold, color = Color.White)
-            Text(if (active) "✓ Selected" else "Tap to apply",
+                fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+            Text(if(active) "Selected" else "Tap to apply",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (active) palette.accent else Color(0xFFCCD6E0))
+                color = if(active) palette.accent else Color(0xFFCCD6E0))
         }
     }
 }
