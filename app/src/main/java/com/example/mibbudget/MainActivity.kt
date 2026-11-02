@@ -2791,7 +2791,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     orderedTransactions.take(150).forEach { t ->
                         val day=t.timestamp.take(10)
                         if(day!=lastTransactionDay) {
-                            Text(day,style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
+                            Text(neoDayHeading(day),style=MaterialTheme.typography.titleSmall,color=MaterialTheme.colorScheme.primary,modifier=Modifier.padding(top=12.dp,bottom=4.dp))
                             lastTransactionDay=day
                         }
                         val merchant=TransactionPresentation.label(t.description)
