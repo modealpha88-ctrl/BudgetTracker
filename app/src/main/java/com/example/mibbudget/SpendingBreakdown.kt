@@ -2,6 +2,7 @@ package com.example.mibbudget
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -28,7 +29,8 @@ fun SpendingBreakdown(
     initialStyle: String,
     onStyleChange: (String) -> Unit,
     onCategory: (String) -> Unit,
-    onMerchant: (String, String) -> Unit
+    onMerchant: (String, String) -> Unit,
+    showTitle: Boolean = true
 ) {
     val total = expenses.sumOf { -it.amountLaari }
     val categories = expenses.groupBy { it.category }
@@ -37,7 +39,7 @@ fun SpendingBreakdown(
     val colors = listOf(Color(0xFFB5A0FF), Color(0xFF80CBC4), Color(0xFFFFC78E),
         Color(0xFF90CAF9), Color(0xFFF48FB1), Color(0xFFA5A5A5))
     var style by remember(initialStyle) { mutableStateOf(if(initialStyle=="List") "List" else "Treemap") }
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var selectedCategory by remember(expenses) { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf(false) }
     val visible = categories.take(5)
     val remainder = categories.drop(5).sumOf { it.second }
@@ -50,7 +52,7 @@ fun SpendingBreakdown(
     } ?: emptyList()
 
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Text("Spending breakdown", style=MaterialTheme.typography.titleSmall)
+        if(showTitle) Text("Spending breakdown", style=MaterialTheme.typography.titleSmall)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             listOf("Treemap", "List").forEach { choice ->
