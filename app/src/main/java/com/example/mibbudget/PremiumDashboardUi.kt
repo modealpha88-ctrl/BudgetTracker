@@ -195,7 +195,7 @@ internal fun PremiumAccountSnapshotCard(
     }
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF132B34))) {
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Box(Modifier.fillMaxWidth().background(
             Brush.linearGradient(listOf(Color(0xFF153C38), Color(0xFF142C3C), Color(0xFF172837)))
         )) {
@@ -265,7 +265,7 @@ internal fun PremiumAccountsOverview(balances: Map<String, Long>, onAccounts: ()
         shape = RoundedCornerShape(30.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF132B34))) {
         Box(Modifier.fillMaxWidth().background(
-            Brush.linearGradient(listOf(Color(0xFF173C43), Color(0xFF142E3E), Color(0xFF1B2240)))
+            Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surfaceContainerHigh))
         )) {
             AuroraDecoration(Modifier.matchParentSize())
             Column(Modifier.padding(21.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -273,31 +273,31 @@ internal fun PremiumAccountsOverview(balances: Map<String, Long>, onAccounts: ()
                     verticalAlignment = Alignment.CenterVertically) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("ACCOUNTS AT A GLANCE", style = MaterialTheme.typography.labelMedium,
-                            color = Ice, fontWeight = FontWeight.Bold)
+                            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         Text("Your money", style = MaterialTheme.typography.headlineSmall,
-                            color = SoftWhite, fontWeight = FontWeight.ExtraBold)
+                            color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.ExtraBold)
                     }
-                    AuroraTag("VIEW ALL ↗", Ice)
+                    AuroraTag("VIEW ALL ↗", MaterialTheme.colorScheme.primary)
                 }
                 listOf("MIB", "BML", "Cash").forEach { bank ->
-                    val accent = when (bank) { "MIB" -> Mint; "BML" -> Ice; else -> Gold }
+                    val accent = when (bank) { "MIB" -> MaterialTheme.colorScheme.primary; "BML" -> MaterialTheme.colorScheme.tertiary; else -> Gold }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(10.dp).clip(CircleShape).background(accent))
-                            Text(bank, color = SoftWhite, fontWeight = FontWeight.SemiBold,
+                            Text(bank, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold,
                                 style = MaterialTheme.typography.titleMedium)
                         }
                         Text(balances[bank]?.let(Money::format) ?: "Not reconciled",
-                            color = if (balances.containsKey(bank)) SoftWhite else SoftMuted,
+                            color = if (balances.containsKey(bank)) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.SemiBold,
                             style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
                 Text("Snapshot-based estimates · Tap to manage balances",
-                    color = SoftMuted, style = MaterialTheme.typography.bodySmall)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
