@@ -44,16 +44,34 @@ internal fun NeoBudgetScreen(
                             Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primaryContainer,
                                 MaterialTheme.colorScheme.surfaceContainerHigh)))
                             .padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                            Text("This month's spending",style=MaterialTheme.typography.titleMedium)
-                            Text(Money.format(totalSpent),style=MaterialTheme.typography.headlineMedium)
-                            Text(if(totalLimit>0) "Combined category limits: ${Money.format(totalLimit)}" else "No category limits set yet",
-                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            if(totalLimit>0) {
-                                LinearProgressIndicator(progress={ (totalSpent.toFloat()/totalLimit).coerceIn(0f,1f) },
-                                    modifier=Modifier.fillMaxWidth())
-                                if(totalSpent>totalLimit) Text("Over combined limits by ${Money.format(totalSpent-totalLimit)}",
-                                    color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                            Row(Modifier.fillMaxWidth(),
+                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                                    Text("MONTHLY SPENDING",style=MaterialTheme.typography.labelMedium,
+                                        fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
+                                    Text(Money.format(totalSpent),style=MaterialTheme.typography.headlineMedium,
+                                        fontWeight=FontWeight.ExtraBold)
+                                    Text(if(totalLimit>0) "Of ${Money.format(totalLimit)} in category limits" else "No category limits set yet",
+                                        style=MaterialTheme.typography.bodySmall,
+                                        color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if(totalLimit>0) Box(Modifier.size(76.dp),
+                                    contentAlignment=androidx.compose.ui.Alignment.Center) {
+                                    CircularProgressIndicator(
+                                        progress={ (totalSpent.toFloat()/totalLimit).coerceIn(0f,1f) },
+                                        modifier=Modifier.fillMaxSize(),strokeWidth=7.dp,
+                                        color=if(totalSpent>totalLimit) MaterialTheme.colorScheme.error
+                                            else MaterialTheme.colorScheme.primary
+                                    )
+                                    Text("${(totalSpent.toDouble()*100/totalLimit).toInt()}%",
+                                        style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
+                                }
                             }
+                            if(totalLimit>0 && totalSpent>totalLimit)
+                                Text("Over combined limits by ${Money.format(totalSpent-totalLimit)}",
+                                    color=MaterialTheme.colorScheme.error,
+                                    style=MaterialTheme.typography.bodySmall)
                         }
                     }
                     var editingBudgetCategory by remember { mutableStateOf<String?>(null) }
@@ -97,7 +115,7 @@ internal fun NeoBudgetScreen(
                                     Column(Modifier.weight(1f)) {
                                         Text(cat,style=MaterialTheme.typography.titleMedium)
                                         Text("${Money.format(spent)} spent",style=MaterialTheme.typography.bodySmall)
-                                        Text(if(limit>0) "${Money.format(limit)} allowance" else "No budget set",
+                                        Text(if(limit>0) "${Money.format(limit)} allowance · ${(spent.toDouble()*100/limit).toInt()}% used" else "No budget set",
                                             style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     TextButton(onClick={
