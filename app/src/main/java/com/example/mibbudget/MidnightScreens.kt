@@ -179,8 +179,12 @@ internal fun MidnightAccountsScreen(
                         }
                         Card(onClick={onOpenAccount(bank)},modifier=Modifier.fillMaxWidth(),
                             shape=RoundedCornerShape(28.dp),
-                            colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                            Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            colors=CardDefaults.cardColors(containerColor=when(bank) {
+                                "MIB" -> MaterialTheme.colorScheme.primaryContainer
+                                "BML" -> MaterialTheme.colorScheme.secondaryContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                            })) {
+                            Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                                     Text(when(bank) { "MIB" -> "●  MIB"; "BML" -> "●  BML"; else -> "●  Cash wallet" },
                                         style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,
@@ -264,6 +268,7 @@ internal fun MidnightInsightsScreen(
                             )
                         }
                     }
+                    PremiumWeeklySpendBars(monthlyTransactions, selectedMonth)
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                         Text("Top spending categories",style=MaterialTheme.typography.titleMedium)
                         Text("${expenses.size} expenses",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
