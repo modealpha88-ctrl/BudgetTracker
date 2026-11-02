@@ -1,66 +1,99 @@
 package com.example.mibbudget
 
+import android.content.Context
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-/**
- * Midnight Aurora: an AMOLED-first palette that keeps the light preference usable.
- * Appearance changes only; no account, transaction, or database values are modified.
- */
-private val MidnightEmeraldDark = darkColorScheme(
-    primary = Color(0xFF60F0BA),
-    onPrimary = Color(0xFF05251D),
-    primaryContainer = Color(0xFF183F3A),
-    onPrimaryContainer = Color(0xFFB9FBE5),
-    secondary = Color(0xFFBDB0FF),
-    onSecondary = Color(0xFF20183C),
-    secondaryContainer = Color(0xFF2B2647),
-    onSecondaryContainer = Color(0xFFF0EAFE),
-    tertiary = Color(0xFF72DEFA),
-    background = Color(0xFF070B13),
-    onBackground = Color(0xFFF5F8FF),
-    surface = Color(0xFF101A27),
-    onSurface = Color(0xFFF5F8FF),
-    surfaceVariant = Color(0xFF273747),
-    onSurfaceVariant = Color(0xFFAABCC9),
-    surfaceContainerLowest = Color(0xFF070B13),
-    surfaceContainerLow = Color(0xFF0B1420),
-    surfaceContainer = Color(0xFF101A27),
-    surfaceContainerHigh = Color(0xFF1B2839),
-    surfaceContainerHighest = Color(0xFF243449),
-    outline = Color(0xFF526778),
-    outlineVariant = Color(0xFF304354),
-    error = Color(0xFFFF8995)
+/** Presentation-only settings. Never write to TransactionStore from here. */
+internal data class BankingPalette(
+    val label: String, val accent: Color, val accentSoft: Color,
+    val background: Color, val surface: Color, val raised: Color,
+    val container: Color, val secondary: Color
 )
 
-private val MidnightEmeraldLight = lightColorScheme(
-    primary = Color(0xFF087C55),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD1F5E2),
-    onPrimaryContainer = Color(0xFF06452E),
-    secondary = Color(0xFF386B52),
-    background = Color(0xFFF4F8F5),
-    onBackground = Color(0xFF13251A),
-    surface = Color.White,
-    onSurface = Color(0xFF13251A),
-    surfaceVariant = Color(0xFFE3EDE7),
-    onSurfaceVariant = Color(0xFF536C5E),
-    surfaceContainerLow = Color(0xFFEDF4EE),
-    surfaceContainer = Color(0xFFE8F0E9),
-    surfaceContainerHigh = Color(0xFFDCE9DF),
-    outline = Color(0xFF83998B)
+internal val bankingPalettes = listOf(
+    BankingPalette("Emerald Finance", Color(0xFF50E6A4), Color(0xFF9AF5CD), Color(0xFF041A17), Color(0xFF0B2521), Color(0xFF12352E), Color(0xFF123F33), Color(0xFF5FD9C5)),
+    BankingPalette("Midnight Aurora", Color(0xFF4EE4C7), Color(0xFF99FAE4), Color(0xFF070B13), Color(0xFF101A27), Color(0xFF1B2839), Color(0xFF183F3A), Color(0xFFBDB0FF)),
+    BankingPalette("Royal Sapphire", Color(0xFF339CFF), Color(0xFF9AD1FF), Color(0xFF070E25), Color(0xFF0D1E43), Color(0xFF172F60), Color(0xFF103775), Color(0xFF83B9FF)),
+    BankingPalette("Sunset Blaze", Color(0xFFFFA05F), Color(0xFFFFD0A7), Color(0xFF1D1020), Color(0xFF31172D), Color(0xFF46233F), Color(0xFF542343), Color(0xFFFF6D9A)),
+    BankingPalette("Ocean Deep", Color(0xFF63DDF5), Color(0xFFB5F4FF), Color(0xFF071727), Color(0xFF0D293B), Color(0xFF14394E), Color(0xFF12435A), Color(0xFF4FC5E0)),
+    BankingPalette("Amethyst Night", Color(0xFFC48AFF), Color(0xFFE7C5FF), Color(0xFF160C27), Color(0xFF26163D), Color(0xFF382352), Color(0xFF48216D), Color(0xFFAA8EFF))
 )
+
+internal object BankingAppearance {
+    var selected by mutableStateOf("Emerald Finance")
+        private set
+    private var loaded = false
+
+    fun initialize(context: Context) {
+        if (!loaded) {
+            val stored = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+                .getString("banking_palette", "Emerald Finance")
+            selected = bankingPalettes.firstOrNull { it.label == stored }?.label ?: "Emerald Finance"
+            loaded = true
+        }
+    }
+
+    fun select(context: Context, name: String) {
+        if (bankingPalettes.none { it.label == name }) return
+        selected = name
+        context.getSharedPreferences("appearance", Context.MODE_PRIVATE).edit()
+            .putString("banking_palette", name).apply()
+    }
+}
 
 @Composable
 fun MidnightEmeraldTheme(dark: Boolean, content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    BankingAppearance.initialize(context)
+    val palette = bankingPalettes.first { it.label == BankingAppearance.selected }
+    val colors = if (dark) darkColorScheme(
+        primary = palette.accent,
+        onPrimary = Color(0xFF041B17),
+        primaryContainer = palette.container,
+        onPrimaryContainer = palette.accentSoft,
+        secondary = palette.secondary,
+        onSecondary = Color(0xFF07121B),
+        secondaryContainer = palette.raised,
+        onSecondaryContainer = Color(0xFFE7F7F0),
+        tertiary = palette.accentSoft,
+        background = palette.background,
+        onBackground = Color(0xFFF3FBF7),
+        surface = palette.surface,
+        onSurface = Color(0xFFF3FBF7),
+        surfaceVariant = palette.raised,
+        onSurfaceVariant = Color(0xFFADC5BD),
+        surfaceContainerLowest = palette.background,
+        surfaceContainerLow = palette.surface,
+        surfaceContainer = palette.surface,
+        surfaceContainerHigh = palette.raised,
+        surfaceContainerHighest = palette.container,
+        outline = Color(0xFF577568),
+        outlineVariant = Color(0xFF315249),
+        error = Color(0xFFFF8995)
+    ) else lightColorScheme(
+        primary = Color(0xFF087C55),
+        onPrimary = Color.White,
+        primaryContainer = Color(0xFFD1F5E2),
+        onPrimaryContainer = Color(0xFF06452E),
+        secondary = Color(0xFF386B52),
+        background = Color(0xFFF4F8F5),
+        onBackground = Color(0xFF13251A),
+        surface = Color.White,
+        onSurface = Color(0xFF13251A),
+        surfaceVariant = Color(0xFFE3EDE7),
+        onSurfaceVariant = Color(0xFF536C5E),
+        surfaceContainerLow = Color(0xFFEDF4EE),
+        surfaceContainer = Color(0xFFE8F0E9),
+        surfaceContainerHigh = Color(0xFFDCE9DF),
+        outline = Color(0xFF83998B)
+    )
     MaterialTheme(
-        colorScheme = if (dark) MidnightEmeraldDark else MidnightEmeraldLight,
+        colorScheme = colors,
         shapes = Shapes(
             small = RoundedCornerShape(12.dp),
             medium = RoundedCornerShape(18.dp),
