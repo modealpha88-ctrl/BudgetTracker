@@ -88,7 +88,7 @@ internal fun NeoProMoreScreen(
     var appearanceOpen by remember { mutableStateOf(false) }
     var privacyOpen by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(BankingAppearance.screenGap)) {
         if (privacyOpen) {
             TextButton(onClick = { privacyOpen = false }, contentPadding = PaddingValues(0.dp)) {
                 Text("‹  More")
@@ -107,7 +107,7 @@ internal fun NeoProMoreScreen(
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).clip(CircleShape).background(colors.primary))
-                    Text("Your money tools · ${BankingAppearance.selected}",
+                    Text("${BankingAppearance.selected} · ${BankingAppearance.density} layout",
                         modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
                         color = colors.onPrimaryContainer)
                     Text("●", color = colors.primary, style = MaterialTheme.typography.labelMedium)
@@ -175,6 +175,29 @@ internal fun NeoProMoreScreen(
                             group.forEach { palette ->
                                 Box(Modifier.weight(1f)) { NeoColorwayTile(palette) }
                             }
+                        }
+                    }
+                }
+            }
+            Card(shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Text("UI density", style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold)
+                    Text("Choose how much information fits on each screen.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf("Comfortable", "Balanced", "Compact").forEach { option ->
+                            FilterChip(
+                                selected = BankingAppearance.density == option,
+                                onClick = { BankingAppearance.selectDensity(LocalContext.current, option) },
+                                modifier = Modifier.weight(1f),
+                                label = {
+                                    Text(option, maxLines = 1,
+                                        style = MaterialTheme.typography.labelSmall)
+                                }
+                            )
                         }
                     }
                 }
