@@ -104,6 +104,58 @@ private fun NeoMoneyTile(label: String, amount: Long, accent: Color, modifier: M
     }
 }
 
+/** Monthly pulse uses recorded income/spending, never claims to be the live bank balance. */
+@Composable
+private fun NeoMonthlyPulse(income: Long, spent: Long, onPlanning: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val ratio = if (income > 0L) spent.toDouble() / income else 0.0
+    val percent = (ratio * 100.0).toInt()
+    Card(
+        shape = RoundedCornerShape(23.dp),
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(17.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(78.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = { ratio.toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxSize(),
+                    strokeWidth = 7.dp,
+                    color = if (ratio > 1.0) scheme.error else scheme.primary,
+                    trackColor = scheme.surfaceContainerHighest
+                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (income == 0L) "—" else "$percent%",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold)
+                    Text("spent", style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant)
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("Financial pulse", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold)
+                Text(
+                    if (income == 0L) "No recorded income this month"
+                    else if (spent > income) "Spending exceeds income by ${Money.format(spent - income)}"
+                    else "Net this month: +${Money.format(income - spent)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = onPlanning,
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("Safe-to-spend & planning  ↗", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun NeoMixStrip(entries: List<Tx>, onInsights: () -> Unit) {
     val expenses = entries.filter { it.amountLaari < 0 && it.category != "Internal Transfer" }
@@ -160,9 +212,8 @@ internal fun NeoProHomeScreen(
     val spent = expenses.sumOf { -it.amountLaari }
     val income = monthlyTransactions.filter { it.amountLaari > 0 && it.category != "Internal Transfer" }
         .sumOf { it.amountLaari }
-    val ratio = if (income > 0L) spent.toDouble() / income else 0.0
     val scheme = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(17.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("BUDGET TRACKER", color = scheme.primary, style = MaterialTheme.typography.labelMedium,
@@ -198,41 +249,24 @@ internal fun NeoProHomeScreen(
                         color = scheme.onSurfaceVariant)
                     NeoSevenDaySpendTrend(transactions)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("${balances.size} of 3 accounts have snapshots", style = MaterialTheme.typography.labelSmall,
+                        Text("${balances.size} of 3 accounts have balance estimates", style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant)
                         Text("View accounts  ↗", style = MaterialTheme.typography.labelSmall, color = scheme.primary)
                     }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NeoShortcut("+", "Add", onAdd, Modifier.weight(1f))
             NeoShortcut("⇄", "Activity", onActivity, Modifier.weight(1f))
             NeoShortcut("↥", "Import", onImport, Modifier.weight(1f))
+            NeoShortcut("◷", "Plan", onPlanning, Modifier.weight(1f))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             NeoMoneyTile("INCOME", income, scheme.primary, Modifier.weight(1f))
             NeoMoneyTile("SPENT", spent, neoPeach, Modifier.weight(1f))
         }
-        Card(shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Monthly spending", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(if (income > 0L) "${(ratio * 100).toInt()}% of income" else "No income recorded",
-                        color = if (ratio > 1.0) scheme.error else scheme.primary,
-                        style = MaterialTheme.typography.labelMedium)
-                }
-                LinearProgressIndicator(progress = { ratio.toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                    color = if (ratio > 1.0) scheme.error else scheme.primary,
-                    trackColor = scheme.surfaceContainerHigh)
-                Text(if (income == 0L) "Spending compared with recorded income is unavailable."
-                     else if (spent > income) "Spent ${Money.format(spent - income)} more than recorded income"
-                     else "Recorded income less spending: ${Money.format(income - spent)}",
-                    style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-            }
-        }
+        NeoMonthlyPulse(income = income, spent = spent, onPlanning = onPlanning)
         NeoMixStrip(monthlyTransactions, onInsights)
         if (pendingBmlCount > 0) Card(onClick = onReview,
             colors = CardDefaults.cardColors(containerColor = scheme.secondaryContainer)) {
