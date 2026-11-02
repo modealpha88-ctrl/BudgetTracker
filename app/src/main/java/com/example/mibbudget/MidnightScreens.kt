@@ -303,7 +303,9 @@ internal fun MidnightMoreScreen(
     onScreenshotPrivacyChange: (Boolean) -> Unit,
     onNavigate: (Int) -> Unit
 ) {
-    Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
+    var appearanceOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        if (!appearanceOpen) {
                     Text("YOUR FINANCIAL TOOLKIT",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
                     Text("More to explore",style=MaterialTheme.typography.headlineLarge,fontWeight=FontWeight.ExtraBold)
                     Text("Your tools, preferences and money management",color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -329,7 +331,15 @@ internal fun MidnightMoreScreen(
                             }
                         }
                     }
-                    Text("Appearance & privacy",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                    Card(onClick={appearanceOpen=true},modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(16.dp),horizontalArrangement=Arrangement.SpaceBetween) {
+                            Text("Appearance & privacy",style=MaterialTheme.typography.titleMedium)
+                            Text("Customize  ›",color=MaterialTheme.colorScheme.primary)
+                        }
+                    }
+        } else {
+                    TextButton(onClick={appearanceOpen=false}) { Text("‹  Back to More") }
+                    Text("Appearance & privacy",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
                     val appearanceContext = LocalContext.current
                     Card(
                         modifier=Modifier.fillMaxWidth(),
@@ -391,5 +401,6 @@ internal fun MidnightMoreScreen(
                         }
                     }
 
+        }
     }
 }
