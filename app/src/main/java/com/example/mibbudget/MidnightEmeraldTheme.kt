@@ -85,7 +85,7 @@ fun MidnightEmeraldTheme(dark: Boolean, content: @Composable () -> Unit) {
             "Ocean Deep" -> listOf(0xFF007C9C, 0xFFC8F0FA, 0xFFF0FAFC, 0xFFE0F3F9, 0xFFC9E7F2, 0xFF153C51)
             "Amethyst Night" -> listOf(0xFF793BAE, 0xFFEEDCFF, 0xFFFBF6FF, 0xFFF2E9FA, 0xFFE5D6F5, 0xFF392051)
             else -> listOf(0xFF087C55, 0xFFD1F5E2, 0xFFF4F8F5, 0xFFE8F0E9, 0xFFDCE9DF, 0xFF132F23)
-        }.map { Color(it) }
+        }.map { Color(it.toInt()) }
         lightColorScheme(
             primary = light[0],
             onPrimary = Color.White,
