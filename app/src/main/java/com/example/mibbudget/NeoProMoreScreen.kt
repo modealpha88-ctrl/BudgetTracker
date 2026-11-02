@@ -16,28 +16,37 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/** Compact destination rows match the same navigation rhythm as the other Neo Pro screens. */
 @Composable
-private fun NeoToolsCard(symbol: String, label: String, description: String, onClick: () -> Unit,
-                         modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    Card(onClick = onClick, modifier = modifier.height(126.dp),
+private fun NeoToolsCard(
+    symbol: String, label: String, description: String, onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    Card(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(19.dp),
-        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer)) {
-        Column(Modifier.fillMaxSize().padding(13.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(34.dp).clip(RoundedCornerShape(11.dp))
-                    .background(colors.primary.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                    Text(symbol, style = MaterialTheme.typography.titleLarge, color = colors.primary)
-                }
-                Text("↗", style = MaterialTheme.typography.titleMedium, color = colors.primary)
+        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainer)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(13.dp)
+        ) {
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
+                    .background(scheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(symbol, style = MaterialTheme.typography.titleMedium, color = scheme.primary)
             }
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(description, style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant, maxLines = 2)
+                    color = scheme.onSurfaceVariant, maxLines = 2)
             }
+            Text("›", style = MaterialTheme.typography.titleLarge, color = scheme.primary)
         }
     }
 }
@@ -104,15 +113,14 @@ internal fun NeoProMoreScreen(
                     Text("●", color = colors.primary, style = MaterialTheme.typography.labelMedium)
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(11.dp), modifier = Modifier.fillMaxWidth()) {
-                NeoToolsCard("◎", "Budgets", "Category limits & rollover", { onNavigate(3) }, Modifier.weight(1f))
-                NeoToolsCard("◷", "Planning", "Goals, forecast & reports", { onNavigate(4) }, Modifier.weight(1f))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(11.dp), modifier = Modifier.fillMaxWidth()) {
-                NeoToolsCard("⇣", "Import", "SMS, CSV & reconciliation", { onNavigate(2) }, Modifier.weight(1f))
-                NeoToolsCard("▤", "Advanced", "Balance tools & analytics", { onNavigate(8) }, Modifier.weight(1f))
-            }
-            Text("Preferences", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("FINANCIAL TOOLS", color = colors.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            NeoToolsCard("◎", "Budgets", "Category limits, rollover and progress", { onNavigate(3) })
+            NeoToolsCard("◷", "Plan & reports", "Safe-to-spend, savings, calendar and forecasts", { onNavigate(4) })
+            NeoToolsCard("⇣", "Import & access", "CSV, bank messages and reconciliation", { onNavigate(2) })
+            NeoToolsCard("▤", "Advanced dashboard", "Balances, transfers and detailed tools", { onNavigate(8) })
+            Text("SECURITY & PREFERENCES", style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant, fontWeight = FontWeight.Bold)
             Card(onClick = { appearanceOpen = true }, shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerHigh)) {
                 Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
