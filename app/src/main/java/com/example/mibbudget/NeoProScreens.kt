@@ -339,17 +339,25 @@ private fun NeoAccountCard(
             Box(Modifier.align(Alignment.TopEnd).offset(x = 38.dp, y = (-40).dp).size(140.dp)
                 .clip(CircleShape).background(tint.copy(alpha = 0.14f)))
             Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     Box(Modifier.size(11.dp).clip(CircleShape).background(tint))
-                    Spacer(Modifier.width(9.dp))
-                    Text(if (bank == "Cash") "Cash wallet" else bank, style = MaterialTheme.typography.titleMedium,
+                    Text(if (bank == "Cash") "Cash wallet" else bank,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text("↗", color = tint)
+                    Surface(shape = RoundedCornerShape(20.dp),
+                        color = tint.copy(alpha = 0.15f)) {
+                        Text(if (value == null) "SET UP" else "ESTIMATED",
+                            Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = scheme.onSurface)
+                    }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(value?.let(Money::format) ?: "Balance not set",
                         style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-                    Text(if (value == null) "Snapshot required" else "Snapshot-based estimate",
+                    Text(if (value == null) "Add a balance snapshot to start" else "Based on snapshots and recorded activity",
                         color = scheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -391,9 +399,9 @@ internal fun NeoProAccountsScreen(
     }
     val scheme = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(17.dp)) {
-        NeoHeader("ACCOUNTS / WALLETS", "Your accounts", "Manage balances, activity and reconciliation")
+        NeoHeader("ACCOUNTS / WALLETS", "Your accounts", "Estimated balances, account activity and reconciliation")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            NeoCountTile("BALANCES AVAILABLE", "${balances.size} / 3", scheme.primary, Modifier.weight(1f))
+            NeoCountTile("BALANCE ESTIMATES", "${balances.size} / 3", scheme.primary, Modifier.weight(1f))
             NeoCountTile("TRANSACTIONS", "${transactions.size}", scheme.tertiary, Modifier.weight(1f))
         }
 
