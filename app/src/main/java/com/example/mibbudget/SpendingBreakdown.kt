@@ -68,11 +68,15 @@ fun SpendingBreakdown(
         } else {
             if(style=="Treemap") {
                 // A single row of proportional tiles cannot overlap or produce zero-sized labels.
-                Row(Modifier.fillMaxWidth().height(126.dp),horizontalArrangement=Arrangement.spacedBy(3.dp)) {
+                Row(Modifier.fillMaxWidth().height(154.dp),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                     slices.forEachIndexed { index, (cat, amount) ->
                         Box(Modifier.weight(amount.toFloat().coerceAtLeast(1f)).fillMaxHeight()
-                            .background(colors[index%colors.size],RoundedCornerShape(5.dp))
-                            .clickable { if(cat=="Other categories") { selectedCategory=cat; expanded=true } else onCategory(cat) }) {
+                            .background(colors[index%colors.size],RoundedCornerShape(9.dp))
+                            .border(if(selectedCategory==cat) 3.dp else 0.dp,
+                                if(selectedCategory==cat) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                                RoundedCornerShape(9.dp))
+                            .clickable { selectedCategory=if(selectedCategory==cat) null else cat;
+                                if(cat=="Other categories") expanded=true }) {
                             if(amount.toDouble()/total>=0.12)
                                 Text("${cat.take(12)}\n${"%.0f".format(java.util.Locale.US,amount.toDouble()*100/total)}%",
                                     modifier=Modifier.padding(5.dp),color=Color(0xFF15121B),
@@ -82,13 +86,17 @@ fun SpendingBreakdown(
                     }
                 }
             }
-            if(style!="List") Text("Tap a tile to open category transactions. Tap a category below for merchant details.",
+            if(style!="List") Text("Select a tile or category to explore merchants and transactions.",
                 style=MaterialTheme.typography.labelSmall)
             val shown=if(expanded || style=="List") categories else slices
             shown.forEachIndexed { index, (cat, amount) ->
-                Row(Modifier.fillMaxWidth().clickable { selectedCategory=if(selectedCategory==cat) null else cat }
-                    .padding(vertical=3.dp),horizontalArrangement=Arrangement.SpaceBetween) {
-                    Text("● $cat  ›",color=colors[index%colors.size],
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(if(selectedCategory==cat) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                    .clickable { selectedCategory=if(selectedCategory==cat) null else cat }
+                    .padding(horizontal=10.dp,vertical=9.dp),
+                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement=Arrangement.SpaceBetween) {
+                    Text("● $cat  ›",color=if(selectedCategory==cat) MaterialTheme.colorScheme.primary else colors[index%colors.size],
                         style=MaterialTheme.typography.bodySmall,modifier=Modifier.weight(1f),
                         maxLines=1,overflow=TextOverflow.Ellipsis)
                     Text("${"%.1f".format(java.util.Locale.US,amount.toDouble()*100/total)}%",
