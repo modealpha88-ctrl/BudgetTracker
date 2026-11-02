@@ -20,13 +20,13 @@ import androidx.compose.ui.unit.dp
 private fun NeoToolsCard(symbol: String, label: String, description: String, onClick: () -> Unit,
                          modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Card(onClick = onClick, modifier = modifier.height(154.dp),
-        shape = RoundedCornerShape(23.dp),
+    Card(onClick = onClick, modifier = modifier.height(126.dp),
+        shape = RoundedCornerShape(19.dp),
         colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer)) {
-        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Column(Modifier.fillMaxSize().padding(13.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(39.dp).clip(RoundedCornerShape(13.dp))
+                Box(Modifier.size(34.dp).clip(RoundedCornerShape(11.dp))
                     .background(colors.primary.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
                     Text(symbol, style = MaterialTheme.typography.titleLarge, color = colors.primary)
                 }
@@ -93,17 +93,15 @@ internal fun NeoProMoreScreen(
                 Text("Planning, controls and personal settings",
                     style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
-            Card(shape = RoundedCornerShape(23.dp),
-                colors = CardDefaults.cardColors(containerColor = colors.primaryContainer)) {
-                Column(Modifier.fillMaxWidth().background(
-                    Brush.horizontalGradient(listOf(colors.primaryContainer, colors.surfaceContainerHigh)))
-                    .padding(19.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("MAKE MORE OF YOUR MONEY", color = colors.primary, fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.labelSmall)
-                    Text("Everything in one place", style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold)
-                    Text("Choose a tool below to explore your spending, balances or financial goals.",
-                        style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            Surface(shape = RoundedCornerShape(16.dp), color = colors.primaryContainer) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(colors.primary))
+                    Text("Your money tools · ${BankingAppearance.selected}",
+                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+                        color = colors.onPrimaryContainer)
+                    Text("●", color = colors.primary, style = MaterialTheme.typography.labelMedium)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(11.dp), modifier = Modifier.fillMaxWidth()) {
