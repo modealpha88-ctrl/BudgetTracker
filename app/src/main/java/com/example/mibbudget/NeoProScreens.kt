@@ -169,6 +169,16 @@ internal fun NeoProHomeScreen(
                 Box(contentAlignment = Alignment.Center) { Text("⚙", style = MaterialTheme.typography.titleLarge) }
             }
         }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = scheme.primary) {
+                Text("Overview", modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
+                    color = scheme.onPrimary, style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = onAccounts) { Text("Accounts") }
+            TextButton(onClick = onInsights) { Text("Insights") }
+        }
         Card(onClick = onAccounts, shape = RoundedCornerShape(30.dp),
             colors = CardDefaults.cardColors(containerColor = scheme.primaryContainer)) {
             Box(Modifier.fillMaxWidth().background(
