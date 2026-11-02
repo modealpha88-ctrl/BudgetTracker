@@ -1159,7 +1159,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     },
                     onPlanning={tab=4}
                 )
-                7 -> MidnightMoreScreen(
+                7 -> NeoProMoreScreen(
                     darkTheme=darkTheme,
                     setDarkTheme=setDarkTheme,
                     lockEnabled=lockEnabled,
