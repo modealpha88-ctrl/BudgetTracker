@@ -2133,6 +2133,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         onFilterChange={transactionFilter=it},
                         onReview={tab=2}
                     )
+                    // Visible monthly merchant ranking; separate from collapsed advanced insights.
+                    TopMerchantsSection(transactions) { transactionId ->
+                        selectedTransactionId = transactionId
+                    }
                     RecentActivityPreview(
                         transactions,
                         savedRecipient={tx -> recipientPrefs.getString(tx.fingerprint,null)},
