@@ -189,9 +189,9 @@ internal fun NeoProHomeScreen(
                     Text("Snapshot + recorded transactions · Not live bank data",
                         color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     HorizontalDivider(color = scheme.onSurface.copy(alpha = 0.12f))
-                    Text("SPENDING • LAST 7 DAYS", style = MaterialTheme.typography.labelSmall,
+                    Text("RECORDED SPENDING • LAST 7 DAYS", style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant)
-                    NeoSpendingBars(transactions)
+                    NeoSevenDaySpendTrend(transactions)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("${balances.size} of 3 accounts have snapshots", style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant)
