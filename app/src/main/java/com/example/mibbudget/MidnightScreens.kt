@@ -52,6 +52,52 @@ internal fun MidnightHomeScreen(
                     Text("THIS MONTH",style=MaterialTheme.typography.labelMedium,
                         color=MaterialTheme.colorScheme.onSurfaceVariant,fontWeight=FontWeight.Bold)
                     PremiumMonthlyInsightStats(income=monthlyIn,expenses=monthlyOut)
+                    Card(
+                        modifier=Modifier.fillMaxWidth(),
+                        shape=RoundedCornerShape(24.dp),
+                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainerHigh)
+                    ) {
+                        Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                                Text("Financial health",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                                Text("This month",style=MaterialTheme.typography.labelMedium,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (monthlyIn > 0L) {
+                                val percentage = monthlyOut.toDouble() / monthlyIn.toDouble()
+                                Text("${(percentage*100).toInt()}% of recorded income spent",
+                                    style=MaterialTheme.typography.titleLarge,
+                                    color=if(percentage>1.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                LinearProgressIndicator(
+                                    progress={percentage.toFloat().coerceIn(0f,1f)},
+                                    modifier=Modifier.fillMaxWidth().height(9.dp),
+                                    color=if(percentage>1.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    trackColor=MaterialTheme.colorScheme.surfaceContainerLowest
+                                )
+                                Text(
+                                    if (percentage>1.0) "Spending exceeds recorded income by ${Money.format(monthlyOut-monthlyIn)}"
+                                    else "Unspent portion of recorded income: ${Money.format(monthlyIn-monthlyOut)}",
+                                    style=MaterialTheme.typography.bodySmall,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                Text("No income recorded this month. Spending: ${Money.format(monthlyOut)}",
+                                    style=MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            Triple("Activity",onActivity,"↔"),
+                            Triple("Accounts",onAccounts,"▣"),
+                            Triple("Planning",onPlanning,"◷")
+                        ).forEach { (label,action,symbol) ->
+                            OutlinedButton(onClick=action,modifier=Modifier.weight(1f),
+                                contentPadding=PaddingValues(horizontal=4.dp,vertical=10.dp)) {
+                                Text("$symbol $label",style=MaterialTheme.typography.labelMedium,maxLines=1)
+                            }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick=onPlanning,modifier=Modifier.weight(1f)) { Text("Safe to spend") }
                         OutlinedButton(onClick=onInsights,modifier=Modifier.weight(1f)) { Text("Insights") }
