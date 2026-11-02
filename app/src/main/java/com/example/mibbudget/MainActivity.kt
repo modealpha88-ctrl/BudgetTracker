@@ -1206,6 +1206,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     )
                 }
                 8 -> {
+                    val renderAdvancedDashboard: @Composable () -> Unit = {
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
                         verticalAlignment=androidx.compose.ui.Alignment.Bottom) {
                         Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
@@ -2079,8 +2080,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("Dark theme",modifier=Modifier.weight(1f))
                         Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
                     }
+                    }
+                    renderAdvancedDashboard()
                 }
                 1 -> {
+                    val renderActivityScreen: @Composable () -> Unit = {
                     Text("ACTIVITY • TRANSACTIONS", style=MaterialTheme.typography.labelLarge,
                         fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
@@ -2855,8 +2859,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                         }
                     }
+                    }
+                    renderActivityScreen()
                 }
                 2 -> {
+                    val renderImportScreen: @Composable () -> Unit = {
                     Text("IMPORT • CONNECT • RECONCILE", style=MaterialTheme.typography.labelLarge,
                         fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
                     Text("Import & access",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold)
@@ -3052,6 +3059,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             input="";clearShared()
                         }) { Text("Confirm and save") }
                     }
+                    }
+                    renderImportScreen()
                 }
                 3 -> NeoBudgetScreen(
                     categories=categories,
