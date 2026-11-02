@@ -24,6 +24,40 @@ import kotlin.math.min
  * Read-only spending visualisations. Categories always sum to recorded expenses.
  * Drill-down is delegated to the existing transaction filters.
  */
+/** A selected treemap tile remains readable and opens the existing category drill-down. */
+@Composable
+private fun NeoTreemapTile(
+    label: String,
+    amount: Long,
+    total: Long,
+    color: Color,
+    selected: Boolean,
+    showLabel: Boolean,
+    modifier: Modifier,
+    onTap: () -> Unit
+) {
+    Box(
+        modifier.clip(RoundedCornerShape(12.dp))
+            .background(color)
+            .border(if (selected) 3.dp else 0.dp,
+                if (selected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                RoundedCornerShape(12.dp))
+            .clickable(onClick = onTap)
+            .padding(8.dp)
+    ) {
+        if (showLabel) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(label, color = Color(0xFF17202A),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("${"%.0f".format(java.util.Locale.US, amount.toDouble() * 100 / total)}%",
+                    color = Color(0xFF17202A),
+                    style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
 @Composable
 fun SpendingBreakdown(
     expenses: List<Tx>,
@@ -67,22 +101,45 @@ fun SpendingBreakdown(
         if(total <= 0L) {
             Text("No recorded expenses for this month.")
         } else {
-            if(style=="Treemap") {
-                // A single row of proportional tiles cannot overlap or produce zero-sized labels.
-                Row(Modifier.fillMaxWidth().height(174.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                    slices.forEachIndexed { index, (cat, amount) ->
-                        Box(Modifier.weight(amount.toFloat().coerceAtLeast(1f)).fillMaxHeight()
-                            .background(colors[index%colors.size],RoundedCornerShape(9.dp))
-                            .border(if(selectedCategory==cat) 3.dp else 0.dp,
-                                if(selectedCategory==cat) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                                RoundedCornerShape(9.dp))
-                            .clickable { selectedCategory=if(selectedCategory==cat) null else cat;
-                                if(cat=="Other categories") expanded=true }) {
-                            if(amount.toDouble()/total>=0.10)
-                                Text("${cat.take(12)}\n${"%.0f".format(java.util.Locale.US,amount.toDouble()*100/total)}%",
-                                    modifier=Modifier.padding(5.dp),color=Color(0xFF15121B),
-                                    style=MaterialTheme.typography.labelSmall,
-                                    maxLines=2,overflow=TextOverflow.Ellipsis)
+            if (style == "Treemap") {
+                // True two-dimensional treemap: the largest category owns a proportional
+                // left column; remaining categories share a weighted right-hand stack.
+                // Very small tiles remain tappable without drawing overlapping text.
+                val leading = slices.first()
+                val rest = slices.drop(1)
+                val remainingAmount = rest.sumOf { it.second }
+                Row(
+                    Modifier.fillMaxWidth().height(214.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    NeoTreemapTile(
+                        label = leading.first, amount = leading.second, total = total,
+                        color = colors[0], selected = selectedCategory == leading.first,
+                        showLabel = true,
+                        modifier = Modifier.weight(leading.second.toFloat().coerceAtLeast(1f)).fillMaxHeight(),
+                        onTap = {
+                            selectedCategory = if (selectedCategory == leading.first) null else leading.first
+                            if (leading.first == "Other categories") expanded = true
+                        }
+                    )
+                    if (remainingAmount > 0L) {
+                        Column(
+                            Modifier.weight(remainingAmount.toFloat()).fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rest.forEachIndexed { index, (name, amount) ->
+                                NeoTreemapTile(
+                                    label = name, amount = amount, total = total,
+                                    color = colors[(index + 1) % colors.size],
+                                    selected = selectedCategory == name,
+                                    showLabel = amount.toDouble() / total >= 0.07,
+                                    modifier = Modifier.fillMaxWidth().weight(amount.toFloat().coerceAtLeast(1f)),
+                                    onTap = {
+                                        selectedCategory = if (selectedCategory == name) null else name
+                                        if (name == "Other categories") expanded = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
