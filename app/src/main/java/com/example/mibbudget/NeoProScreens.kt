@@ -316,6 +316,16 @@ private fun NeoAccountCard(
 }
 
 @Composable
+private fun NeoCountTile(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
+    Column(modifier.clip(RoundedCornerShape(18.dp))
+        .background(MaterialTheme.colorScheme.surfaceContainer).padding(15.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = accent, fontWeight = FontWeight.Bold)
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+    }
+}
+
+@Composable
 internal fun NeoProAccountsScreen(
     context: Context,
     transactions: List<Tx>,
@@ -334,8 +344,8 @@ internal fun NeoProAccountsScreen(
     Column(verticalArrangement = Arrangement.spacedBy(17.dp)) {
         NeoHeader("ACCOUNTS / WALLETS", "Your accounts", "Manage balances, activity and reconciliation")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            NeoMoneyTile("RECONCILED", balances.size.toLong() * 100L, scheme.primary, Modifier.weight(1f))
-            NeoMoneyTile("TRANSACTIONS", transactions.size.toLong() * 100L, scheme.tertiary, Modifier.weight(1f))
+            NeoCountTile("BALANCES AVAILABLE", "${balances.size} / 3", scheme.primary, Modifier.weight(1f))
+            NeoCountTile("TRANSACTIONS", "${transactions.size}", scheme.tertiary, Modifier.weight(1f))
         }
         Text("Swipe to explore accounts", style = MaterialTheme.typography.labelMedium,
             color = scheme.onSurfaceVariant)
