@@ -7,6 +7,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -266,13 +268,48 @@ internal fun MidnightMoreScreen(
                         }
                     }
                     Text("Appearance & privacy",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+                    val appearanceContext = LocalContext.current
+                    Card(
+                        modifier=Modifier.fillMaxWidth(),
+                        colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer),
+                        shape=RoundedCornerShape(24.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                            Text("Neo Banking Pro • Colorway",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
+                            Text("Select a theme. Your transactions and account data will not change.",
+                                style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            bankingPalettes.chunked(2).forEach { group ->
+                                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                                    group.forEach { palette ->
+                                        val active = BankingAppearance.selected == palette.label
+                                        Card(
+                                            modifier=Modifier.weight(1f).clickable { BankingAppearance.select(appearanceContext,palette.label) },
+                                            shape=RoundedCornerShape(18.dp),
+                                            colors=CardDefaults.cardColors(containerColor=palette.surface),
+                                            border=if(active) androidx.compose.foundation.BorderStroke(2.dp,palette.accent) else null
+                                        ) {
+                                            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                                Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                                                    Box(Modifier.size(16.dp).background(palette.accent,RoundedCornerShape(6.dp)))
+                                                    Box(Modifier.size(16.dp).background(palette.secondary,RoundedCornerShape(6.dp)))
+                                                    Box(Modifier.size(16.dp).background(palette.raised,RoundedCornerShape(6.dp)))
+                                                }
+                                                Text(palette.label,color=Color.White,style=MaterialTheme.typography.labelMedium)
+                                                if(active) Text("✓ Selected",color=palette.accent,style=MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(26.dp),
                         colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
                         Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                             Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Midnight Aurora",fontWeight=FontWeight.SemiBold)
-                                    Text("Multi-accent AMOLED theme",style=MaterialTheme.typography.bodySmall,
+                                    Text("AMOLED dark mode",fontWeight=FontWeight.SemiBold)
+                                    Text("Deep contrast, vivid selected colorway",style=MaterialTheme.typography.bodySmall,
                                         color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Switch(checked=darkTheme,onCheckedChange=setDarkTheme)
