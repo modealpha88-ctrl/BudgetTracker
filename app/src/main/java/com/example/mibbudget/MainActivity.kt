@@ -2126,7 +2126,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                         }
                     }
-                    RecentActivityPreview(transactions, savedRecipient = { tx -> recipientPrefs.getString(tx.fingerprint, null) }) { selectedTransactionId = it }
+                    NeoActivitySearchBar(
+                        query=searchText,
+                        onQueryChange={searchText=it; rankedRecipientFilter=null},
+                        filter=transactionFilter,
+                        onFilterChange={transactionFilter=it},
+                        onReview={tab=2}
+                    )
+                    RecentActivityPreview(
+                        transactions,
+                        savedRecipient={tx -> recipientPrefs.getString(tx.fingerprint,null)},
+                        query=searchText,
+                        filter=transactionFilter
+                    ) { selectedTransactionId=it }
                     Text("Tools & analysis",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                     var showChangeHistory by remember { mutableStateOf(false) }
                     var pendingUndo by remember { mutableStateOf<TransactionAudit.Entry?>(null) }
@@ -2363,16 +2375,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Text("›",style=MaterialTheme.typography.titleLarge,color=MaterialTheme.colorScheme.primary)
                             }
-                        }
-                    }
-                    OutlinedTextField(value=searchText,onValueChange={searchText=it;rankedRecipientFilter=null},
-                        placeholder={Text("Search merchant, amount or date")},
-                        leadingIcon={Text("⌕")},modifier=Modifier.fillMaxWidth(),singleLine=true,
-                        shape=RoundedCornerShape(20.dp))
-                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                        listOf("All","Expenses","Income","Transfers").forEach { option ->
-                            FilterChip(selected=transactionFilter==option,onClick={transactionFilter=option},
-                                label={Text(option,style=MaterialTheme.typography.labelSmall)})
                         }
                     }
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
