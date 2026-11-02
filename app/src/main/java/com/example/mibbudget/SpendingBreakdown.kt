@@ -52,7 +52,7 @@ fun SpendingBreakdown(
     } ?: emptyList()
 
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        if(showTitle) Text("Spending breakdown", style=MaterialTheme.typography.titleSmall)
+        if(showTitle) Text("Spending by category", style=MaterialTheme.typography.titleSmall)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             listOf("Treemap", "List").forEach { choice ->
@@ -68,7 +68,7 @@ fun SpendingBreakdown(
         } else {
             if(style=="Treemap") {
                 // A single row of proportional tiles cannot overlap or produce zero-sized labels.
-                Row(Modifier.fillMaxWidth().height(154.dp),horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                Row(Modifier.fillMaxWidth().height(174.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     slices.forEachIndexed { index, (cat, amount) ->
                         Box(Modifier.weight(amount.toFloat().coerceAtLeast(1f)).fillMaxHeight()
                             .background(colors[index%colors.size],RoundedCornerShape(9.dp))
@@ -77,7 +77,7 @@ fun SpendingBreakdown(
                                 RoundedCornerShape(9.dp))
                             .clickable { selectedCategory=if(selectedCategory==cat) null else cat;
                                 if(cat=="Other categories") expanded=true }) {
-                            if(amount.toDouble()/total>=0.12)
+                            if(amount.toDouble()/total>=0.10)
                                 Text("${cat.take(12)}\n${"%.0f".format(java.util.Locale.US,amount.toDouble()*100/total)}%",
                                     modifier=Modifier.padding(5.dp),color=Color(0xFF15121B),
                                     style=MaterialTheme.typography.labelSmall,
@@ -86,7 +86,7 @@ fun SpendingBreakdown(
                     }
                 }
             }
-            if(style!="List") Text("Select a tile or category to explore merchants and transactions.",
+            if(style!="List") Text(selectedCategory?.let { "Selected: $it · Tap a category below for merchant details." } ?: "Select a tile or category to explore merchants and transactions.",
                 style=MaterialTheme.typography.labelSmall)
             val shown=if(expanded || style=="List") categories else slices
             shown.forEachIndexed { index, (cat, amount) ->
