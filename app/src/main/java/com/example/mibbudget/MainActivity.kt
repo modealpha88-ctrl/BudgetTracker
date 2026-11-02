@@ -841,7 +841,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             }
         }
     }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(Modifier.verticalScroll(mainScrollState)).padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(Modifier.verticalScroll(mainScrollState)).padding(horizontal = 18.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (onboardingRequired) {
                 Text("Welcome to Budget Tracker", style=MaterialTheme.typography.headlineMedium)
                 Text("Required first-time setup · Step ${setupStage+1} of 4", style=MaterialTheme.typography.titleMedium)
@@ -1094,8 +1094,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text(when(tab) { 2 -> "Import & access"; 3 -> "Budgets"; 4 -> "Financial planning"; else -> "Advanced dashboard" },style=MaterialTheme.typography.titleSmall)
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            if (!onboardingRequired) when(tab) {
+            Spacer(Modifier.height(4.dp))
+            if (!onboardingRequired) when(tab {
                 0 -> MidnightHomeScreen(
                     context=context,
                     transactions=transactions,
