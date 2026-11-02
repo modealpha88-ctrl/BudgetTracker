@@ -2081,6 +2081,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 1 -> {
+                    Text("ACTIVITY • TRANSACTIONS", style=MaterialTheme.typography.labelLarge,
+                        fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,
                         verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Column {
@@ -2853,8 +2855,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 2 -> {
+                    Text("IMPORT • CONNECT • RECONCILE", style=MaterialTheme.typography.labelLarge,
+                        fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
+                    Text("Import & access",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold)
+                    Text("Manage statements, bank messages and transaction review in one place.",
+                        style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     PrivacyFeedbackScreen(context, transactions.size)
-                    Text("Import & Access",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text("CSV statements",style=MaterialTheme.typography.titleMedium)
@@ -3046,7 +3052,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                 }
                 3 -> {
-                    Text("Monthly budgets",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)
+                    Text("BUDGETS • PLAN YOUR SPENDING",style=MaterialTheme.typography.labelLarge,
+                        color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
+                    Text("Monthly budgets",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold)
+                    Text("Category limits, progress and rollover",style=MaterialTheme.typography.bodySmall,
+                        color=MaterialTheme.colorScheme.onSurfaceVariant)
                     val budgetCategories=categories.filter { it!="Income" && it!="Internal Transfer" }
                     val totalLimit=budgetCategories.sumOf { cat ->
                         budgets[cat]?.let { FinanceCalculations.effectiveLimit(
