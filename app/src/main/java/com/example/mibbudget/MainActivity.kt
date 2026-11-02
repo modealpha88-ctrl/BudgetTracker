@@ -1192,6 +1192,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         screenshotPrivacy=enabled
                         securityPrefs.edit().putBoolean("screenshot_privacy",enabled).apply()
                     },
+                    transactionCount=transactions.size,
                     onNavigate={tab=it}
                 )
                 4 -> {
@@ -2905,7 +2906,6 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text("Import & access",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold)
                     Text("Manage statements, bank messages and transaction review in one place.",
                         style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    PrivacyFeedbackScreen(context, transactions.size)
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)) {
                         Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text("CSV statements",style=MaterialTheme.typography.titleMedium)
