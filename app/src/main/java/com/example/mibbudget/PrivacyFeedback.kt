@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import org.json.JSONObject
 
 /**
@@ -45,11 +47,12 @@ fun PrivacyFeedbackScreen(context: Context, transactionCount: Int, merchantRuleC
         }.toString(2)
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Privacy & Improvement", style = MaterialTheme.typography.headlineSmall)
+        Text("PRIVACY • CONTROL CENTER",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
+        Text("Privacy & Improvement", style = MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold)
         Text("Improvement level selected. No information is transmitted without your explicit action. Raw SMS, transaction amounts, balances, account/card numbers and timestamps are never included.")
         Row { Checkbox(consent, onCheckedChange = { consent = it; prefs.edit().putBoolean("consent", it).apply() }); Text("I consent to preparing and sharing selected sanitized diagnostics", modifier = Modifier.padding(top = 12.dp)) }
         @Composable fun Category(title: String, value: Boolean, change: (Boolean)->Unit) {
-            Row { Checkbox(value, onCheckedChange = change); Text(title, modifier = Modifier.padding(top = 12.dp)) }
+            Surface(shape=RoundedCornerShape(14.dp),color=MaterialTheme.colorScheme.surfaceContainer) { Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) { Text(title,modifier=Modifier.weight(1f)); Switch(checked=value,onCheckedChange=change) } }
         }
         Category("Merchant recognition", merchant) { merchant=it; prefs.edit().putBoolean("merchant",it).apply() }
         Category("SMS / CSV import diagnostics", imports) { imports=it; prefs.edit().putBoolean("imports",it).apply() }
