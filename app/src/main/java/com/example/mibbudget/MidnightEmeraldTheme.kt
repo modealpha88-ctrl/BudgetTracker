@@ -75,23 +75,44 @@ fun MidnightEmeraldTheme(dark: Boolean, content: @Composable () -> Unit) {
         outline = Color(0xFF577568),
         outlineVariant = Color(0xFF315249),
         error = Color(0xFFFF8995)
-    ) else lightColorScheme(
-        primary = Color(0xFF087C55),
-        onPrimary = Color.White,
-        primaryContainer = Color(0xFFD1F5E2),
-        onPrimaryContainer = Color(0xFF06452E),
-        secondary = Color(0xFF386B52),
-        background = Color(0xFFF4F8F5),
-        onBackground = Color(0xFF13251A),
-        surface = Color.White,
-        onSurface = Color(0xFF13251A),
-        surfaceVariant = Color(0xFFE3EDE7),
-        onSurfaceVariant = Color(0xFF536C5E),
-        surfaceContainerLow = Color(0xFFEDF4EE),
-        surfaceContainer = Color(0xFFE8F0E9),
-        surfaceContainerHigh = Color(0xFFDCE9DF),
-        outline = Color(0xFF83998B)
-    )
+    ) else {
+        // A separate, hue-matched light scheme for every colorway.
+        // Light mode must never silently fall back to Emerald Finance.
+        val light = when (palette.label) {
+            "Royal Sapphire" -> listOf(0xFF1556B8, 0xFFD9E8FF, 0xFFF4F8FF, 0xFFE8F0FF, 0xFFD6E5FF, 0xFF102B56)
+            "Midnight Aurora" -> listOf(0xFF007E78, 0xFFCCF3ED, 0xFFF1FAF9, 0xFFE3F3F1, 0xFFD1EAE6, 0xFF123E3D)
+            "Sunset Blaze" -> listOf(0xFFA23B56, 0xFFFFDBDE, 0xFFFFF6F5, 0xFFFFEBE9, 0xFFF8D8DE, 0xFF56243B)
+            "Ocean Deep" -> listOf(0xFF007C9C, 0xFFC8F0FA, 0xFFF0FAFC, 0xFFE0F3F9, 0xFFC9E7F2, 0xFF153C51)
+            "Amethyst Night" -> listOf(0xFF793BAE, 0xFFEEDCFF, 0xFFFBF6FF, 0xFFF2E9FA, 0xFFE5D6F5, 0xFF392051)
+            else -> listOf(0xFF087C55, 0xFFD1F5E2, 0xFFF4F8F5, 0xFFE8F0E9, 0xFFDCE9DF, 0xFF132F23)
+        }.map { Color(it) }
+        lightColorScheme(
+            primary = light[0],
+            onPrimary = Color.White,
+            primaryContainer = light[1],
+            onPrimaryContainer = light[5],
+            secondary = light[0],
+            onSecondary = Color.White,
+            secondaryContainer = light[3],
+            onSecondaryContainer = light[5],
+            tertiary = light[0],
+            onTertiary = Color.White,
+            background = light[2],
+            onBackground = light[5],
+            surface = Color.White,
+            onSurface = light[5],
+            surfaceVariant = light[3],
+            onSurfaceVariant = light[5].copy(alpha = 0.78f),
+            surfaceContainerLowest = Color.White,
+            surfaceContainerLow = light[2],
+            surfaceContainer = light[3],
+            surfaceContainerHigh = light[4],
+            surfaceContainerHighest = light[4],
+            outline = light[0].copy(alpha = 0.66f),
+            outlineVariant = light[0].copy(alpha = 0.24f),
+            error = Color(0xFFB3261E)
+        )
+    }
     MaterialTheme(
         colorScheme = colors,
         shapes = Shapes(
