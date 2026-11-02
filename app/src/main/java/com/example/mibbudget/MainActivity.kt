@@ -2571,7 +2571,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 ?: TransactionPresentation.label(t.description).trim().ifBlank { "Unknown recipient" })
                                 .equals(rankedRecipientFilter,ignoreCase=true) &&
                             t.timestamp.startsWith(rankedRecipientMonth ?: rankingMonth))) &&
-                        (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true)) &&
+                        (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true) || TransactionPresentation.displayLabel(t.description,t.category,recipientPrefs.getString(t.fingerprint,null)).contains(searchText,true)) &&
                         (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
@@ -2581,7 +2581,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         when(transactionFilter) {
                             "Expenses" -> t.amountLaari < 0
                             "Income" -> t.amountLaari > 0
-                            "Transfers" -> t.category.contains("Transfer",ignoreCase=true)
+                            "Transfers" -> VendorProfiles.isTransfer(t.description,t.category)
                             else -> true
                         }
                     }
