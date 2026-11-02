@@ -88,6 +88,7 @@ internal fun NeoProMoreScreen(
     var appearanceOpen by remember { mutableStateOf(false) }
     var privacyOpen by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
+    val appearanceContext = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(BankingAppearance.screenGap)) {
         if (privacyOpen) {
             TextButton(onClick = { privacyOpen = false }, contentPadding = PaddingValues(0.dp)) {
@@ -191,7 +192,7 @@ internal fun NeoProMoreScreen(
                         listOf("Comfortable", "Balanced", "Compact").forEach { option ->
                             FilterChip(
                                 selected = BankingAppearance.density == option,
-                                onClick = { BankingAppearance.selectDensity(LocalContext.current, option) },
+                                onClick = { BankingAppearance.selectDensity(appearanceContext, option) },
                                 modifier = Modifier.weight(1f),
                                 label = {
                                     Text(option, maxLines = 1,
