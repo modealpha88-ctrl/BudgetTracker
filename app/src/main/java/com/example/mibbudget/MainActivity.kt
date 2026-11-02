@@ -1095,7 +1095,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
             }
             Spacer(Modifier.height(4.dp))
-            if (!onboardingRequired) when(tab {
+            if (!onboardingRequired) when(tab) {
                 0 -> MidnightHomeScreen(
                     context=context,
                     transactions=transactions,
