@@ -43,7 +43,27 @@ jobs:
           keytool -list -keystore "$RUNNER_TEMP/mib-release.jks" -storepass "$MIB_RELEASE_STORE_PASSWORD" -alias "$MIB_RELEASE_KEY_ALIAS" >/dev/null
           echo "MIB_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/mib-release.jks" >> "$GITHUB_ENV"
       - name: Run unit tests and compile checks
-        run: gradle :app:testDebugUnitTest :app:compileDebugKotlin --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :app:testDebugUnitTest :app:compileDebugKotlin --stacktrace --console=plain 2>&1 | tee kotlin-compile.log
+      - name: Show primary Kotlin compiler diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f kotlin-compile.log ]; then
+            echo "=== Compiler errors / primary causes ==="
+            grep -nE -m 35 '^e:|(^| )Caused by:|^\* What went wrong:|Exception during|Backend Internal error|Compilation error|Internal compiler error|File being compiled|Error while evaluating' kotlin-compile.log || true
+            echo "=== First 160 lines of compile output ==="
+            head -n 160 kotlin-compile.log
+          fi
+      - name: Upload compiler diagnostic log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotlin-compiler-diagnostics
+          path: kotlin-compile.log
+          if-no-files-found: ignore
       - name: Build signed release APK
         env:
           MIB_RELEASE_STORE_PASSWORD: ${{ secrets.MIB_RELEASE_STORE_PASSWORD }}
