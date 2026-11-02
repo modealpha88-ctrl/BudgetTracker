@@ -267,7 +267,7 @@ private fun neoActivityDate(timestamp: String): String {
         LocalDate.now().minusDays(1) -> "Yesterday"
         else -> "${day.dayOfMonth} ${day.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)}"
     }
-    val time = timestamp.drop(11).take(5).takeIf { it.matches(Regex("""\\d{2}:\\d{2}""")) }
+    val time = timestamp.drop(11).take(5).takeIf { it.matches(Regex("""\d{2}:\d{2}""")) }
     return if (time == null) dayLabel else "$dayLabel · $time"
 }
 
