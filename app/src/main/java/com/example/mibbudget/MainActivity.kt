@@ -2809,13 +2809,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 if(internalSelectionMode) Checkbox(checked=t.id in selectedInternalIds,onCheckedChange={ checked ->
                                     selectedInternalIds=if(checked) selectedInternalIds+t.id else selectedInternalIds-t.id
                                 })
-                                Box(Modifier.size(42.dp).background(MaterialTheme.colorScheme.secondaryContainer,RoundedCornerShape(14.dp)),contentAlignment=androidx.compose.ui.Alignment.Center) {
-                                    // Category icon must follow the user's current classification, not
-                                    // a stale merchant avatar or the original bank transfer template.
-                                    Text(MerchantIcons.icon(t.description,t.category),
-                                        style=MaterialTheme.typography.titleLarge,
-                                        color=MaterialTheme.colorScheme.onSecondaryContainer)
-                                }
+                                NeoTransactionIcon(t)
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
                                     val savedName=recipientPrefs.getString(t.fingerprint,null).orEmpty()
                                     // Recipient identity is independent of the spending category.
