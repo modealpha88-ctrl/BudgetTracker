@@ -6,6 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -168,16 +173,6 @@ internal fun NeoProHomeScreen(
                 color = scheme.surfaceContainerHigh, modifier = Modifier.size(42.dp)) {
                 Box(contentAlignment = Alignment.Center) { Text("⚙", style = MaterialTheme.typography.titleLarge) }
             }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = scheme.primary) {
-                Text("Overview", modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
-                    color = scheme.onPrimary, style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold)
-            }
-            TextButton(onClick = onAccounts) { Text("Accounts") }
-            TextButton(onClick = onInsights) { Text("Insights") }
         }
         Card(onClick = onAccounts, shape = RoundedCornerShape(30.dp),
             colors = CardDefaults.cardColors(containerColor = scheme.primaryContainer)) {
