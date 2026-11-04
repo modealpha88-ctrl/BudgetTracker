@@ -94,7 +94,7 @@ object FinanceCalculations {
     /**
      * A saved bank snapshot plus subsequent movements assigned to that account.
      * Internal transfers ARE account movements even though they are not spending.
-     * The date bound is inclusive; no transaction on the snapshot's reference day is replayed.
+     * The date bound is inclusive; only movements after the snapshot clock (or date-only anchor) are replayed.
      */
     fun projectedBalance(
         account: String, anchorMinor: Long, anchorDate: String,
