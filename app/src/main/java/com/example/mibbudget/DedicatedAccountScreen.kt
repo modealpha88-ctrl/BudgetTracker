@@ -36,19 +36,25 @@ fun DedicatedAccountScreen(
     val anchorDate = prefs.getString("${key}_date", "").orEmpty()
     val amountOnHold = FinanceCalculations.recentCardHold(account, transactions, labels)
     val anchorDay = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
+    val anchorTime = prefs.getString("${key}_time", null)?.takeIf { it.isNotBlank() }
+    val anchorClock = anchorTime?.let { runCatching { java.time.LocalTime.parse(it) }.getOrNull() }
     val today = LocalDate.now()
     val accountTransactions = transactions.filter {
         FinanceCalculations.assignedAccount(it, labels).equals(account, ignoreCase = true)
     }.sortedByDescending { it.timestamp }
-    val currentBalance = FinanceCalculations.projectedBalance(account, anchorMinor, anchorDate, transactions, labels, today)
-    val afterAnchor = if (anchorDay != null) accountTransactions.filter {
-        val date = runCatching { LocalDate.parse(it.timestamp.take(10)) }.getOrNull()
-        date != null && date.isAfter(anchorDay) && !date.isAfter(today)
-    } else emptyList()
+    // Keep the detail screen aligned with the dashboard: transactions later on the
+    // snapshot date count only when a snapshot clock time was recorded.
+    val isAfterSnapshot: (Tx) -> Boolean = { tx ->
+        val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
+        val clock = runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()
+        date != null && (date.isAfter(anchorDay) ||
+            (date == anchorDay && anchorClock != null && clock != null && clock.isAfter(anchorClock))) &&
+            !date.isAfter(today)
+    }
+    val currentBalance = FinanceCalculations.projectedBalance(account, anchorMinor, anchorDate, transactions, labels, today, anchorTime)
+    val afterAnchor = if (anchorDay != null) accountTransactions.filter(isAfterSnapshot) else emptyList()
     val unassigned = if (anchorDay != null) transactions.count {
-        val date = runCatching { LocalDate.parse(it.timestamp.take(10)) }.getOrNull()
-        FinanceCalculations.assignedAccount(it, labels) == "Unassigned" &&
-            date != null && date.isAfter(anchorDay) && !date.isAfter(today)
+        FinanceCalculations.assignedAccount(it, labels) == "Unassigned" && isAfterSnapshot(it)
     } else 0
     val historyDay = runCatching { LocalDate.parse(selectedDate) }.getOrNull()
     val historical = if (historyDay != null && anchorDay != null) {
