@@ -1,5 +1,8 @@
 package com.example.mibbudget
 
+import java.math.BigDecimal
+import java.math.RoundingMode
+
 /** Parsed MIB account-details screenshot values, expressed in laari. */
 data class MibScreenshotSnapshot(
     val availableMinor: Long,
@@ -12,13 +15,18 @@ data class MibScreenshotSnapshot(
 /** Conservative OCR parser for MIB's Account Details screen. */
 object MibScreenshotParser {
     private val amount = Regex("""(?i)(?:MVR|MRF|RF)?\s*[:.]?\s*(-?[0-9][0-9,]*\.[0-9]{2})""")
-    private fun minor(text: String): Long? =
-        Money.parseLaari(text.replace(",", "").replace(Regex("^[^0-9-]+"), ""))
+    private fun minor(text: String): Long? = runCatching {
+        BigDecimal(text.replace(",", "")).movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).longValueExact()
+    }.getOrNull()
 
     private fun around(lines: List<String>, labelIndex: Int): Long? {
-        val candidates = (maxOf(0, labelIndex - 2)..minOf(lines.lastIndex, labelIndex + 2))
-            .flatMap { i -> amount.findAll(lines[i]).map { it.groupValues[1] }.toList() }
-        return candidates.firstNotNullOfOrNull(::minor)
+        val indexes = listOf(labelIndex, labelIndex - 1, labelIndex + 1, labelIndex - 2, labelIndex + 2)
+            .filter { it in lines.indices }
+        for (i in indexes) {
+            val value = amount.findAll(lines[i]).mapNotNull { minor(it.groupValues[1]) }.firstOrNull()
+            if (value != null) return value
+        }
+        return null
     }
 
     fun parse(ocrText: String): MibScreenshotSnapshot? {
@@ -34,10 +42,9 @@ object MibScreenshotParser {
             it.contains("Available Balance", true) && !it.contains("Current", true)
         }
         val available = if (availableLabel >= 0) around(lines, availableLabel) else {
-            val candidates = (0 until holdLabel).flatMap { i ->
-                amount.findAll(lines[i]).map { it.groupValues[1] }.toList()
+            (0 until holdLabel).firstNotNullOfOrNull { i ->
+                amount.findAll(lines[i]).mapNotNull { minor(it.groupValues[1]) }.firstOrNull()
             }
-            candidates.firstNotNullOfOrNull(::minor)
         } ?: return null
         if (available < 0L) return null
         val reconstructed = runCatching { Math.addExact(available, hold) }.getOrNull() ?: return null
