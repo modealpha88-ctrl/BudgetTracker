@@ -68,9 +68,15 @@ object FinanceCalculations {
         labels[tx.fingerprint]?.takeIf { it.isNotBlank() }
             ?: if (tx.fingerprint.startsWith("mib-", ignoreCase = true)) "MIB" else "Unassigned"
 
-    /** Sum card purchases under MVR 1,000 from the preceding 48 hours. */
+    /** Reconstruct the bank current balance from available balance and bank-reported holds. */
+    fun snapshotCurrentBalance(availableMinor: Long, bankHoldMinor: Long): Long? {
+        if (availableMinor < 0L || bankHoldMinor < 0L) return null
+        return runCatching { Math.addExact(availableMinor, bankHoldMinor) }.getOrNull()
+    }
+
+    /** Sum card purchases under MVR 1,000 from the preceding 72 hours. */
     fun recentCardHold(account: String, entries: List<Tx>, labels: Map<String, String>, now: LocalDateTime = LocalDateTime.now()): Long {
-        val cutoff = now.minusHours(48)
+        val cutoff = now.minusHours(72)
         val threshold = 100_000L
         val eligible = entries.filter { tx ->
             val description = tx.description.lowercase(java.util.Locale.ROOT)
