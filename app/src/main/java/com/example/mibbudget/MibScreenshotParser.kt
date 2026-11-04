@@ -18,11 +18,11 @@ object MibScreenshotParser {
 
     // Supports MVR -858.02, -MVR 858.02, MVR 858.02 and comma grouping.
     private val amountPattern = Regex(
-        """(?i)(-\\s*)?(?:MVR|MRF|RF)?\\s*(-\\s*)?([0-9][0-9,]*\\.[0-9]{2})"""
+        """(?i)(-\s*)?(?:MVR|MRF|RF)?\s*(-\s*)?([0-9][0-9,]*\.[0-9]{2})"""
     )
-    private val accountDetailsLabel = Regex("""(?i)account\\s*details""")
-    private val holdLabel = Regex("""(?i)amount\\s*on\\s*h[o0]ld""")
-    private val currentLabel = Regex("""(?i)current\\s*balance""")
+    private val accountDetailsLabel = Regex("""(?i)account\s*details""")
+    private val holdLabel = Regex("""(?i)amount\s*on\s*h[o0]ld""")
+    private val currentLabel = Regex("""(?i)current\s*balance""")
     private val transactionsLabel = Regex("""(?i)transactions""")
 
     private fun amounts(text: String): List<AmountToken> =
@@ -40,9 +40,9 @@ object MibScreenshotParser {
 
     fun parse(ocrText: String): MibScreenshotSnapshot? {
         val text = ocrText
-            .replace('\\u00A0', ' ')
-            .replace(Regex("""[\\r\\n\\t]+"""), " ")
-            .replace(Regex("""\\s+"""), " ")
+            .replace(' ', ' ')
+            .replace(Regex("""[\r\n\t]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
             .trim()
         if (!accountDetailsLabel.containsMatchIn(text)) return null
 
@@ -57,17 +57,14 @@ object MibScreenshotParser {
         val tokens = amounts(summary)
         if (tokens.size < 3) return null
 
-        // MIB OCR can emit either:
-        //   Amount on Hold -> MVR -858.02 -> Current Balance -> MVR 1,029.81
-        // or the visual reading order where the values precede their labels:
-        //   MVR -858.02 -> Amount on Hold -> MVR 1,029.81 -> Current Balance
-        // The three ordered summary figures are available, hold, and current.
+        // MIB OCR can emit either labels before their values or values before
+        // their labels. In both cases the first three figures are available,
+        // hold, and current balance, in that order.
         val availableToken = tokens[0]
         val holdToken = tokens[1]
         val currentToken = tokens[2]
 
-        // Require the hold label to be anchored between the available and
-        // current figures, and the current label to follow the hold label.
+        // Anchor the labels to the ordered figures and reject unrelated text.
         if (hold.range.first <= availableToken.end ||
             hold.range.first >= currentToken.end ||
             current.range.first <= hold.range.first ||
