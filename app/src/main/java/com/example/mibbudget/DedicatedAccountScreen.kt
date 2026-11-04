@@ -26,7 +26,8 @@ fun DedicatedAccountScreen(
     val prefs = remember(context) { context.getSharedPreferences("balance_anchor", Context.MODE_PRIVATE) }
     var account by remember(initialAccount) { mutableStateOf(initialAccount) }
     var refresh by remember { mutableIntStateOf(0) }
-    var enteredAmount by remember(account) { mutableStateOf("") }
+    var availableInput by remember(account) { mutableStateOf("") }
+    var bankHoldInput by remember(account) { mutableStateOf(if(account=="MIB") "858.02" else "0.00") }
     var enteredDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var selectedDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var message by remember { mutableStateOf("") }
@@ -80,7 +81,7 @@ fun DedicatedAccountScreen(
                         Text("$account · Estimated current balance")
                         Text(currentBalance?.let(Money::format) ?: "Balance not set",
                             style=MaterialTheme.typography.headlineLarge)
-                        Text("Card holds (under MVR 1,000 · last 48 hours): −${Money.format(amountOnHold)}")
+                        Text("Estimated card holds (under MVR 1,000 · last 72 hours): −${Money.format(amountOnHold)}")
                         Text("Available balance: ${currentBalance?.let { runCatching { Math.subtractExact(it, amountOnHold) }.getOrNull() }?.let(Money::format) ?: "Unavailable"}",
                             style=MaterialTheme.typography.titleMedium)
                         Text(if(anchorDay==null) "Save a verified balance to start tracking."
@@ -103,21 +104,29 @@ fun DedicatedAccountScreen(
                 Text("Set verified balance",style=MaterialTheme.typography.titleLarge)
                 OutlinedTextField(value=enteredDate,onValueChange={enteredDate=it},
                     label={Text("Statement date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
-                OutlinedTextField(value=enteredAmount,onValueChange={enteredAmount=it},
-                    label={Text("Verified current balance (MVR)")},modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(value=availableInput,onValueChange={availableInput=it},
+                    label={Text("Available balance from bank screenshot (MVR)")},modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(value=bankHoldInput,onValueChange={bankHoldInput=it},
+                    label={Text("Bank-reported amount on hold (MVR)")},modifier=Modifier.fillMaxWidth())
+                val availableMinor=Money.parseLaari(availableInput)
+                val bankHoldMinor=Money.parseLaari(bankHoldInput)
+                val calculatedSnapshot=if(availableMinor!=null && bankHoldMinor!=null)
+                    FinanceCalculations.snapshotCurrentBalance(availableMinor,bankHoldMinor) else null
+                Text("Calculated current balance: ${calculatedSnapshot?.let(Money::format) ?: "Enter valid amounts"}",
+                    style=MaterialTheme.typography.titleMedium)
                 Button(onClick={
                     val date=runCatching { LocalDate.parse(enteredDate) }.getOrNull()
-                    val amount=Money.parseLaari(enteredAmount)
-                    if(date==null || date.isAfter(today) || amount==null || amount<0L)
-                        message="Enter a valid past or present date and non-negative balance."
+                    val amount=calculatedSnapshot
+                    if(date==null || date.isAfter(today) || amount==null)
+                        message="Enter a valid date, available balance and bank-reported hold."
                     else {
                         prefs.edit().putString("${key}_date",date.toString())
                             .putLong("${key}_minor",amount)
                             .apply()
                         refresh++
-                        message="Verified snapshot saved for $account. Card holds are calculated automatically."
+                        message="Snapshot saved: available balance + bank-reported hold. Estimated card holds are calculated separately over 72 hours."
                     }
-                },modifier=Modifier.fillMaxWidth()) { Text("Save verified snapshot") }
+                },modifier=Modifier.fillMaxWidth()) { Text("Save calculated snapshot") }
                 if(message.isNotBlank()) Text(message)
                 HorizontalDivider()
                 Text("Balance history",style=MaterialTheme.typography.titleLarge)
