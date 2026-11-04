@@ -81,7 +81,7 @@ fun DedicatedAccountScreen(
                         Text("$account · Estimated current balance")
                         Text(currentBalance?.let(Money::format) ?: "Balance not set",
                             style=MaterialTheme.typography.headlineLarge)
-                        Text("Estimated card holds (under MVR 1,000 · last 96 hours): −${Money.format(amountOnHold)}")
+                        Text("Estimated card holds (under MVR 1,000 · last 120 hours): −${Money.format(amountOnHold)}")
                         Text("Available balance: ${currentBalance?.let { runCatching { Math.subtractExact(it, amountOnHold) }.getOrNull() }?.let(Money::format) ?: "Unavailable"}",
                             style=MaterialTheme.typography.titleMedium)
                         Text(if(anchorDay==null) "Save a verified balance to start tracking."
@@ -124,7 +124,7 @@ fun DedicatedAccountScreen(
                             .putLong("${key}_minor",amount)
                             .apply()
                         refresh++
-                        message="Snapshot saved: available balance + bank-reported hold. Estimated card holds are calculated separately over 96 hours."
+                        message="Snapshot saved: available balance + bank-reported hold. Estimated card holds are calculated separately over 120 hours."
                     }
                 },modifier=Modifier.fillMaxWidth()) { Text("Save calculated snapshot") }
                 if(message.isNotBlank()) Text(message)
