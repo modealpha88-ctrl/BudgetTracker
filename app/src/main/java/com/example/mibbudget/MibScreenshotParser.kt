@@ -21,17 +21,17 @@ object MibScreenshotParser {
     private data class AmountToken(val start: Int, val end: Int, val minor: Long)
 
     private val amountPattern = Regex(
-        """(?i)(-\\s*)?(?:MVR|MRF|RF)?\\s*(-?\\s*[0-9][0-9,]*\\.[0-9]{2})"""
+        """(?i)(-\s*)?(?:MVR|MRF|RF)?\s*(-?\s*[0-9][0-9,]*\.[0-9]{2})"""
     )
-    private val holdLabel = Regex("""(?i)amount\\s*on\\s*h[o0]ld""")
-    private val currentLabel = Regex("""(?i)current\\s*balance""")
-    private val availableLabel = Regex("""(?i)available\\s*balance""")
+    private val holdLabel = Regex("""(?i)amount\s*on\s*h[o0]ld""")
+    private val currentLabel = Regex("""(?i)current\s*balance""")
+    private val availableLabel = Regex("""(?i)available\s*balance""")
     private val semanticLabel = Regex(
-        """(?i)(amount\\s*on\\s*h[o0]ld|current\\s*balance|available\\s*balance|transactions)"""
+        """(?i)(amount\s*on\s*h[o0]ld|current\s*balance|available\s*balance|transactions)"""
     )
 
     private fun toMinor(raw: String, prefixNegative: Boolean): Long? = runCatching {
-        val cleaned = raw.replace(",", "").replace(Regex("""\\s+"""), "")
+        val cleaned = raw.replace(",", "").replace(Regex("""\s+"""), "")
         val parsed = BigDecimal(cleaned).movePointRight(2)
             .setScale(0, RoundingMode.UNNECESSARY).longValueExact()
         if (prefixNegative) Math.negateExact(kotlin.math.abs(parsed)) else parsed
@@ -70,10 +70,10 @@ object MibScreenshotParser {
     fun parse(ocrText: String): MibScreenshotSnapshot? {
         val text = ocrText
             .replace('\u00A0', ' ')
-            .replace(Regex("""[\\r\\n\\t]+"""), " ")
-            .replace(Regex("""\\s+"""), " ")
+            .replace(Regex("""[\r\n\t]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
             .trim()
-        if (text.isBlank() || !text.contains(Regex("""(?i)account\\s*details"""))) return null
+        if (text.isBlank() || !text.contains(Regex("""(?i)account\s*details"""))) return null
 
         val tokens = amounts(text)
         val holdMatch = holdLabel.find(text) ?: return null
