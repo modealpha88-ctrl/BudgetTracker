@@ -93,7 +93,17 @@ class FinanceCalculationsTest {
         assertNull(FinanceCalculations.snapshotCurrentBalance(-1L,85802L))
     }
 
-    @Test fun cardHoldSumsOnlySub1000PurchasesWithinLast72HoursForSelectedAccount() {
+    @Test fun cardHoldUsesRolling96HourBoundary() {
+        val now=java.time.LocalDateTime.parse("2026-11-05T12:00:00")
+        val entries=listOf(
+            Tx(1,-5000,"Other","Purchase MIB","2026-11-01T12:00:00","mib-a"),
+            Tx(2,-6000,"Other","Purchase MIB","2026-11-01T11:59:59","mib-b"),
+            Tx(3,-7000,"Other","Purchase MIB","2026-11-05T12:00:01","mib-c")
+        )
+        assertEquals(5000L,FinanceCalculations.recentCardHold("MIB",entries,emptyMap(),now))
+    }
+
+    @Test fun cardHoldSumsOnlySub1000PurchasesWithinLast96HoursForSelectedAccount() {
         val now=java.time.LocalDateTime.parse("2026-11-05T12:00:00")
         val entries=listOf(
             Tx(1,-7179,"Other","Purchase MIB","2026-11-05T11:00:00","mib-a"),
