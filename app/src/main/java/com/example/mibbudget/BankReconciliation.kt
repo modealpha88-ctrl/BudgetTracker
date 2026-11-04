@@ -101,7 +101,6 @@ fun ReconciliationPanel(
 ) {
     var dateInput by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var amountInput by remember(account) { mutableStateOf("") }
-    var holdInput by remember(account) { mutableStateOf("") }
     var comparison by remember(account) { mutableStateOf<BankReconciliation.Report?>(null) }
     var revision by remember { mutableIntStateOf(0) }
     val history=remember(revision) { BankReconciliation.history(context) }
@@ -117,13 +116,10 @@ fun ReconciliationPanel(
             OutlinedTextField(value=amountInput,onValueChange={ amountInput=it;comparison=null },
                 label={Text("Statement closing balance (MVR)")},singleLine=true,
                 modifier=Modifier.fillMaxWidth())
-            OutlinedTextField(value=holdInput,onValueChange={ holdInput=it;comparison=null },
-                label={Text("Amount on hold (MVR; enter positive amount)")},singleLine=true,
-                modifier=Modifier.fillMaxWidth())
             OutlinedButton(onClick={
                 val amount=Money.parseLaari(amountInput.removePrefix("-"))
-                val held=if(holdInput.isBlank()) 0L else Money.parseLaari(holdInput)
-                if(amount==null || held==null || held<0L) onNotice("Enter valid statement balance and amount on hold.")
+                val held=FinanceCalculations.recentCardHold(account,transactions,labels)
+                if(amount==null) onNotice("Enter a valid statement balance.")
                 else try {
                     comparison=BankReconciliation.compare(context,account,dateInput,
                         if(amountInput.startsWith("-")) -amount else amount,transactions,labels,held)
