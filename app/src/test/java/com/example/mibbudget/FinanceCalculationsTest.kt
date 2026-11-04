@@ -97,7 +97,7 @@ class FinanceCalculationsTest {
             Tx(4,-850,"Food","POS purchase: Cafe","2026-11-03T11:59:00","mib-d"),
             Tx(5,-1200,"Food","Purchase MIB","2026-11-05T09:00:00","bml-e"),
             Tx(6,-3000,"Transfers","Fund transfer sent","2026-11-05T09:00:00","mib-f"),
-            Tx(7,-1000,"Other","Purchase MIB","2026-11-05T11:30:00","mib-g")
+            Tx(7,-100000,"Other","Purchase MIB","2026-11-05T11:30:00","mib-g")
         )
         assertEquals(12079L,FinanceCalculations.recentCardHold("MIB",entries,emptyMap(),now))
     }
