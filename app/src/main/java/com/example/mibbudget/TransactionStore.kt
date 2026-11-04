@@ -829,7 +829,7 @@ object BankSmsParser {
             val amount = Money.parseLaari(m.groupValues[2]) ?: return null
             val whenAt = date(m.groupValues[3], "dd/MM/uuuu HH:mm:ss") ?: return null
             if (amount <= 0) return null
-            return Candidate(-amount, "Transfers", "Fund transfer sent (Ref: \${m.groupValues[4]})", fingerprint, whenAt)
+            return Candidate(-amount, "Transfers", "Fund transfer sent (Ref: ${m.groupValues[4]})", fingerprint, whenAt)
         }
         fundIncoming.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[2]) ?: return null
