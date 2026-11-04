@@ -12,60 +12,30 @@ data class MibScreenshotSnapshot(
     val reconstructedCurrentMinor: Long get() = Math.addExact(availableMinor, holdMinor)
 }
 
-/**
- * Parses MIB Account Details OCR as a single normalized text stream.
- * ML Kit may split a label over multiple lines, and MIB formats a debit hold
- * as either "MVR -858.02" or "-MVR 858.02". Both are handled here.
- */
+/** Parses MIB Account Details OCR without relying on line boundaries or label proximity. */
 object MibScreenshotParser {
     private data class AmountToken(val start: Int, val end: Int, val minor: Long)
 
+    // Supports MVR -858.02, -MVR 858.02, MVR 858.02 and comma grouping.
     private val amountPattern = Regex(
-        """(?i)(-\s*)?(?:MVR|MRF|RF)?\s*(-?\s*[0-9][0-9,]*\.[0-9]{2})"""
+        """(?i)(-\s*)?(?:MVR|MRF|RF)?\s*(-\s*)?([0-9][0-9,]*\.[0-9]{2})"""
     )
+    private val accountDetailsLabel = Regex("""(?i)account\s*details""")
     private val holdLabel = Regex("""(?i)amount\s*on\s*h[o0]ld""")
     private val currentLabel = Regex("""(?i)current\s*balance""")
-    private val availableLabel = Regex("""(?i)available\s*balance""")
-    private val semanticLabel = Regex(
-        """(?i)(amount\s*on\s*h[o0]ld|current\s*balance|available\s*balance|transactions)"""
-    )
-
-    private fun toMinor(raw: String, prefixNegative: Boolean): Long? = runCatching {
-        val cleaned = raw.replace(",", "").replace(Regex("""\s+"""), "")
-        val parsed = BigDecimal(cleaned).movePointRight(2)
-            .setScale(0, RoundingMode.UNNECESSARY).longValueExact()
-        if (prefixNegative) Math.negateExact(kotlin.math.abs(parsed)) else parsed
-    }.getOrNull()
 
     private fun amounts(text: String): List<AmountToken> =
         amountPattern.findAll(text).mapNotNull { match ->
-            val prefixNegative = !match.groupValues[1].isNullOrBlank()
-            toMinor(match.groupValues[2], prefixNegative)?.let {
-                AmountToken(match.range.first, match.range.last + 1, it)
-            }
+            val negative = match.groupValues[1].isNotBlank() || match.groupValues[2].isNotBlank()
+            runCatching {
+                val value = BigDecimal(match.groupValues[3].replace(",", ""))
+                    .movePointRight(2)
+                    .setScale(0, RoundingMode.UNNECESSARY)
+                    .longValueExact()
+                val signed = if (negative) Math.negateExact(value) else value
+                AmountToken(match.range.first, match.range.last + 1, signed)
+            }.getOrNull()
         }.toList()
-
-    private fun nearestAmount(
-        text: String,
-        label: MatchResult,
-        tokens: List<AmountToken>,
-        used: Set<Int>,
-        maxDistance: Int = 100
-    ): Pair<AmountToken, Int>? {
-        return tokens.withIndex()
-            .filter { (index, token) -> index !in used &&
-                minOf(kotlin.math.abs(token.end - label.range.first),
-                    kotlin.math.abs(token.start - (label.range.last + 1))) <= maxDistance }
-            .filter { (_, token) ->
-                val from = minOf(token.end, label.range.last + 1)
-                val to = maxOf(token.start, label.range.first)
-                from >= to || !semanticLabel.containsMatchIn(text.substring(from, to))
-            }
-            .minByOrNull { (_, token) ->
-                minOf(kotlin.math.abs(token.end - label.range.first),
-                    kotlin.math.abs(token.start - (label.range.last + 1)))
-            }?.let { it.value to it.index }
-    }
 
     fun parse(ocrText: String): MibScreenshotSnapshot? {
         val text = ocrText
@@ -73,34 +43,30 @@ object MibScreenshotParser {
             .replace(Regex("""[\r\n\t]+"""), " ")
             .replace(Regex("""\s+"""), " ")
             .trim()
-        if (text.isBlank() || !text.contains(Regex("""(?i)account\s*details"""))) return null
+        if (!accountDetailsLabel.containsMatchIn(text)) return null
+
+        val hold = holdLabel.find(text) ?: return null
+        val current = currentLabel.find(text) ?: return null
+        if (current.range.first <= hold.range.last) return null
 
         val tokens = amounts(text)
-        val holdMatch = holdLabel.find(text) ?: return null
-        val currentMatch = currentLabel.find(text) ?: return null
-
-        val holdPair = nearestAmount(text, holdMatch, tokens, emptySet()) ?: return null
-        val currentPair = nearestAmount(text, currentMatch, tokens, setOf(holdPair.second))
-            ?: return null
-        val availableMatch = availableLabel.find(text)
-        val availablePair = if (availableMatch != null) {
-            nearestAmount(text, availableMatch, tokens, setOf(holdPair.second, currentPair.second))
-        } else {
-            // On the MIB Account Details screen the account-card amount is shown
-            // above "Amount on Hold"; it is the available amount to reconstruct.
-            tokens.withIndex()
-                .filter { (index, token) -> index != holdPair.second &&
-                    index != currentPair.second && token.end <= holdMatch.range.first }
-                .maxByOrNull { it.value.end }?.let { it.value to it.index }
+        // On MIB Account Details, the card amount is displayed before the
+        // hold label; the hold amount follows its label; current balance
+        // follows its label. This ordered structure is more reliable than
+        // guessing which nearby amount belongs to a label.
+        val availableToken = tokens.lastOrNull { it.end <= hold.range.first } ?: return null
+        val holdToken = tokens.firstOrNull {
+            it.start > hold.range.last && it.end <= current.range.first
         } ?: return null
+        val currentToken = tokens.firstOrNull { it.start > current.range.last } ?: return null
 
-        val available = kotlin.math.abs(availablePair.first.minor)
-        val hold = kotlin.math.abs(holdPair.first.minor)
-        val displayedCurrent = kotlin.math.abs(currentPair.first.minor)
-        if (available < 0L || hold < 0L) return null
-        val reconstructed = runCatching { Math.addExact(available, hold) }.getOrNull() ?: return null
+        val available = kotlin.math.abs(availableToken.minor)
+        val holdAmount = kotlin.math.abs(holdToken.minor)
+        val displayedCurrent = kotlin.math.abs(currentToken.minor)
+        val reconstructed = runCatching { Math.addExact(available, holdAmount) }.getOrNull()
+            ?: return null
         if (displayedCurrent != reconstructed) return null
 
-        return MibScreenshotSnapshot(available, hold, displayedCurrent)
+        return MibScreenshotSnapshot(available, holdAmount, displayedCurrent)
     }
 }
