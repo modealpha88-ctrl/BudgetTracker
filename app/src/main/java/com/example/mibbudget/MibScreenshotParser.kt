@@ -12,17 +12,18 @@ data class MibScreenshotSnapshot(
     val reconstructedCurrentMinor: Long get() = Math.addExact(availableMinor, holdMinor)
 }
 
-/** Parses MIB Account Details OCR without relying on line boundaries or label proximity. */
+/** Parses MIB Account Details OCR while tolerating labels before or after their figures. */
 object MibScreenshotParser {
     private data class AmountToken(val start: Int, val end: Int, val minor: Long)
 
     // Supports MVR -858.02, -MVR 858.02, MVR 858.02 and comma grouping.
     private val amountPattern = Regex(
-        """(?i)(-\s*)?(?:MVR|MRF|RF)?\s*(-\s*)?([0-9][0-9,]*\.[0-9]{2})"""
+        """(?i)(-\\s*)?(?:MVR|MRF|RF)?\\s*(-\\s*)?([0-9][0-9,]*\\.[0-9]{2})"""
     )
-    private val accountDetailsLabel = Regex("""(?i)account\s*details""")
-    private val holdLabel = Regex("""(?i)amount\s*on\s*h[o0]ld""")
-    private val currentLabel = Regex("""(?i)current\s*balance""")
+    private val accountDetailsLabel = Regex("""(?i)account\\s*details""")
+    private val holdLabel = Regex("""(?i)amount\\s*on\\s*h[o0]ld""")
+    private val currentLabel = Regex("""(?i)current\\s*balance""")
+    private val transactionsLabel = Regex("""(?i)transactions""")
 
     private fun amounts(text: String): List<AmountToken> =
         amountPattern.findAll(text).mapNotNull { match ->
@@ -39,26 +40,39 @@ object MibScreenshotParser {
 
     fun parse(ocrText: String): MibScreenshotSnapshot? {
         val text = ocrText
-            .replace('\u00A0', ' ')
-            .replace(Regex("""[\r\n\t]+"""), " ")
-            .replace(Regex("""\s+"""), " ")
+            .replace('\\u00A0', ' ')
+            .replace(Regex("""[\\r\\n\\t]+"""), " ")
+            .replace(Regex("""\\s+"""), " ")
             .trim()
         if (!accountDetailsLabel.containsMatchIn(text)) return null
 
-        val hold = holdLabel.find(text) ?: return null
-        val current = currentLabel.find(text) ?: return null
-        if (current.range.first <= hold.range.last) return null
+        // Ignore transaction rows: only the account summary above this heading
+        // is eligible to supply the three balance figures.
+        val summaryEnd = transactionsLabel.find(text)?.range?.first ?: text.length
+        val summary = text.substring(0, summaryEnd)
+        val hold = holdLabel.find(summary) ?: return null
+        val current = currentLabel.find(summary) ?: return null
+        if (current.range.first <= hold.range.first) return null
 
-        val tokens = amounts(text)
-        // On MIB Account Details, the card amount is displayed before the
-        // hold label; the hold amount follows its label; current balance
-        // follows its label. This ordered structure is more reliable than
-        // guessing which nearby amount belongs to a label.
-        val availableToken = tokens.lastOrNull { it.end <= hold.range.first } ?: return null
-        val holdToken = tokens.firstOrNull {
-            it.start > hold.range.last && it.end <= current.range.first
-        } ?: return null
-        val currentToken = tokens.firstOrNull { it.start > current.range.last } ?: return null
+        val tokens = amounts(summary)
+        if (tokens.size < 3) return null
+
+        // MIB OCR can emit either:
+        //   Amount on Hold -> MVR -858.02 -> Current Balance -> MVR 1,029.81
+        // or the visual reading order where the values precede their labels:
+        //   MVR -858.02 -> Amount on Hold -> MVR 1,029.81 -> Current Balance
+        // The three ordered summary figures are available, hold, and current.
+        val availableToken = tokens[0]
+        val holdToken = tokens[1]
+        val currentToken = tokens[2]
+
+        // Require the hold label to be anchored between the available and
+        // current figures, and the current label to follow the hold label.
+        if (hold.range.first <= availableToken.end ||
+            hold.range.first >= currentToken.end ||
+            current.range.first <= hold.range.first ||
+            current.range.first < holdToken.start
+        ) return null
 
         val available = kotlin.math.abs(availableToken.minor)
         val holdAmount = kotlin.math.abs(holdToken.minor)
