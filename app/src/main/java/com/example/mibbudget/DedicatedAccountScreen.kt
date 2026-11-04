@@ -27,12 +27,14 @@ fun DedicatedAccountScreen(
     var account by remember(initialAccount) { mutableStateOf(initialAccount) }
     var refresh by remember { mutableIntStateOf(0) }
     var enteredAmount by remember(account) { mutableStateOf("") }
+    var enteredHold by remember(account) { mutableStateOf("") }
     var enteredDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var selectedDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var message by remember { mutableStateOf("") }
     val key = account.lowercase(java.util.Locale.ROOT)
     val anchorMinor = prefs.getLong("${key}_minor", Long.MIN_VALUE)
     val anchorDate = prefs.getString("${key}_date", "").orEmpty()
+    val amountOnHold = prefs.getLong("${key}_hold_minor", 0L).coerceAtLeast(0L)
     val anchorDay = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
     val today = LocalDate.now()
     val accountTransactions = transactions.filter {
@@ -79,6 +81,9 @@ fun DedicatedAccountScreen(
                         Text("$account · Estimated current balance")
                         Text(currentBalance?.let(Money::format) ?: "Balance not set",
                             style=MaterialTheme.typography.headlineLarge)
+                        Text("Amount on hold: −${Money.format(amountOnHold)}")
+                        Text("Available balance: ${currentBalance?.let { runCatching { Math.subtractExact(it, amountOnHold) }.getOrNull() }?.let(Money::format) ?: "Unavailable"}",
+                            style=MaterialTheme.typography.titleMedium)
                         Text(if(anchorDay==null) "Save a verified balance to start tracking."
                              else "Verified ${Money.format(anchorMinor)} on $anchorDate + ${afterAnchor.size} recorded movements")
                         if(unassigned>0) Text("$unassigned unassigned transactions excluded; estimate may be incomplete.",
@@ -90,6 +95,8 @@ fun DedicatedAccountScreen(
                     Text("Verified snapshot: ${Money.format(anchorMinor)} · $anchorDate")
                     Text("Recorded movements: ${Money.format(afterAnchor.sumOf { it.amountLaari })}")
                     Text("Estimated today: ${currentBalance?.let(Money::format) ?: "Unavailable"}")
+                    Text("Amount on hold: −${Money.format(amountOnHold)}")
+                    Text("Available after holds: ${currentBalance?.let { runCatching { Math.subtractExact(it, amountOnHold) }.getOrNull() }?.let(Money::format) ?: "Unavailable"}")
                     Text("This is not a live bank feed. Compare it with your bank statement before treating it as confirmed.",
                         style=MaterialTheme.typography.bodySmall)
                 } else Text("No verified snapshot saved.")
@@ -98,16 +105,21 @@ fun DedicatedAccountScreen(
                 OutlinedTextField(value=enteredDate,onValueChange={enteredDate=it},
                     label={Text("Statement date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
                 OutlinedTextField(value=enteredAmount,onValueChange={enteredAmount=it},
-                    label={Text("Verified balance (MVR)")},modifier=Modifier.fillMaxWidth())
+                    label={Text("Verified current balance (MVR)")},modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(value=enteredHold,onValueChange={enteredHold=it},
+                    label={Text("Amount on hold (MVR, enter positive amount)")},modifier=Modifier.fillMaxWidth())
                 Button(onClick={
                     val date=runCatching { LocalDate.parse(enteredDate) }.getOrNull()
                     val amount=Money.parseLaari(enteredAmount)
-                    if(date==null || date.isAfter(today) || amount==null || amount<0L)
+                    val hold=if(enteredHold.isBlank()) amountOnHold else Money.parseLaari(enteredHold)
+                    if(date==null || date.isAfter(today) || amount==null || amount<0L || hold==null || hold<0L)
                         message="Enter a valid past or present date and non-negative balance."
                     else {
                         prefs.edit().putString("${key}_date",date.toString())
                             .putLong("${key}_minor",amount)
+                            .putLong("${key}_hold_minor",hold)
                             .apply()
+                        enteredHold=Money.format(hold).removePrefix("MVR ").replace(",","")
                         refresh++
                         message="Verified snapshot saved for $account."
                     }
