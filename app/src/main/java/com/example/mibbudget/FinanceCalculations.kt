@@ -74,9 +74,9 @@ object FinanceCalculations {
         return runCatching { Math.addExact(availableMinor, bankHoldMinor) }.getOrNull()
     }
 
-    /** Sum card purchases under MVR 1,000 from the preceding 96 hours. */
+    /** Sum card purchases under MVR 1,000 from the preceding 120 hours. */
     fun recentCardHold(account: String, entries: List<Tx>, labels: Map<String, String>, now: LocalDateTime = LocalDateTime.now()): Long {
-        val cutoff = now.minusHours(96)
+        val cutoff = now.minusHours(120)
         val threshold = 100_000L
         val eligible = entries.filter { tx ->
             val description = tx.description.lowercase(java.util.Locale.ROOT)
