@@ -1,6 +1,7 @@
 package com.example.mibbudget
 
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 
 /** Read-only calculations: never modify statements, balances, or transaction records. */
@@ -66,6 +67,23 @@ object FinanceCalculations {
     fun assignedAccount(tx: Tx, labels: Map<String, String>): String =
         labels[tx.fingerprint]?.takeIf { it.isNotBlank() }
             ?: if (tx.fingerprint.startsWith("mib-", ignoreCase = true)) "MIB" else "Unassigned"
+
+    /** Sum card purchases under MVR 1,000 from the preceding 48 hours. */
+    fun recentCardHold(account: String, entries: List<Tx>, labels: Map<String, String>, now: LocalDateTime = LocalDateTime.now()): Long {
+        val cutoff = now.minusHours(48)
+        val threshold = 100_000L
+        val eligible = entries.filter { tx ->
+            val description = tx.description.lowercase(java.util.Locale.ROOT)
+            val cardPurchase = description.contains("purchase") || description.contains("card transaction")
+            val occurred = runCatching { LocalDateTime.parse(tx.timestamp) }.getOrNull()
+            tx.amountLaari < 0L && tx.amountLaari != Long.MIN_VALUE && -tx.amountLaari < threshold &&
+                cardPurchase && occurred != null && !occurred.isBefore(cutoff) && !occurred.isAfter(now) &&
+                assignedAccount(tx, labels).equals(account, ignoreCase = true)
+        }
+        return eligible.fold(0L) { total, tx ->
+            runCatching { Math.addExact(total, -tx.amountLaari) }.getOrElse { Long.MAX_VALUE }
+        }
+    }
 
     /**
      * A saved bank snapshot plus subsequent movements assigned to that account.
