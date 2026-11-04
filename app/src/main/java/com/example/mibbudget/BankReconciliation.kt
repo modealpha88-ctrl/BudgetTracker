@@ -28,16 +28,19 @@ object BankReconciliation {
         val actualMinor: Long,
         val appliedMovements: Int,
         val unassignedMovements: Int,
-        val createdAt: String
+        val createdAt: String,
+        val amountOnHoldMinor: Long = 0L
     ) {
         val differenceMinor: Long get() = actualMinor - expectedMinor
+        val availableMinor: Long? get() = runCatching { Math.subtractExact(actualMinor, amountOnHoldMinor) }.getOrNull()
     }
 
     fun compare(
         context: Context, account: String, dateText: String, amountMinor: Long,
-        transactions: List<Tx>, labels: Map<String, String>
+        transactions: List<Tx>, labels: Map<String, String>, amountOnHoldMinor: Long = 0L
     ): Report {
         require(account in listOf("MIB","BML","Cash")) { "Choose a supported account" }
+        require(amountOnHoldMinor >= 0L) { "Amount on hold cannot be negative" }
         val statementDate = LocalDate.parse(dateText)
         require(!statementDate.isAfter(LocalDate.now())) { "Statement date cannot be in the future" }
         val prefs=context.getSharedPreferences("balance_anchor",Context.MODE_PRIVATE)
@@ -60,7 +63,7 @@ object BankReconciliation {
             account,statementDate.toString(),anchorDate,opening,expected,amountMinor,
             range.count { FinanceCalculations.assignedAccount(it,labels)==account },
             range.count { FinanceCalculations.assignedAccount(it,labels)=="Unassigned" },
-            LocalDateTime.now().toString()
+            LocalDateTime.now().toString(),amountOnHoldMinor
         )
     }
 
@@ -72,7 +75,7 @@ object BankReconciliation {
             .put("anchorDate",report.anchorDate).put("opening",report.openingMinor)
             .put("expected",report.expectedMinor).put("actual",report.actualMinor)
             .put("movements",report.appliedMovements).put("unassigned",report.unassignedMovements)
-            .put("createdAt",report.createdAt)
+            .put("createdAt",report.createdAt).put("amountOnHold",report.amountOnHoldMinor)
         val limited=JSONArray().put(entry)
         for(i in 0 until minOf(rows.length(),99)) limited.put(rows.getJSONObject(i))
         prefs.edit().putString("reports",limited.toString()).apply()
@@ -98,6 +101,7 @@ fun ReconciliationPanel(
 ) {
     var dateInput by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var amountInput by remember(account) { mutableStateOf("") }
+    var holdInput by remember(account) { mutableStateOf("") }
     var comparison by remember(account) { mutableStateOf<BankReconciliation.Report?>(null) }
     var revision by remember { mutableIntStateOf(0) }
     val history=remember(revision) { BankReconciliation.history(context) }
@@ -113,12 +117,16 @@ fun ReconciliationPanel(
             OutlinedTextField(value=amountInput,onValueChange={ amountInput=it;comparison=null },
                 label={Text("Statement closing balance (MVR)")},singleLine=true,
                 modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(value=holdInput,onValueChange={ holdInput=it;comparison=null },
+                label={Text("Amount on hold (MVR; enter positive amount)")},singleLine=true,
+                modifier=Modifier.fillMaxWidth())
             OutlinedButton(onClick={
                 val amount=Money.parseLaari(amountInput.removePrefix("-"))
-                if(amount==null) onNotice("Enter a valid statement balance.")
+                val held=if(holdInput.isBlank()) 0L else Money.parseLaari(holdInput)
+                if(amount==null || held==null || held<0L) onNotice("Enter valid statement balance and amount on hold.")
                 else try {
                     comparison=BankReconciliation.compare(context,account,dateInput,
-                        if(amountInput.startsWith("-")) -amount else amount,transactions,labels)
+                        if(amountInput.startsWith("-")) -amount else amount,transactions,labels,held)
                 } catch(e:Exception) { comparison=null;onNotice(e.message ?: "Comparison failed") }
             }) { Text("Compare statement") }
             comparison?.let { report ->
@@ -126,6 +134,8 @@ fun ReconciliationPanel(
                 Text("Saved opening: ${Money.format(report.openingMinor)} on ${report.anchorDate}")
                 Text("Calculated closing: ${Money.format(report.expectedMinor)}")
                 Text("Statement closing: ${Money.format(report.actualMinor)}")
+                Text("Amount on hold: −${Money.format(report.amountOnHoldMinor)}")
+                Text("Available balance after holds: ${report.availableMinor?.let(Money::format) ?: "Overflow"}",fontWeight=FontWeight.Bold)
                 Text("Difference (statement minus calculation): ${Money.format(report.differenceMinor)}",
                     color=if(report.differenceMinor==0L) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.error,
