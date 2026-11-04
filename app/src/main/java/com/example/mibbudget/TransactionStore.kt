@@ -812,6 +812,7 @@ object BankSmsParser {
     }
     private val fundIncoming = Regex("""(?is)^Fund\s+Transfer\s+to\s+your\s+account\s+(\d+[\d*]*\d+)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
+    private val fundOutgoing = Regex("""(?is)^Fund\s+Transfer\s+from\s+your\s+account\s+(\d+[\d*]*\d+)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     private val ecommerce = Regex("""(?is)^Your\s+E-COMMERCE\s+TRX\s+from\s+(\*+\d{4})\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*([\w-]+)\s*$""")
     private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*[\w-]+\s*$""")
     private fun date(value: String, pattern: String): String? = try {
@@ -824,6 +825,12 @@ object BankSmsParser {
         val fingerprint = MessageDigest.getInstance("SHA-256")
             .digest(text.lowercase(Locale.ROOT).toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
+        fundOutgoing.matchEntire(text)?.let { m ->
+            val amount = Money.parseLaari(m.groupValues[2]) ?: return null
+            val whenAt = date(m.groupValues[3], "dd/MM/uuuu HH:mm:ss") ?: return null
+            if (amount <= 0) return null
+            return Candidate(-amount, "Transfers", "Fund transfer sent (Ref: \${m.groupValues[4]})", fingerprint, whenAt)
+        }
         fundIncoming.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[2]) ?: return null
             val whenAt = date(m.groupValues[3], "dd/MM/uuuu HH:mm:ss") ?: return null
