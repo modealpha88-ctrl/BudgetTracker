@@ -36,7 +36,7 @@ fun DedicatedAccountScreen(
     var enteredDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var selectedDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var message by remember { mutableStateOf("") }
-    val key = account.lowercase(java.util.Locale.ROOT)
+    val accountKey = account.lowercase(java.util.Locale.ROOT)
     var screenshotText by remember { mutableStateOf("") }
     var screenshotReady by remember { mutableStateOf(false) }
     val screenshotPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -57,7 +57,7 @@ fun DedicatedAccountScreen(
                     availableInput = "%.2f".format(java.util.Locale.US, parsed.availableMinor / 100.0)
                     bankHoldInput = "%.2f".format(java.util.Locale.US, parsed.holdMinor / 100.0)
                     enteredDate = captured?.toLocalDate()?.toString() ?: LocalDate.now().toString()
-                    captured?.let { prefs.edit().putString("${key}_pending_time", it.toLocalTime().toString()).apply() }
+                    captured?.let { prefs.edit().putString("${accountKey}_pending_time", it.toLocalTime().toString()).apply() }
                     screenshotReady = true
                     message = "MIB screenshot figures detected. Review the available balance and bank hold before saving."
                 } else {
@@ -68,11 +68,11 @@ fun DedicatedAccountScreen(
                 .addOnCompleteListener { recognizer.close() }
         } catch (e: Exception) { message = "Could not read screenshot: ${e.message?.take(80)}" }
     }
-    val anchorMinor = prefs.getLong("${key}_minor", Long.MIN_VALUE)
-    val anchorDate = prefs.getString("${key}_date", "").orEmpty()
+    val anchorMinor = prefs.getLong("${accountKey}_minor", Long.MIN_VALUE)
+    val anchorDate = prefs.getString("${accountKey}_date", "").orEmpty()
     val amountOnHold = FinanceCalculations.recentCardHold(account, transactions, labels)
     val anchorDay = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
-    val anchorTime = prefs.getString("${key}_time", null)?.takeIf { it.isNotBlank() }
+    val anchorTime = prefs.getString("${accountKey}_time", null)?.takeIf { it.isNotBlank() }
     val anchorClock = anchorTime?.let { runCatching { java.time.LocalTime.parse(it) }.getOrNull() }
     val today = LocalDate.now()
     val accountTransactions = transactions.filter {
@@ -164,10 +164,10 @@ fun DedicatedAccountScreen(
                     if(date==null || date.isAfter(today) || amount==null)
                         message="Enter a valid date, available balance and bank-reported hold."
                     else {
-                        prefs.edit().putString("${key}_date",date.toString())
-                            .putLong("${key}_minor",amount)
-                            .putString("${key}_time",prefs.getString("${key}_pending_time","").orEmpty())
-                            .remove("${key}_pending_time")
+                        prefs.edit().putString("${accountKey}_date",date.toString())
+                            .putLong("${accountKey}_minor",amount)
+                            .putString("${accountKey}_time",prefs.getString("${accountKey}_pending_time","").orEmpty())
+                            .remove("${accountKey}_pending_time")
                             .apply()
                         refresh++
                         screenshotReady=false
