@@ -89,7 +89,7 @@ object BankReconciliation {
             Report(item.getString("account"),item.getString("statementDate"),
                 item.getString("anchorDate"),item.getLong("opening"),item.getLong("expected"),
                 item.getLong("actual"),item.getInt("movements"),item.getInt("unassigned"),
-                item.getString("createdAt"))
+                item.getString("createdAt"),item.optLong("amountOnHold",0L))
         }
     }.getOrDefault(emptyList())
 }
