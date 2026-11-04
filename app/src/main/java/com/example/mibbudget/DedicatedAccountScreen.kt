@@ -36,6 +36,7 @@ fun DedicatedAccountScreen(
     var enteredDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var selectedDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var message by remember { mutableStateOf("") }
+    val key = account.lowercase(java.util.Locale.ROOT)
     var screenshotText by remember { mutableStateOf("") }
     var screenshotReady by remember { mutableStateOf(false) }
     val screenshotPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -67,7 +68,6 @@ fun DedicatedAccountScreen(
                 .addOnCompleteListener { recognizer.close() }
         } catch (e: Exception) { message = "Could not read screenshot: ${e.message?.take(80)}" }
     }
-    val key = account.lowercase(java.util.Locale.ROOT)
     val anchorMinor = prefs.getLong("${key}_minor", Long.MIN_VALUE)
     val anchorDate = prefs.getString("${key}_date", "").orEmpty()
     val amountOnHold = FinanceCalculations.recentCardHold(account, transactions, labels)
