@@ -1,6 +1,11 @@
 package com.example.mibbudget
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +36,37 @@ fun DedicatedAccountScreen(
     var enteredDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var selectedDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var message by remember { mutableStateOf("") }
+    var screenshotText by remember { mutableStateOf("") }
+    var screenshotReady by remember { mutableStateOf(false) }
+    val screenshotPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) try {
+            val captured = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val exif = androidx.exifinterface.media.ExifInterface(stream)
+                    val raw = exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
+                        ?: exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_DIGITIZED)
+                    raw?.let { java.time.LocalDateTime.parse(it, java.time.format.DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")) }
+                }
+            }.getOrNull()
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            recognizer.process(InputImage.fromFilePath(context, uri)).addOnSuccessListener { result ->
+                screenshotText = result.text.take(1200)
+                val parsed = MibScreenshotParser.parse(result.text)
+                if (parsed != null) {
+                    availableInput = "%.2f".format(java.util.Locale.US, parsed.availableMinor / 100.0)
+                    bankHoldInput = "%.2f".format(java.util.Locale.US, parsed.holdMinor / 100.0)
+                    enteredDate = captured?.toLocalDate()?.toString() ?: LocalDate.now().toString()
+                    captured?.let { prefs.edit().putString("${key}_pending_time", it.toLocalTime().toString()).apply() }
+                    screenshotReady = true
+                    message = "MIB screenshot figures detected. Review the available balance and bank hold before saving."
+                } else {
+                    screenshotReady = false
+                    message = "Could not safely identify both available balance and amount on hold. Please enter them manually."
+                }
+            }.addOnFailureListener { message = "Screenshot OCR failed: ${it.message?.take(80)}" }
+                .addOnCompleteListener { recognizer.close() }
+        } catch (e: Exception) { message = "Could not read screenshot: ${e.message?.take(80)}" }
+    }
     val key = account.lowercase(java.util.Locale.ROOT)
     val anchorMinor = prefs.getLong("${key}_minor", Long.MIN_VALUE)
     val anchorDate = prefs.getString("${key}_date", "").orEmpty()
@@ -108,6 +144,8 @@ fun DedicatedAccountScreen(
                 } else Text("No verified snapshot saved.")
                 HorizontalDivider()
                 Text("Set verified balance",style=MaterialTheme.typography.titleLarge)
+                OutlinedButton(onClick={screenshotPicker.launch("image/*")},modifier=Modifier.fillMaxWidth()) { Text("Read MIB bank screenshot") }
+                if (screenshotText.isNotBlank()) Text(if(screenshotReady) "Screenshot figures detected — review before saving." else "Screenshot text could not be matched safely.",style=MaterialTheme.typography.bodySmall)
                 OutlinedTextField(value=enteredDate,onValueChange={enteredDate=it},
                     label={Text("Statement date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
                 OutlinedTextField(value=availableInput,onValueChange={availableInput=it},
@@ -128,8 +166,11 @@ fun DedicatedAccountScreen(
                     else {
                         prefs.edit().putString("${key}_date",date.toString())
                             .putLong("${key}_minor",amount)
+                            .putString("${key}_time",prefs.getString("${key}_pending_time","").orEmpty())
+                            .remove("${key}_pending_time")
                             .apply()
                         refresh++
+                        screenshotReady=false
                         message="Snapshot saved: available balance + bank-reported hold. Estimated card holds are calculated separately over 120 hours."
                     }
                 },modifier=Modifier.fillMaxWidth()) { Text("Save calculated snapshot") }
