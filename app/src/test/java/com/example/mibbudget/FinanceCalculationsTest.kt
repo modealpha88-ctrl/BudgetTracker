@@ -88,7 +88,12 @@ class FinanceCalculationsTest {
 
 
 
-    @Test fun cardHoldSumsOnlySub1000PurchasesWithinLast48HoursForSelectedAccount() {
+    @Test fun bankSnapshotAddsAvailableBalanceAndBankReportedHold() {
+        assertEquals(102981L,FinanceCalculations.snapshotCurrentBalance(17179L,85802L))
+        assertNull(FinanceCalculations.snapshotCurrentBalance(-1L,85802L))
+    }
+
+    @Test fun cardHoldSumsOnlySub1000PurchasesWithinLast72HoursForSelectedAccount() {
         val now=java.time.LocalDateTime.parse("2026-11-05T12:00:00")
         val entries=listOf(
             Tx(1,-7179,"Other","Purchase MIB","2026-11-05T11:00:00","mib-a"),
@@ -99,6 +104,6 @@ class FinanceCalculationsTest {
             Tx(6,-3000,"Transfers","Fund transfer sent","2026-11-05T09:00:00","mib-f"),
             Tx(7,-100000,"Other","Purchase MIB","2026-11-05T11:30:00","mib-g")
         )
-        assertEquals(12079L,FinanceCalculations.recentCardHold("MIB",entries,emptyMap(),now))
+        assertEquals(12929L,FinanceCalculations.recentCardHold("MIB",entries,emptyMap(),now))
     }
 }
