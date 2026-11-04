@@ -100,6 +100,38 @@ class FinanceCalculationsTest {
             "MIB",102981L,"2026-11-04",entries,emptyMap(),LocalDate.of(2026,11,5),"16:00:00"))
     }
 
+    @Test fun mibScreenshotParserReadsAvailableHoldAndVerifiesCurrentBalance() {
+        val text = """
+            Account Details
+            MVR 171.79
+            905030101081291000
+            Mohd.ibrahim · Saving Account
+            MVR -858.02
+            Amount on Hold
+            MVR 1,029.81
+            Current Balance
+            Transactions
+        """.trimIndent()
+        val parsed = MibScreenshotParser.parse(text)!!
+        assertEquals(17179L, parsed.availableMinor)
+        assertEquals(85802L, parsed.holdMinor)
+        assertEquals(102981L, parsed.reconstructedCurrentMinor)
+    }
+
+    @Test fun mibScreenshotParserRejectsMismatchedOrUnlabelledFigures() {
+        val mismatch = """
+            Account Details
+            MVR 171.79
+            MVR -858.02
+            Amount on Hold
+            MVR 1,000.00
+            Current Balance
+            Transactions
+        """.trimIndent()
+        assertNull(MibScreenshotParser.parse(mismatch))
+        assertNull(MibScreenshotParser.parse("MVR 171.79\nMVR 858.02"))
+    }
+
     @Test fun bankSnapshotAddsAvailableBalanceAndBankReportedHold() {
         assertEquals(102981L,FinanceCalculations.snapshotCurrentBalance(17179L,85802L))
         assertNull(FinanceCalculations.snapshotCurrentBalance(-1L,85802L))
