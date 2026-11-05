@@ -51,7 +51,7 @@ fun DedicatedAccountScreen(
             }.getOrNull()
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             recognizer.process(InputImage.fromFilePath(context, uri)).addOnSuccessListener { result ->
-                screenshotText = result.text.take(1200)
+                screenshotText = result.text.replace(Regex("""\b\d{8,}\b"""), "••••••••").take(1200)
                 val parsed = MibScreenshotParser.parse(result.text)
                 if (parsed != null) {
                     availableInput = "%.2f".format(java.util.Locale.US, parsed.availableMinor / 100.0)
@@ -145,7 +145,26 @@ fun DedicatedAccountScreen(
                 HorizontalDivider()
                 Text("Set verified balance",style=MaterialTheme.typography.titleLarge)
                 OutlinedButton(onClick={screenshotPicker.launch("image/*")},modifier=Modifier.fillMaxWidth()) { Text("Read MIB bank screenshot") }
-                if (screenshotText.isNotBlank()) Text(if(screenshotReady) "Screenshot figures detected — review before saving." else "Screenshot text could not be matched safely.",style=MaterialTheme.typography.bodySmall)
+                if (screenshotText.isNotBlank()) {
+                    Text(
+                        if (screenshotReady) "Screenshot figures detected — review before saving."
+                        else "Could not match the screenshot safely. OCR text below (long account numbers masked):",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (!screenshotReady) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Text(
+                                screenshotText,
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(value=enteredDate,onValueChange={enteredDate=it},
                     label={Text("Statement date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
                 OutlinedTextField(value=availableInput,onValueChange={availableInput=it},
