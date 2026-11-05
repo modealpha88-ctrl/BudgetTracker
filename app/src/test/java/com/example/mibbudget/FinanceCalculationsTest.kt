@@ -88,13 +88,13 @@ class FinanceCalculationsTest {
 
 
 
-    @Test fun accountProjectionIncludesSameDayMovementsOnlyAfterSnapshotClock() {
+    @Test fun october29ProjectionExcludesAllSnapshotDayMovements() {
         val entries=listOf(
             Tx(1,-1300,"Food","POS purchase","2026-11-04T15:00:00","mib-pos"),
             Tx(2,-700,"Food","POS purchase","2026-11-04T09:00:00","mib-before"),
             Tx(3,-500,"Food","POS purchase","2026-11-05T08:00:00","mib-next-day")
         )
-        assertEquals(101181L,FinanceCalculations.projectedBalance(
+        assertEquals(102481L,FinanceCalculations.projectedBalance(
             "MIB",102981L,"2026-11-04",entries,emptyMap(),LocalDate.of(2026,11,5),"14:00:00"))
         assertEquals(102481L,FinanceCalculations.projectedBalance(
             "MIB",102981L,"2026-11-04",entries,emptyMap(),LocalDate.of(2026,11,5),"16:00:00"))
