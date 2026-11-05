@@ -67,8 +67,19 @@ object MibScreenshotParser {
         // OCR engines do not guarantee that a label and its value are emitted
         // in the same order as the screen. Associate each label with its nearest
         // amount, whether the value appears before or after the label.
-        val holdToken = tokens.minByOrNull { distance(it, hold) } ?: return null
-        val currentToken = tokens.minByOrNull { distance(it, current) } ?: return null
+        // The bank commonly renders the hold as a negative amount. Prefer that
+        // explicit sign so a preceding available-balance figure cannot win a
+        // distance tie when OCR places the hold label before its value.
+        val negativeHoldTokens = tokens.filter { it.minor < 0L }
+        val holdCandidates = if (negativeHoldTokens.isNotEmpty()) negativeHoldTokens else tokens
+        val holdToken = holdCandidates.minWithOrNull(
+            compareBy<AmountToken> { distance(it, hold) }
+                .thenBy { if (it.start >= hold.range.last + 1) 0 else 1 }
+        ) ?: return null
+        val currentToken = tokens.minWithOrNull(
+            compareBy<AmountToken> { distance(it, current) }
+                .thenBy { if (it.start >= current.range.last + 1) 0 else 1 }
+        ) ?: return null
         if (holdToken == currentToken) return null
 
         // The available/card figure is the remaining earliest summary amount.
