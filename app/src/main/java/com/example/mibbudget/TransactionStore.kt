@@ -20,7 +20,7 @@ data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String,
 
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 8) {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 9) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
@@ -32,6 +32,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         TransactionAudit.install(db)
+        installCsvDetails(db)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 7) db.execSQL("CREATE TABLE IF NOT EXISTS merchant_category_rules(merchant_key TEXT PRIMARY KEY, category TEXT NOT NULL)")
@@ -44,6 +45,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         if (oldVersion < 5) db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 8) TransactionAudit.install(db)
+        if (oldVersion < 9) installCsvDetails(db)
     }
 
 
@@ -76,6 +78,110 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         return rows
     }
 
+
+
+    /** CSV attributes live separately: the SMS transaction, amount and bank balance stay intact. */
+    data class CsvDetails(
+        val recipient: String,
+        val reference: String,
+        val bankDescription: String,
+        val statementDate: String,
+        val csvRowHash: String
+    )
+
+    private fun installCsvDetails(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS csv_transaction_details(
+            fingerprint TEXT PRIMARY KEY NOT NULL,
+            csv_row_hash TEXT NOT NULL UNIQUE,
+            recipient TEXT NOT NULL,
+            reference TEXT NOT NULL,
+            bank_description TEXT NOT NULL,
+            statement_date TEXT NOT NULL)""")
+    }
+
+    fun csvDetails(): Map<String, CsvDetails> {
+        val results=mutableMapOf<String,CsvDetails>()
+        readableDatabase.rawQuery("""SELECT fingerprint,recipient,reference,bank_description,
+            statement_date,csv_row_hash FROM csv_transaction_details""",null).use { c ->
+            while(c.moveToNext()) {
+                results[c.getString(0)]=CsvDetails(c.getString(1),c.getString(2),
+                    c.getString(3),c.getString(4),c.getString(5))
+            }
+        }
+        return results
+    }
+
+    private fun csvRowHash(cols: List<String>, mib: Boolean): String {
+        val canonical=if(mib)
+            listOf(cols[0].trim(),cols[2].trim(),cols[3].trim(),
+                cols[4].trim(),cols[5].trim().replace(",","")).joinToString("|")
+        else cols.joinToString("|") { it.trim() }
+        return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    /** Candidates are suggestions, not a deduction: repeated same-amount transfers need a choice. */
+    fun csvMergeCandidates(text: String, line: Int): List<Tx> {
+        val row=reviewCsv(text).matches.firstOrNull { it.line==line } ?: return emptyList()
+        if(row.status=="MISSING") return emptyList()
+        val records=parseCsvRecords(text.removePrefix("\uFEFF"))
+        val mib=records[0][0].trim().equals("POSTED DATE",true)
+        val hash=csvRowHash(records[line-1],mib)
+        val linked=csvDetails()
+        return all().filter { tx ->
+            !tx.fingerprint.startsWith("csv-") && tx.amountLaari==row.amountLaari &&
+                dayDistance(row.date,tx.timestamp)?.let { it<=2 }==true &&
+                (linked[tx.fingerprint]==null || linked[tx.fingerprint]?.csvRowHash==hash)
+        }.sortedWith(compareBy<Tx> {
+            if(it.timestamp.take(10)==row.date) 0 else 1
+        }.thenBy { it.timestamp })
+    }
+
+    /**
+     * Bind exactly one bank statement row to one existing SMS record after user review.
+     * No new financial transactions are inserted and no ledger fields are updated.
+     */
+    fun mergeCsvDetails(text: String, line: Int, transactionId: Long): CsvDetails {
+        require(line>=2 && transactionId>0) { "Select a valid statement row and transaction" }
+        val row=reviewCsv(text).matches.firstOrNull { it.line==line }
+            ?: throw IllegalArgumentException("Statement row not found")
+        require(row.status=="POSSIBLE" || row.status=="MATCHED") {
+            "Only matching statement records can enrich an existing transaction"
+        }
+        val tx=csvMergeCandidates(text,line).firstOrNull { it.id==transactionId }
+            ?: throw IllegalArgumentException("Amount, date or record changed; compare again")
+        val records=parseCsvRecords(text.removePrefix("\uFEFF"))
+        val cols=records[line-1]
+        val mib=records[0][0].trim().equals("POSTED DATE",true)
+        val hash=csvRowHash(cols,mib)
+        val reference=if(mib) cols[3].trim().take(150) else ""
+        val description=row.description.take(450)
+        val parsed=TransactionPresentation.label(description).substringAfter(" · ","").trim()
+        val recipient=parsed.takeIf { it.isNotBlank() && it!=description }?.take(100).orEmpty()
+        val detail=CsvDetails(recipient,reference,description,row.date,hash)
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            val already=db.rawQuery("SELECT fingerprint FROM csv_transaction_details WHERE csv_row_hash=?",
+                arrayOf(hash)).use { c -> if(c.moveToFirst()) c.getString(0) else null }
+            require(already==null || already==tx.fingerprint) {
+                "Statement row already linked to a different transaction"
+            }
+            val previous=db.rawQuery("SELECT csv_row_hash FROM csv_transaction_details WHERE fingerprint=?",
+                arrayOf(tx.fingerprint)).use { c -> if(c.moveToFirst()) c.getString(0) else null }
+            require(previous==null || previous==hash) {
+                "This transaction already has different verified CSV details"
+            }
+            val values=ContentValues().apply {
+                put("fingerprint",tx.fingerprint);put("csv_row_hash",hash)
+                put("recipient",recipient);put("reference",reference)
+                put("bank_description",description);put("statement_date",row.date)
+            }
+            db.insertWithOnConflict("csv_transaction_details",null,values,SQLiteDatabase.CONFLICT_REPLACE)
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return detail
+    }
 
     data class StatementBalance(val amountLaari: Long, val date: String, val reference: String, val time: String? = null, val confidence: String = "Date only; end-of-day assumed")
 
@@ -124,6 +230,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val simple=header==listOf("DATE","AMOUNT","DESCRIPTION","CATEGORY","ACCOUNT")
         require(mib || simple) { "Unsupported CSV statement" }
         val existing=all()
+        val linkedByHash=csvDetails().entries.associate { it.value.csvRowHash to it.key }
         val assigned=mutableSetOf<Long>()
         val results=mutableListOf<CsvMatch>()
         var ignored=0
@@ -138,6 +245,9 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val date=java.time.LocalDate.parse(cols[0].trim().take(10)).toString()
             val desc=if(mib) listOf(type,cols[4].trim()).filter { it.isNotBlank() }.joinToString(": ") else cols[2].trim()
             val reference=if(mib) cols[3].trim() else ""
+            val verified=linkedByHash[csvRowHash(cols,mib)]?.let { key ->
+                existing.firstOrNull { it.fingerprint==key && it.amountLaari==signed }
+            }
             val nearby=existing.filter { t ->
                 t.amountLaari==signed &&
                 (dayDistance(date,t.timestamp)?.let { it<=2 }==true)
@@ -153,6 +263,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val reason: String
             val chosen: Tx?
             when {
+                verified!=null -> { status="MATCHED";reason="CSV details linked to saved transaction";chosen=verified }
                 exact.size==1 -> { status="MATCHED";reason="Same amount, date and reference/description";chosen=exact.first() }
                 exact.size>1 -> { status="POSSIBLE";reason="Multiple matching records";chosen=null }
                 candidates.isNotEmpty() -> { status="POSSIBLE";reason="Same amount and nearby date; verify merchant/reference";chosen=null }
@@ -432,6 +543,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "recurring_expenses" to listOf("name","amount_laari","category"),
             "account_labels" to listOf("fingerprint","label"),
             "merchant_category_rules" to listOf("merchant_key","category"),
+            "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
             "transaction_audit_history" to TransactionAudit.backupColumns
         )
         specs.forEach { (table,cols) ->
@@ -478,7 +590,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val incomingFingerprints=mutableSetOf<String>()
         specs.forEach { (table,cols) ->
             val rows=root.optJSONArray(table) ?: if(table in
-                setOf("merchant_category_rules","transaction_audit_history")) JSONArray()
+                setOf("merchant_category_rules","transaction_audit_history","csv_transaction_details")) JSONArray()
                 else throw IllegalArgumentException("Missing $table")
             require(rows.length()<=100000) { "Too many $table records" }
             counts[table]=rows.length()
@@ -526,7 +638,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         var total=0
         specs.forEach { (table,cols) ->
             val rows=root.optJSONArray(table) ?: if(table=="merchant_category_rules" ||
-                table=="transaction_audit_history") JSONArray() else throw IllegalArgumentException("Missing $table")
+                table=="transaction_audit_history" || table=="csv_transaction_details") JSONArray() else throw IllegalArgumentException("Missing $table")
             require(rows.length()<=100000) { "Too many records" }
             for(i in 0 until rows.length()) {
                 val item=rows.getJSONObject(i)
