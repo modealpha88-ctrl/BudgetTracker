@@ -3053,7 +3053,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         dismissButton={TextButton(onClick={confirmReset=false}) { Text("Cancel") }})
                     Text("Paste or share a transaction SMS. Verify details before saving. Never paste OTPs or passwords.")
                     OutlinedTextField(value=input,onValueChange={input=it},label={Text("Bank SMS text")},modifier=Modifier.fillMaxWidth().height(160.dp))
-                    val candidate = remember(input) { BankSmsParser.parse(input) }
+                    val candidate = remember(input) { SalarySmsParser.parse(input) ?: BankSmsParser.parse(input) }
                     val declinedCandidate = remember(input) { BankSmsParser.parseDeclined(input) }
                     val bmlCard = remember(input) { BankSmsParser.parseBmlCard(input) }
                     LaunchedEffect(candidate?.fingerprint) { importCategory = candidate?.category ?: "Other" }
@@ -3084,7 +3084,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("Description: ${candidate.description}")
                         Box { TextButton(onClick={importExpanded=true}) { Text("Category: $importCategory ▾") }
                             DropdownMenu(expanded=importExpanded,onDismissRequest={importExpanded=false}) {
-                                categories.filter { it != "Income" }.forEach { c -> DropdownMenuItem(text={Text(c)},onClick={importCategory=c;importExpanded=false}) }
+                                (categories + "Income").distinct().forEach { c -> DropdownMenuItem(text={Text(c)},onClick={importCategory=c;importExpanded=false}) }
                             }
                         }
                         Button(onClick={
