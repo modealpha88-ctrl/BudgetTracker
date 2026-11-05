@@ -360,6 +360,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         setupStage = 4
         setupPrefs.edit().putInt("stage", 4).apply()
     }
+    var setupBalanceAccount by remember { mutableStateOf("MIB") }
+    var setupBalanceRevision by remember { mutableIntStateOf(0) }
     val onboardingRequired = setupStage < 4
     val accountLabels = store.accounts()
     if(dedicatedAccountOpen) {
@@ -790,8 +792,66 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Button(onClick={setupStage=3;setupPrefs.edit().putInt("stage",3).apply()},modifier=Modifier.fillMaxWidth()) { Text("Continue to account balances") }
                 }
                 3 -> {
-                    Text("Verify MIB, BML and Cash balances on the dashboard and back up your data.",color=Color.White)
-                    Button(onClick={setupStage=4;setupPrefs.edit().putInt("stage",4).apply();tab=0},modifier=Modifier.fillMaxWidth()) { Text("Finish setup") }
+                    Text("Verify your starting balance",
+                        style=MaterialTheme.typography.headlineSmall,
+                        color=Color.White, fontWeight=FontWeight.Bold)
+                    Text("This sets the starting point for accurate account balances. For MIB, import a bank screenshot or enter the amount shown on the account card. You can enter BML and Cash balances here too.",
+                        color=Color(0xFFE3F4EA))
+                    // Re-read saved balances after each successful verification; do not
+                    // alter any existing bank transaction, snapshot or account assignment.
+                    val verifiedAccounts = remember(setupBalanceRevision) {
+                        listOf("MIB","BML","Cash").mapNotNull { name ->
+                            val key = name.lowercase(java.util.Locale.ROOT)
+                            val amount = balancePrefs.getLong("${key}_minor",Long.MIN_VALUE)
+                            val date = balancePrefs.getString("${key}_date",null)
+                            if(amount == Long.MIN_VALUE || date.isNullOrBlank()) null
+                            else Triple(name,amount,date)
+                        }
+                    }
+                    Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF183229)),
+                        shape=RoundedCornerShape(20.dp)) {
+                        Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Text("${verifiedAccounts.size} of 3 balances verified",
+                                style=MaterialTheme.typography.titleMedium,color=Color.White)
+                            verifiedAccounts.forEach { (name,amount,date) ->
+                                Text("✓ $name · ${Money.format(amount)} · $date",
+                                    color=Color(0xFF9BE8C5),
+                                    style=MaterialTheme.typography.bodyMedium)
+                            }
+                            if(verifiedAccounts.isEmpty())
+                                Text("No verified balance saved yet.",color=Color(0xFFD2E2D8),
+                                    style=MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        listOf("MIB","BML","Cash").forEach { name ->
+                            FilterChip(selected=setupBalanceAccount==name,
+                                onClick={setupBalanceAccount=name},label={Text(name)})
+                        }
+                    }
+                    VerifiedBalanceEditor(
+                        context=context,
+                        account=setupBalanceAccount,
+                        onSaved={setupBalanceRevision++}
+                    )
+                    Text("A snapshot includes activity already reflected in that bank balance. Only transactions on later dates are added. No hold estimates are used.",
+                        color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
+                    Button(
+                        enabled=verifiedAccounts.isNotEmpty(),
+                        onClick={
+                            setupStage=4
+                            setupPrefs.edit().putInt("stage",4).apply()
+                            tab=0
+                        },
+                        modifier=Modifier.fillMaxWidth()
+                    ) { Text("Finish setup & open dashboard") }
+                    TextButton(onClick={
+                        setupStage=4
+                        setupPrefs.edit().putInt("stage",4).apply()
+                        tab=0
+                    },modifier=Modifier.fillMaxWidth()) { Text("Skip for now (balances unavailable)") }
+                    Text("You can verify another account or update any balance later under Accounts.",
+                        color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
                 }
             }
             if(setupStage>0) TextButton(onClick={setupStage--;setupPrefs.edit().putInt("stage",setupStage).apply()}) { Text("Back") }
