@@ -544,6 +544,8 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "account_labels" to listOf("fingerprint","label"),
             "merchant_category_rules" to listOf("merchant_key","category"),
             "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
+            "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
+            "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
             "transaction_audit_history" to TransactionAudit.backupColumns
         )
         specs.forEach { (table,cols) ->
