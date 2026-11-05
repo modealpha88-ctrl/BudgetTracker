@@ -33,29 +33,30 @@ fun DedicatedAccountScreen(
     val key = account.lowercase(Locale.ROOT)
     val anchorMinor = remember(key, refresh) { prefs.getLong("${key}_minor", Long.MIN_VALUE) }
     val anchorDate = remember(key, refresh) { prefs.getString("${key}_date", "").orEmpty() }
+    val anchorTime = remember(key, refresh) { prefs.getString("${key}_time", "").orEmpty() }
     val anchorDay = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
     val today = LocalDate.now()
     val accountTransactions = transactions.filter {
         FinanceCalculations.assignedAccount(it, labels).equals(account, ignoreCase = true)
     }.sortedByDescending { it.timestamp }
-    // October 29 method: only transactions on dates AFTER the verified snapshot.
+    // Same-day activity is included only when its precise time is after the snapshot clock.
     val afterAnchor = if (anchorDay == null) emptyList() else accountTransactions.filter { tx ->
         val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
-        date != null && date.isAfter(anchorDay) && !date.isAfter(today)
+        date != null && FinanceCalculations.afterSnapshot(tx, anchorDay, anchorTime) && !date.isAfter(today)
     }
     val unassigned = if (anchorDay == null) 0 else transactions.count { tx ->
         val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
-        date != null && date.isAfter(anchorDay) && !date.isAfter(today) &&
+        date != null && FinanceCalculations.afterSnapshot(tx, anchorDay, anchorTime) && !date.isAfter(today) &&
             FinanceCalculations.assignedAccount(tx, labels) == "Unassigned"
     }
     val netActivity = afterAnchor.sumOf { it.amountLaari }
     val estimated = FinanceCalculations.projectedBalance(
-        account, anchorMinor, anchorDate, transactions, labels, today
+        account, anchorMinor, anchorDate, transactions, labels, today, anchorTime
     )
     val historyDay = runCatching { LocalDate.parse(selectedDate) }.getOrNull()
     val historical = if (historyDay != null && anchorDay != null) {
         if (!historyDay.isBefore(anchorDay)) {
-            FinanceCalculations.projectedBalance(account, anchorMinor, anchorDate, transactions, labels, historyDay)
+            FinanceCalculations.projectedBalance(account, anchorMinor, anchorDate, transactions, labels, historyDay, anchorTime)
         } else {
             val reverse = accountTransactions.filter { tx ->
                 val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
@@ -95,7 +96,7 @@ fun DedicatedAccountScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer)
                         Text(
                             if (anchorDay == null) "Verify an opening balance to start tracking."
-                            else "Based on ${Money.format(anchorMinor)} verified on $anchorDate",
+                            else "Based on ${Money.format(anchorMinor)} verified on $anchorDate${if(anchorTime.isNotBlank()) " at $anchorTime" else " (date only)"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -117,7 +118,7 @@ fun DedicatedAccountScreen(
                             color = MaterialTheme.colorScheme.error)
                     }
                 }
-                Text("Estimates use the verified balance and transactions on later dates. This is not a live bank feed.",
+                Text("Estimates replay transactions after the verified snapshot time when available; otherwise only later dates. This is not a live bank feed.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
 

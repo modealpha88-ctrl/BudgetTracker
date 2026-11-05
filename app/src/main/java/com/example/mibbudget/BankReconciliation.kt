@@ -51,11 +51,14 @@ object BankReconciliation {
         require(statementDate.isAfter(anchor)) {
             "Choose a statement dated after the saved $account snapshot ($anchorDate)."
         }
+        val anchorTime=prefs.getString("${key}_time",null)
         val expected=FinanceCalculations.projectedBalance(
-            account,opening,anchorDate,transactions,labels,statementDate
+            account,opening,anchorDate,transactions,labels,statementDate,anchorTime
         ) ?: throw IllegalArgumentException("Unable to project balance safely")
-        val range=transactions.filter { it.timestamp.take(10)>anchorDate &&
-            it.timestamp.take(10)<=statementDate.toString() }
+        val range=transactions.filter {
+            FinanceCalculations.afterSnapshot(it,anchor,anchorTime) &&
+                it.timestamp.take(10)<=statementDate.toString()
+        }
         return Report(
             account,statementDate.toString(),anchorDate,opening,expected,amountMinor,
             range.count { FinanceCalculations.assignedAccount(it,labels)==account },

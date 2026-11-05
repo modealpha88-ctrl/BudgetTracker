@@ -88,13 +88,30 @@ class FinanceCalculationsTest {
 
 
 
+    @Test fun verifiedSnapshotClockIncludesOnlyLaterSameDayTransactions() {
+        val rows=listOf(
+            Tx(1,-1000,"Food","Before","2026-11-05T12:00:00","mib-a"),
+            Tx(2,-2500,"Food","After","2026-11-05T16:50:00","mib-b"),
+            Tx(3,9000,"Income","Next","2026-11-06T09:00:00","mib-c"),
+            Tx(4,-5000,"Food","Other account","2026-11-05T17:00:00","bml-d"),
+            Tx(5,-2000,"Food","At snapshot","2026-11-05T15:30:00","mib-e")
+        )
+        val labels=mapOf("bml-d" to "BML")
+        assertEquals(106500L,FinanceCalculations.projectedBalance(
+            "MIB",100000L,"2026-11-05",rows,labels,LocalDate.of(2026,11,6),"15:30:00"))
+        assertEquals(109000L,FinanceCalculations.projectedBalance(
+            "MIB",100000L,"2026-11-05",rows,labels,LocalDate.of(2026,11,6)))
+        assertEquals(97500L,FinanceCalculations.projectedBalance(
+            "MIB",100000L,"2026-11-05",rows,labels,LocalDate.of(2026,11,5),"15:30:00"))
+    }
+
     @Test fun october29ProjectionExcludesAllSnapshotDayMovements() {
         val entries=listOf(
             Tx(1,-1300,"Food","POS purchase","2026-11-04T15:00:00","mib-pos"),
             Tx(2,-700,"Food","POS purchase","2026-11-04T09:00:00","mib-before"),
             Tx(3,-500,"Food","POS purchase","2026-11-05T08:00:00","mib-next-day")
         )
-        assertEquals(102481L,FinanceCalculations.projectedBalance(
+        assertEquals(101181L,FinanceCalculations.projectedBalance(
             "MIB",102981L,"2026-11-04",entries,emptyMap(),LocalDate.of(2026,11,5),"14:00:00"))
         assertEquals(102481L,FinanceCalculations.projectedBalance(
             "MIB",102981L,"2026-11-04",entries,emptyMap(),LocalDate.of(2026,11,5),"16:00:00"))

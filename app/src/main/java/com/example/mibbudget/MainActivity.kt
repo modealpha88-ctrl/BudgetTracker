@@ -837,7 +837,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         account=setupBalanceAccount,
                         onSaved={setupBalanceRevision++}
                     )
-                    Text("A snapshot includes activity already reflected in that bank balance. Only transactions on later dates are added. No hold estimates are used.",
+                    Text("A snapshot includes activity already reflected in that bank balance. Transactions after the verified capture time are added (or only later dates if no time is known). No hold estimates are used.",
                         color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
                     Button(
                         enabled=verifiedAccounts.isNotEmpty(),
@@ -1824,7 +1824,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
                                 Text("Recorded account movements after reference: ${related.size}")
                                 val projected=FinanceCalculations.projectedBalance(
-                                    accountChoice,storedMinor,storedDate,transactions,accountLabels)
+                                    accountChoice,storedMinor,storedDate,transactions,accountLabels,
+                                    anchorTime=balancePrefs.getString("${key}_time",null))
                                 if(projected!=null) Text("Estimated current ${accountChoice} balance: ${Money.format(projected)}",
                                     style=MaterialTheme.typography.titleMedium)
                                 else Text("Account estimate unavailable. Check snapshot date and transaction values.")

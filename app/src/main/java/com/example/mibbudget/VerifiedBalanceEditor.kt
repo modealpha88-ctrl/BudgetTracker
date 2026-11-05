@@ -30,6 +30,8 @@ internal fun VerifiedBalanceEditor(
     val prefs = remember(context) { context.getSharedPreferences("balance_anchor", Context.MODE_PRIVATE) }
     val key = account.lowercase(Locale.ROOT)
     var statementDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
+    var statementTime by remember(account) { mutableStateOf("") }
+    var captureSource by remember(account) { mutableStateOf("") }
     var balanceInput by remember(account) { mutableStateOf("") }
     var reading by remember(account) { mutableStateOf(false) }
     var screenshotRecognized by remember(account) { mutableStateOf(false) }
@@ -37,24 +39,39 @@ internal fun VerifiedBalanceEditor(
     val today = LocalDate.now()
     val amount = Money.parseLaari(balanceInput)
     val date = runCatching { LocalDate.parse(statementDate) }.getOrNull()
-    val canSave = amount != null && amount >= 0L && date != null && !date.isAfter(today)
+    val validTime = statementTime.isBlank() || runCatching { java.time.LocalTime.parse(statementTime) }.isSuccess
+    val canSave = amount != null && amount >= 0L && date != null && !date.isAfter(today) && validTime
 
     val screenshotPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             reading = true
             status = ""
             screenshotRecognized = false
-            val captureDate = runCatching {
+            // Original EXIF creation time wins. File name is a fallback for screenshots without EXIF.
+            // Content-provider modification time is NOT reliable capture metadata.
+            val exifCapture = runCatching {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     val exif = androidx.exifinterface.media.ExifInterface(stream)
                     val raw = exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL)
                         ?: exif.getAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_DIGITIZED)
-                    raw?.let {
-                        LocalDateTime.parse(it, DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss"))
-                            .toLocalDate()
-                    }
+                    raw?.let { LocalDateTime.parse(it, DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss")) }
                 }
             }.getOrNull()
+            val screenshotName = runCatching {
+                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                    null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            }.getOrNull()
+            val filenameCapture = ScreenshotCaptureTime.fromFilename(screenshotName)
+            val captured = exifCapture ?: filenameCapture
+            val capturedFrom = when {
+                exifCapture != null -> "EXIF capture timestamp"
+                filenameCapture != null -> "Screenshot filename timestamp"
+                else -> ""
+            }
+            statementTime = ""
+            captureSource = ""
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             val image = runCatching { InputImage.fromFilePath(context, uri) }.getOrNull()
             if (image == null) {
@@ -69,9 +86,15 @@ internal fun VerifiedBalanceEditor(
                             status = "The MIB account-card balance was not recognized. Enter it manually."
                         } else {
                             balanceInput = java.math.BigDecimal.valueOf(parsed.availableMinor, 2).toPlainString()
-                            captureDate?.let { statementDate = it.toString() }
+                            if (captured != null && !captured.toLocalDate().isAfter(today)) {
+                                statementDate = captured.toLocalDate().toString()
+                                statementTime = captured.toLocalTime().withNano(0).toString()
+                                captureSource = capturedFrom
+                            }
                             screenshotRecognized = true
-                            status = "Account-card balance found. Confirm the date and amount below before saving."
+                            status = if (statementTime.isNotBlank())
+                                "Account-card balance found; $captureSource detected. Confirm the capture date, time and amount."
+                            else "Account-card balance found, but capture time was unavailable. Enter the time manually to include later same-day transactions."
                         }
                     }
                     .addOnFailureListener {
@@ -108,10 +131,19 @@ internal fun VerifiedBalanceEditor(
             }
             OutlinedTextField(
                 value = statementDate,
-                onValueChange = { statementDate = it.take(10); status = "" },
+                onValueChange = { statementDate = it.take(10); statementTime = ""; captureSource = ""; status = "" },
                 label = { Text("Snapshot date (YYYY-MM-DD)") },
                 singleLine = true, modifier = Modifier.fillMaxWidth()
             )
+            OutlinedTextField(
+                value = statementTime,
+                onValueChange = { statementTime = it.take(8); captureSource = ""; status = "" },
+                label = { Text("Snapshot capture time (HH:mm:ss, optional)") },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            if (captureSource.isNotBlank()) Text("Capture time source: $captureSource",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary)
             OutlinedTextField(
                 value = balanceInput,
                 onValueChange = { balanceInput = it; screenshotRecognized = false; status = "" },
@@ -126,21 +158,23 @@ internal fun VerifiedBalanceEditor(
             }
             if (screenshotRecognized) Text("Recognized from screenshot · review before saving",
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text("Only transactions dated after this snapshot are applied to your balance.",
+            Text(if (statementTime.isBlank())
+                    "Date-only snapshot: same-day transactions are excluded. Add a verified capture time to include transactions later that day."
+                else "Transactions after $statementDate $statementTime are applied, including later transactions on the same day.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(
                 onClick = {
                     val saving = amount
                     val savingDate = date
-                    if (saving == null || saving < 0L || savingDate == null || savingDate.isAfter(today)) {
+                    if (saving == null || saving < 0L || savingDate == null || savingDate.isAfter(today) || !validTime) {
                         status = "Enter a valid balance and a date that is not in the future."
                     } else {
                         val saved = prefs.edit()
                             .putString("${key}_date", savingDate.toString())
                             .putLong("${key}_minor", saving)
                             .remove("${key}_pending_time")
-                            .remove("${key}_time")
+                            .putString("${key}_time", statementTime)
                             .commit()
                         if (saved) {
                             status = "Verified ${Money.format(saving)} saved for $account."

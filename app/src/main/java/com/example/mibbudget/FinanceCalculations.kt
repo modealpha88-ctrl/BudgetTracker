@@ -1,6 +1,9 @@
 package com.example.mibbudget
 
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.time.YearMonth
 
 /** Read-only calculations: never modify statements, balances, or transaction records. */
@@ -67,10 +70,34 @@ object FinanceCalculations {
         labels[tx.fingerprint]?.takeIf { it.isNotBlank() }
             ?: if (tx.fingerprint.startsWith("mib-", ignoreCase = true)) "MIB" else "Unassigned"
 
+    /** Timestamp in the transaction ledger, when it has a real hour and minute. */
+    fun transactionDateTime(tx: Tx): LocalDateTime? {
+        val raw = tx.timestamp.trim().replace('T', ' ')
+        return runCatching { LocalDateTime.parse(raw, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) }.getOrNull()
+            ?: runCatching { LocalDateTime.parse(raw, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) }.getOrNull()
+            ?: TransactionPresentation.time(tx.description, tx.timestamp)?.let { time ->
+                runCatching {
+                    LocalDateTime.of(LocalDate.parse(tx.timestamp.take(10)), LocalTime.parse(time))
+                }.getOrNull()
+            }
+    }
+
+    /** Prefer an exact snapshot cutoff; preserve date-only legacy behavior without time. */
+    fun afterSnapshot(tx: Tx, anchor: LocalDate, cutoffTime: String?): Boolean {
+        val day = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull() ?: return false
+        if (day.isAfter(anchor)) return true
+        if (day.isBefore(anchor)) return false
+        val cutoff = cutoffTime?.takeIf { it.isNotBlank() }?.let {
+            runCatching { LocalTime.parse(it) }.getOrNull()
+        } ?: return false
+        val transactionTime = transactionDateTime(tx)?.toLocalTime() ?: return false
+        return transactionTime.isAfter(cutoff)
+    }
+
     /**
      * A saved bank snapshot plus subsequent movements assigned to that account.
      * Internal transfers ARE account movements even though they are not spending.
-     * October 29 method: only movements on dates after the snapshot date are replayed.
+     * Date-only anchors exclude same-day activity; a verified clock includes later movements.
      */
     fun projectedBalance(
         account: String, anchorMinor: Long, anchorDate: String,
@@ -83,7 +110,7 @@ object FinanceCalculations {
             (throughDate != null && throughDate.isBefore(anchor))) return null
         val movements = entries.filter { tx ->
             val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
-            date != null && date.isAfter(anchor) &&
+            date != null && afterSnapshot(tx, anchor, anchorTime) &&
                 (throughDate == null || !date.isAfter(throughDate)) &&
                 assignedAccount(tx, labels).equals(account, ignoreCase = true)
         }.sumOf { it.amountLaari }
