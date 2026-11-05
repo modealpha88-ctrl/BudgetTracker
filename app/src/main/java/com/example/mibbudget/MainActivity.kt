@@ -1179,9 +1179,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     accountLabels=accountLabels,
                     savedRecipients=remember(recipientRevision,revision,transactions) {
                         transactions.mapNotNull { tx ->
-                            val recipient=recipientPrefs.getString(tx.fingerprint,null)?.trim()
-                                ?.takeIf { it.isNotBlank() }
-                                ?: csvDetailsByFingerprint[tx.fingerprint]?.recipient?.takeIf { it.isNotBlank() }
+                            val recipient=TransactionPresentation.preferredRecipient(
+                                recipientPrefs.getString(tx.fingerprint,null),
+                                csvDetailsByFingerprint[tx.fingerprint]?.recipient
+                            )
                             recipient?.let { tx.fingerprint to it }
                         }.toMap()
                     },
@@ -2204,8 +2205,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     RecentActivityPreview(
                         transactions,
-                        savedRecipient={tx -> recipientPrefs.getString(tx.fingerprint,null)?.takeIf { it.isNotBlank() }
-                            ?: csvDetailsByFingerprint[tx.fingerprint]?.recipient},
+                        savedRecipient={tx -> TransactionPresentation.preferredRecipient(
+                            recipientPrefs.getString(tx.fingerprint,null),
+                            csvDetailsByFingerprint[tx.fingerprint]?.recipient
+                        )},
                         query=searchText,
                         filter=transactionFilter
                     ) { selectedTransactionId=it }
@@ -2267,8 +2270,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         !it.category.contains("Internal Transfer",ignoreCase=true) }
                     val rankingGroups = if(rankingMode=="Recipients")
                         rankedExpenses.groupBy { tx ->
-                            (recipientPrefs.getString(tx.fingerprint,null)?.takeIf { it.isNotBlank() }
-                                ?: TransactionPresentation.label(tx.description).trim().ifBlank { "Unknown recipient" })
+                            (TransactionPresentation.preferredRecipient(
+                                recipientPrefs.getString(tx.fingerprint,null),
+                                csvDetailsByFingerprint[tx.fingerprint]?.recipient
+                            ) ?: TransactionPresentation.label(tx.description).trim().ifBlank { "Unknown recipient" })
                                 .trim().uppercase(java.util.Locale.ROOT)
                         }
                     else rankedExpenses.groupBy { it.timestamp.take(10) }
@@ -2514,9 +2519,12 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     val reviewNeeded=transactions.filter { tx ->
                         val isTransfer=VendorProfiles.isTransfer(tx.description,tx.category)
-                        val recipient=recipientPrefs.getString(tx.fingerprint,"").orEmpty()
+                        val recipient=TransactionPresentation.preferredRecipient(
+                            recipientPrefs.getString(tx.fingerprint,null),
+                            csvDetailsByFingerprint[tx.fingerprint]?.recipient
+                        )
                         val parsed=TransactionPresentation.label(tx.description)
-                        val missingRecipient=isTransfer && recipient.isBlank() && !parsed.contains(" · ")
+                        val missingRecipient=isTransfer && recipient.isNullOrBlank() && !parsed.contains(" · ")
                         val merchantUnverified=!isTransfer && VendorProfiles.get(context,tx.description)==null
                         missingRecipient || merchantUnverified
                     }
@@ -2621,8 +2629,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                             Button(onClick={
                                 val merchant = transactions.firstOrNull { tx ->
-                                    (recipientPrefs.getString(tx.fingerprint,null)?.takeIf { it.isNotBlank() }
-                                        ?: TransactionPresentation.label(tx.description).trim())
+                                    (TransactionPresentation.preferredRecipient(
+                                        recipientPrefs.getString(tx.fingerprint,null),
+                                        csvDetailsByFingerprint[tx.fingerprint]?.recipient
+                                    ) ?: TransactionPresentation.label(tx.description).trim())
                                         .equals(rankedRecipientFilter,ignoreCase=true)
                                 }
                                 if(merchant!=null) {
@@ -2637,11 +2647,19 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
                     val filteredTransactions = transactions.filter { t ->
                         (rankedRecipientFilter==null || (
-                            (recipientPrefs.getString(t.fingerprint,null)?.takeIf { it.isNotBlank() }
-                                ?: TransactionPresentation.label(t.description).trim().ifBlank { "Unknown recipient" })
+                            (TransactionPresentation.preferredRecipient(
+                                recipientPrefs.getString(t.fingerprint,null),
+                                csvDetailsByFingerprint[t.fingerprint]?.recipient
+                            ) ?: TransactionPresentation.label(t.description).trim().ifBlank { "Unknown recipient" })
                                 .equals(rankedRecipientFilter,ignoreCase=true) &&
                             t.timestamp.startsWith(rankedRecipientMonth ?: rankingMonth))) &&
-                        (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true) || TransactionPresentation.displayLabel(t.description,t.category,recipientPrefs.getString(t.fingerprint,null)).contains(searchText,true)) &&
+                        (searchText.isBlank() || t.description.contains(searchText,true) || t.category.contains(searchText,true) || t.timestamp.contains(searchText) || Money.format(t.amountLaari).contains(searchText,true) ||
+                            TransactionPresentation.displayLabel(t.description,t.category,
+                                TransactionPresentation.preferredRecipient(
+                                    recipientPrefs.getString(t.fingerprint,null),
+                                    csvDetailsByFingerprint[t.fingerprint]?.recipient
+                                )).contains(searchText,true) ||
+                            csvDetailsByFingerprint[t.fingerprint]?.reference?.contains(searchText,true)==true) &&
                         (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
@@ -2881,10 +2899,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 })
                                 NeoTransactionIcon(t)
                                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                                    val savedName=recipientPrefs.getString(t.fingerprint,null).orEmpty()
+                                    val knownRecipient=TransactionPresentation.preferredRecipient(
+                                        recipientPrefs.getString(t.fingerprint,null),
+                                        csvDetailsByFingerprint[t.fingerprint]?.recipient
+                                    )
                                     // Recipient identity is independent of the spending category.
                                     val displayMerchant=TransactionPresentation.displayLabel(
-                                        t.description, t.category, savedName
+                                        t.description, t.category, knownRecipient
                                     )
                                     Text(displayMerchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
                                     val displayTime=TransactionPresentation.time(t.description,t.timestamp)
@@ -3245,7 +3266,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 val parsedLabel=TransactionPresentation.label(selectedTransaction.description)
                                 val parsedRecipient=parsedLabel.substringAfter(" · ","").trim()
                                 val csvLinked=csvDetailsByFingerprint[selectedTransaction.fingerprint]
-                                val knownRecipient=savedRecipient.ifBlank { csvLinked?.recipient.orEmpty() }.ifBlank { parsedRecipient }
+                                val knownRecipient=TransactionPresentation.preferredRecipient(
+                                     savedRecipient, csvLinked?.recipient
+                                 ).orEmpty().ifBlank { parsedRecipient }
                                 val recipient=knownRecipient
                                 Text(TransactionPresentation.displayLabel(selectedTransaction.description,selectedTransaction.category,knownRecipient),style=MaterialTheme.typography.titleMedium)
                                 if(!isTransfer) {

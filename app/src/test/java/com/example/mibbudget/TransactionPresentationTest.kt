@@ -14,6 +14,20 @@ class TransactionPresentationTest {
             TransactionPresentation.displayLabel("Favara transfer", "Transfers", "FIYAVALHU PRINTS"))
     }
 
+    @Test fun csvLinkedRecipientDisplaysInActivityWithoutManualName() {
+        val recipient = TransactionPresentation.preferredRecipient(null, " HAYYAAN HASSAN ")
+        assertEquals("HAYYAAN HASSAN", recipient)
+        assertEquals("Transfer · HAYYAAN HASSAN",
+            TransactionPresentation.displayLabel("Favara transfer", "Transfers", recipient))
+    }
+
+    @Test fun manualRecipientOverridesReviewedCsvName() {
+        assertEquals("MANUALLY CONFIRMED",
+            TransactionPresentation.preferredRecipient(" MANUALLY CONFIRMED ", "HAYYAAN HASSAN"))
+        assertEquals("HAYYAAN HASSAN",
+            TransactionPresentation.preferredRecipient("  ", " HAYYAAN HASSAN "))
+    }
+
     @Test fun unknownTransferRemainsGenericRatherThanGuessing() {
         assertEquals("Favara transfer",
             TransactionPresentation.displayLabel("Favara transfer", "Transfers", null))

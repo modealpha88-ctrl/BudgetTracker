@@ -17,7 +17,14 @@ object TransactionPresentation {
             if(h in 0..23 && m in 0..59 && (h!=0 || m!=0)) "%02d:%02d".format(java.util.Locale.US,h,m) else null
         }
     }
-    /** A manually confirmed recipient is a display identity, regardless of category. */
+    /** A manual name takes priority; a reviewed CSV link can fill the gap. */
+    fun preferredRecipient(manualName: String?, linkedCsvRecipient: String?): String? {
+        val manual = manualName?.trim().orEmpty()
+        if (manual.isNotEmpty()) return manual
+        return linkedCsvRecipient?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    /** An identified recipient is a display identity, regardless of category. */
     fun displayLabel(description: String, category: String, savedRecipient: String?): String {
         val recipient = savedRecipient?.trim().orEmpty()
         val transfer = description.contains("transfer", ignoreCase = true) ||
