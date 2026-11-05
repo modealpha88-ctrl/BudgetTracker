@@ -88,8 +88,8 @@ object MibScreenshotParser {
         val availableToken = tokens
             .filter { it != holdToken && it != currentToken }
             .minByOrNull { it.start }
-        val available = availableToken?.minor?.let(kotlin.math::abs) ?: 0L
-        val holdAmount = holdToken?.minor?.let(kotlin.math::abs) ?: 0L
+        val available = availableToken?.minor?.let { kotlin.math.abs(it) } ?: 0L
+        val holdAmount = holdToken?.minor?.let { kotlin.math.abs(it) } ?: 0L
         val displayedCurrent = kotlin.math.abs(currentToken.minor)
 
         return MibScreenshotSnapshot(available, holdAmount, displayedCurrent)
