@@ -118,7 +118,7 @@ class FinanceCalculationsTest {
         assertEquals(102981L, parsed.reconstructedCurrentMinor)
     }
 
-    @Test fun mibScreenshotParserRejectsMismatchedOrUnlabelledFigures() {
+    @Test fun mibScreenshotParserUsesBankDisplayedCurrentEvenWhenHoldDiffers() {
         val mismatch = """
             Account Details
             MVR 171.79
@@ -128,7 +128,14 @@ class FinanceCalculationsTest {
             Current Balance
             Transactions
         """.trimIndent()
-        assertNull(MibScreenshotParser.parse(mismatch))
+        val parsed = MibScreenshotParser.parse(mismatch)
+        requireNotNull(parsed)
+        assertEquals(17179L, parsed.availableMinor)
+        assertEquals(85802L, parsed.holdMinor)
+        assertEquals(100000L, parsed.displayedCurrentMinor)
+        // A display mismatch must never silently replace the bank's own balance
+        // with a reconstructed value.
+        assertEquals(102981L, parsed.reconstructedCurrentMinor)
         assertNull(MibScreenshotParser.parse("MVR 171.79\nMVR 858.02"))
     }
 
