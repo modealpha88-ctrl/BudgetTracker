@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.Telephony
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -22,19 +21,11 @@ object SmsHistoryImporter {
             while(cursor.moveToNext() && scanned < 10000) {
                 scanned++
                 val body=cursor.getString(bodyIndex) ?: continue
-                val declined = BankSmsParser.parseDeclined(body)
-                if (declined != null) {
-                    if (store.addDeclined(declined)) imported++ else duplicates++
-                    continue
+                when (BankSmsImporter.importBody(store, body)) {
+                    BankSmsImporter.Outcome.IMPORTED -> imported++
+                    BankSmsImporter.Outcome.DUPLICATE -> duplicates++
+                    BankSmsImporter.Outcome.IGNORED -> ignored++
                 }
-                val foreign = BankSmsParser.parseBmlCard(body)
-                if (foreign != null) {
-                    if (store.addForeign(foreign)) imported++ else duplicates++
-                    continue
-                }
-                val candidate=SalarySmsParser.parse(body) ?: BankSmsParser.parse(body)
-                if(candidate==null) { ignored++; continue }
-                if(store.add(candidate.amountLaari,candidate.category,candidate.description,candidate.fingerprint,candidate.transactionTime,sourceAccount="MIB")) imported++ else duplicates++
             }
         }
         return Result(scanned,imported,duplicates,ignored)
