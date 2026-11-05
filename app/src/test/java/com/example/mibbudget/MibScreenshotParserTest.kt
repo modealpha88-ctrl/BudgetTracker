@@ -116,4 +116,55 @@ class MibScreenshotParserTest {
         assertEquals(85802L, result.holdMinor)
         assertEquals(102981L, result.reconstructedCurrentMinor)
     }
+
+    @Test fun readsActualMibOcrWithCurrentBalanceBelowTransactions() {
+        val ocr = """
+            T
+            MVR 6,298.79
+            Account Details
+            ........
+            Mohd.ibrahim Saving Account
+            MVR -845.02
+            Amount on Hold
+            Transactions
+            -MVR 3,500.00
+            Bml - Siyama Hassan
+            Favara Transfer VWeb · November 5, 2026
+            MVR 9,627.00
+            SALARY DEPOSIT November 5, 2026
+            -MVR 13.00
+            Purchase MIB · November 5, 2026
+            -MVR 71.00
+            Aishath I.
+            MVR 7,143.81
+            Current Balance
+            IB Acc to Acc · November 4, 2026
+            -MVR 49.00
+        """.trimIndent()
+        val result = MibScreenshotParser.parse(ocr)
+        requireNotNull(result)
+        assertEquals(629879L, result.availableMinor)
+        assertEquals(84502L, result.holdMinor)
+        assertEquals(714381L, result.displayedCurrentMinor)
+        assertEquals(true, result.reconcilesWithBank)
+    }
+
+    @Test fun doesNotTreatLaterSalaryOrCardPurchaseAsAvailableBalance() {
+        val ocr = """
+            MVR 6,298.79
+            Account Details
+            MVR -845.02
+            Amount on Hold
+            Transactions
+            MVR 9,627.00
+            SALARY DEPOSIT
+            -MVR 71.00
+            MVR 7,143.81
+            Current Balance
+        """.trimIndent()
+        val result = MibScreenshotParser.parse(ocr)
+        requireNotNull(result)
+        assertEquals(629879L, result.availableMinor)
+        assertEquals(714381L, result.displayedCurrentMinor)
+    }
 }
