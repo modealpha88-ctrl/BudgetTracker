@@ -43,17 +43,21 @@ class MibScreenshotParserTest {
         assertEquals(102981L, result.reconstructedCurrentMinor)
     }
 
-    @Test fun rejectsScreenshotWhenFiguresDoNotReconcile() {
+    @Test fun usesBankDisplayedCurrentBalanceEvenWhenAvailablePlusHoldDiffers() {
         val ocr = """
             Account Details
             MVR 171.79
             Amount on Hold
             MVR -858.02
             Current Balance
-            MVR 999.00
+            MVR 7,143.81
         """.trimIndent()
 
-        assertNull(MibScreenshotParser.parse(ocr))
+        val result = MibScreenshotParser.parse(ocr)
+        requireNotNull(result)
+        assertEquals(17179L, result.availableMinor)
+        assertEquals(85802L, result.holdMinor)
+        assertEquals(714381L, result.displayedCurrentMinor)
     }
 
     @Test fun parsesMibLayoutWhenBothFiguresAppearBeforeTheirLabels() {
