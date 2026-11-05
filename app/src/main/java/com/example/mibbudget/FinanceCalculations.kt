@@ -94,7 +94,7 @@ object FinanceCalculations {
     /**
      * A saved bank snapshot plus subsequent movements assigned to that account.
      * Internal transfers ARE account movements even though they are not spending.
-     * The date bound is inclusive; only movements after the snapshot clock (or date-only anchor) are replayed.
+     * October 29 method: only movements on dates after the snapshot date are replayed.
      */
     fun projectedBalance(
         account: String, anchorMinor: Long, anchorDate: String,
@@ -107,7 +107,7 @@ object FinanceCalculations {
             (throughDate != null && throughDate.isBefore(anchor))) return null
         val movements = entries.filter { tx ->
             val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
-            date != null && (date.isAfter(anchor) || (date==anchor && anchorTime!=null && runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()?.isAfter(runCatching { java.time.LocalTime.parse(anchorTime) }.getOrNull())==true)) &&
+            date != null && date.isAfter(anchor) &&
                 (throughDate == null || !date.isAfter(throughDate)) &&
                 assignedAccount(tx, labels).equals(account, ignoreCase = true)
         }.sumOf { it.amountLaari }
