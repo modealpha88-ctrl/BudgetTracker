@@ -31,8 +31,7 @@ fun DedicatedAccountScreen(
     val prefs = remember(context) { context.getSharedPreferences("balance_anchor", Context.MODE_PRIVATE) }
     var account by remember(initialAccount) { mutableStateOf(initialAccount) }
     var refresh by remember { mutableIntStateOf(0) }
-    var availableInput by remember(account) { mutableStateOf("") }
-    var bankHoldInput by remember(account) { mutableStateOf(if(account=="MIB") "858.02" else "0.00") }
+    var currentBalanceInput by remember(account) { mutableStateOf("") }
     var enteredDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var selectedDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
     var message by remember { mutableStateOf("") }
@@ -54,15 +53,16 @@ fun DedicatedAccountScreen(
                 screenshotText = result.text.replace(Regex("""\b\d{8,}\b"""), "••••••••").take(1200)
                 val parsed = MibScreenshotParser.parse(result.text)
                 if (parsed != null) {
-                    availableInput = "%.2f".format(java.util.Locale.US, parsed.availableMinor / 100.0)
-                    bankHoldInput = "%.2f".format(java.util.Locale.US, parsed.holdMinor / 100.0)
+                    currentBalanceInput = parsed.displayedCurrentMinor?.let {
+                        "%.2f".format(java.util.Locale.US, it / 100.0)
+                    }.orEmpty()
                     enteredDate = captured?.toLocalDate()?.toString() ?: LocalDate.now().toString()
                     captured?.let { prefs.edit().putString("${accountKey}_pending_time", it.toLocalTime().toString()).apply() }
                     screenshotReady = true
-                    message = "MIB screenshot figures detected. Review the available balance and bank hold before saving."
+                    message = "MIB current balance detected. Review the bank-displayed balance before saving."
                 } else {
                     screenshotReady = false
-                    message = "Could not safely identify both available balance and amount on hold. Please enter them manually."
+                    message = "Could not identify the bank-displayed current balance. Please enter it manually."
                 }
             }.addOnFailureListener { message = "Screenshot OCR failed: ${it.message?.take(80)}" }
                 .addOnCompleteListener { recognizer.close() }
@@ -70,7 +70,6 @@ fun DedicatedAccountScreen(
     }
     val anchorMinor = prefs.getLong("${accountKey}_minor", Long.MIN_VALUE)
     val anchorDate = prefs.getString("${accountKey}_date", "").orEmpty()
-    val amountOnHold = FinanceCalculations.recentCardHold(account, transactions, labels)
     val anchorDay = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
     val anchorTime = prefs.getString("${accountKey}_time", null)?.takeIf { it.isNotBlank() }
     val anchorClock = anchorTime?.let { runCatching { java.time.LocalTime.parse(it) }.getOrNull() }
@@ -120,12 +119,9 @@ fun DedicatedAccountScreen(
                 Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
                     modifier=Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Text("$account · Estimated current balance")
+                        Text("$account · Current balance")
                         Text(currentBalance?.let(Money::format) ?: "Balance not set",
                             style=MaterialTheme.typography.headlineLarge)
-                        Text("Estimated card holds (under MVR 1,000 · last 120 hours): −${Money.format(amountOnHold)}")
-                        Text("Available balance: ${currentBalance?.let { runCatching { Math.subtractExact(it, amountOnHold) }.getOrNull() }?.let(Money::format) ?: "Unavailable"}",
-                            style=MaterialTheme.typography.titleMedium)
                         Text(if(anchorDay==null) "Save a verified balance to start tracking."
                              else "Verified ${Money.format(anchorMinor)} on $anchorDate + ${afterAnchor.size} recorded movements")
                         if(unassigned>0) Text("$unassigned unassigned transactions excluded; estimate may be incomplete.",
@@ -137,8 +133,6 @@ fun DedicatedAccountScreen(
                     Text("Verified snapshot: ${Money.format(anchorMinor)} · $anchorDate")
                     Text("Recorded movements: ${Money.format(afterAnchor.sumOf { it.amountLaari })}")
                     Text("Estimated today: ${currentBalance?.let(Money::format) ?: "Unavailable"}")
-                    Text("Amount on hold: −${Money.format(amountOnHold)}")
-                    Text("Available after holds: ${currentBalance?.let { runCatching { Math.subtractExact(it, amountOnHold) }.getOrNull() }?.let(Money::format) ?: "Unavailable"}")
                     Text("This is not a live bank feed. Compare it with your bank statement before treating it as confirmed.",
                         style=MaterialTheme.typography.bodySmall)
                 } else Text("No verified snapshot saved.")
@@ -167,21 +161,16 @@ fun DedicatedAccountScreen(
                 }
                 OutlinedTextField(value=enteredDate,onValueChange={enteredDate=it},
                     label={Text("Statement date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
-                OutlinedTextField(value=availableInput,onValueChange={availableInput=it},
-                    label={Text("Available balance from bank screenshot (MVR)")},modifier=Modifier.fillMaxWidth())
-                OutlinedTextField(value=bankHoldInput,onValueChange={bankHoldInput=it},
-                    label={Text("Bank-reported amount on hold (MVR)")},modifier=Modifier.fillMaxWidth())
-                val availableMinor=Money.parseLaari(availableInput)
-                val bankHoldMinor=Money.parseLaari(bankHoldInput)
-                val calculatedSnapshot=if(availableMinor!=null && bankHoldMinor!=null)
-                    FinanceCalculations.snapshotCurrentBalance(availableMinor,bankHoldMinor) else null
-                Text("Calculated current balance: ${calculatedSnapshot?.let(Money::format) ?: "Enter valid amounts"}",
+                OutlinedTextField(value=currentBalanceInput,onValueChange={currentBalanceInput=it},
+                    label={Text("Current balance from MIB screenshot (MVR)")},modifier=Modifier.fillMaxWidth())
+                val snapshotAmount=Money.parseLaari(currentBalanceInput)
+                Text("Snapshot balance: ${snapshotAmount?.let(Money::format) ?: "Enter the bank-displayed current balance"}",
                     style=MaterialTheme.typography.titleMedium)
                 Button(onClick={
                     val date=runCatching { LocalDate.parse(enteredDate) }.getOrNull()
-                    val amount=calculatedSnapshot
-                    if(date==null || date.isAfter(today) || amount==null)
-                        message="Enter a valid date, available balance and bank-reported hold."
+                    val amount=snapshotAmount
+                    if(date==null || date.isAfter(today) || amount==null || amount < 0L)
+                        message="Enter a valid date and the current balance displayed by MIB."
                     else {
                         prefs.edit().putString("${accountKey}_date",date.toString())
                             .putLong("${accountKey}_minor",amount)
@@ -190,9 +179,9 @@ fun DedicatedAccountScreen(
                             .apply()
                         refresh++
                         screenshotReady=false
-                        message="Snapshot saved: available balance + bank-reported hold. Estimated card holds are calculated separately over 120 hours."
+                        message="Bank current-balance snapshot saved. No estimated card holds are applied."
                     }
-                },modifier=Modifier.fillMaxWidth()) { Text("Save calculated snapshot") }
+                },modifier=Modifier.fillMaxWidth()) { Text("Save bank balance snapshot") }
                 if(message.isNotBlank()) Text(message)
                 HorizontalDivider()
                 Text("Balance history",style=MaterialTheme.typography.titleLarge)
