@@ -53,38 +53,31 @@ fun DedicatedAccountScreen(
                 screenshotText = result.text.replace(Regex("""\b\d{8,}\b"""), "••••••••").take(1200)
                 val parsed = MibScreenshotParser.parse(result.text)
                 if (parsed != null) {
-                    currentBalanceInput = parsed.displayedCurrentMinor?.let {
-                        "%.2f".format(java.util.Locale.US, it / 100.0)
-                    }.orEmpty()
+                    currentBalanceInput = "%.2f".format(java.util.Locale.US, parsed.availableMinor / 100.0)
                     enteredDate = captured?.toLocalDate()?.toString() ?: LocalDate.now().toString()
                     captured?.let { prefs.edit().putString("${accountKey}_pending_time", it.toLocalTime().toString()).apply() }
                     screenshotReady = true
-                    message = "MIB current balance detected. Review the bank-displayed balance before saving."
+                    message = "MIB account-card balance detected. Review and save the available balance."
                 } else {
                     screenshotReady = false
-                    message = "Could not identify the bank-displayed current balance. Please enter it manually."
+                    message = "Could not identify the MIB account-card balance. Please enter it manually."
                 }
             }.addOnFailureListener { message = "Screenshot OCR failed: ${it.message?.take(80)}" }
                 .addOnCompleteListener { recognizer.close() }
         } catch (e: Exception) { message = "Could not read screenshot: ${e.message?.take(80)}" }
     }
-    val anchorMinor = prefs.getLong("${accountKey}_minor", Long.MIN_VALUE)
-    val anchorDate = prefs.getString("${accountKey}_date", "").orEmpty()
+    val anchorMinor = remember(accountKey, refresh) { prefs.getLong("${accountKey}_minor", Long.MIN_VALUE) }
+    val anchorDate = remember(accountKey, refresh) { prefs.getString("${accountKey}_date", "").orEmpty() }
     val anchorDay = runCatching { LocalDate.parse(anchorDate) }.getOrNull()
-    val anchorTime = prefs.getString("${accountKey}_time", null)?.takeIf { it.isNotBlank() }
-    val anchorClock = anchorTime?.let { runCatching { java.time.LocalTime.parse(it) }.getOrNull() }
+    val anchorTime = remember(accountKey, refresh) { prefs.getString("${accountKey}_time", null)?.takeIf { it.isNotBlank() } }
     val today = LocalDate.now()
     val accountTransactions = transactions.filter {
         FinanceCalculations.assignedAccount(it, labels).equals(account, ignoreCase = true)
     }.sortedByDescending { it.timestamp }
-    // Keep the detail screen aligned with the dashboard: transactions later on the
-    // snapshot date count only when a snapshot clock time was recorded.
+    // October 29 method: include only transactions on later calendar dates.
     val isAfterSnapshot: (Tx) -> Boolean = { tx ->
         val date = runCatching { LocalDate.parse(tx.timestamp.take(10)) }.getOrNull()
-        val clock = runCatching { java.time.LocalTime.parse(tx.timestamp.substring(11).take(8)) }.getOrNull()
-        date != null && (date.isAfter(anchorDay) ||
-            (date == anchorDay && anchorClock != null && clock != null && clock.isAfter(anchorClock))) &&
-            !date.isAfter(today)
+        date != null && anchorDay != null && date.isAfter(anchorDay) && !date.isAfter(today)
     }
     val currentBalance = FinanceCalculations.projectedBalance(account, anchorMinor, anchorDate, transactions, labels, today, anchorTime)
     val afterAnchor = if (anchorDay != null) accountTransactions.filter(isAfterSnapshot) else emptyList()
@@ -138,7 +131,7 @@ fun DedicatedAccountScreen(
                 } else Text("No verified snapshot saved.")
                 HorizontalDivider()
                 Text("Set verified balance",style=MaterialTheme.typography.titleLarge)
-                OutlinedButton(onClick={screenshotPicker.launch("image/*")},modifier=Modifier.fillMaxWidth()) { Text("Read MIB bank screenshot") }
+                if (account == "MIB") OutlinedButton(onClick={screenshotPicker.launch("image/*")},modifier=Modifier.fillMaxWidth()) { Text("Read MIB bank screenshot") }
                 if (screenshotText.isNotBlank()) {
                     Text(
                         if (screenshotReady) "Screenshot figures detected — review before saving."
@@ -162,15 +155,15 @@ fun DedicatedAccountScreen(
                 OutlinedTextField(value=enteredDate,onValueChange={enteredDate=it},
                     label={Text("Statement date (YYYY-MM-DD)")},modifier=Modifier.fillMaxWidth())
                 OutlinedTextField(value=currentBalanceInput,onValueChange={currentBalanceInput=it},
-                    label={Text("Current balance from MIB screenshot (MVR)")},modifier=Modifier.fillMaxWidth())
+                    label={Text(if(account == "MIB") "Available balance from MIB screenshot (MVR)" else "Verified balance (MVR)")},modifier=Modifier.fillMaxWidth())
                 val snapshotAmount=Money.parseLaari(currentBalanceInput)
-                Text("Snapshot balance: ${snapshotAmount?.let(Money::format) ?: "Enter the bank-displayed current balance"}",
+                Text("Snapshot balance: ${snapshotAmount?.let(Money::format) ?: "Enter the verified balance"}",
                     style=MaterialTheme.typography.titleMedium)
                 Button(onClick={
                     val date=runCatching { LocalDate.parse(enteredDate) }.getOrNull()
                     val amount=snapshotAmount
                     if(date==null || date.isAfter(today) || amount==null || amount < 0L)
-                        message="Enter a valid date and the current balance displayed by MIB."
+                        message="Enter a valid date and non-negative account balance."
                     else {
                         prefs.edit().putString("${accountKey}_date",date.toString())
                             .putLong("${accountKey}_minor",amount)
@@ -179,7 +172,7 @@ fun DedicatedAccountScreen(
                             .apply()
                         refresh++
                         screenshotReady=false
-                        message="Bank current-balance snapshot saved. No estimated card holds are applied."
+                        message="Verified account balance saved. No hold calculation is used."
                     }
                 },modifier=Modifier.fillMaxWidth()) { Text("Save bank balance snapshot") }
                 if(message.isNotBlank()) Text(message)
