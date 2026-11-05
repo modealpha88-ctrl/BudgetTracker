@@ -20,7 +20,9 @@ data class DeclinedTx(val id: Long, val amountLaari: Long, val currency: String,
 
 data class Tx(val id: Long, val amountLaari: Long, val category: String, val description: String, val timestamp: String, val fingerprint: String)
 
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 9) {
+// SQLiteOpenHelper only implements AutoCloseable on API 29+. Declare Closeable
+// ourselves so receiver/worker use blocks also work on supported Android 8 and 9.
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 9), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")

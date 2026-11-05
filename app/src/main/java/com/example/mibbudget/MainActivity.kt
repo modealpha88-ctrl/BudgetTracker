@@ -191,6 +191,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         monitoring = granted
         prefs.edit().putBoolean("enabled", granted).apply()
+        permissionRefresh++
     }
     var notice by remember { mutableStateOf("") }
     // Each new notice resets the timer; persistent status banners must not obscure the dashboard.
@@ -345,9 +346,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     var historyRequested by remember { mutableStateOf(false) }
     var historyMonths by remember { mutableStateOf(1L) }
     val historyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permissionRefresh++
         if (granted) historyRequested = true else notice = "SMS inbox permission denied. Manual import still works."
     }
     var revision by remember { mutableIntStateOf(0) }
+    // Live broadcasts and background recovery must invalidate all cached balances/lists.
+    LaunchedEffect(Unit) {
+        BankSmsImporter.revision.collect { revision++ }
+    }
     val csvDetailsByFingerprint=remember(revision) { store.csvDetails() }
     val transactions = store.all()
     // Once the first CSV has established a baseline, subsequent imports never require another CSV.
@@ -358,6 +364,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         setupPrefs.edit().putBoolean("completed", true).apply()
     }
     val initialCsvSetupComplete = setupPrefs.getBoolean("completed", false)
+    LaunchedEffect(monitoring, permissionRefresh, initialCsvSetupComplete) {
+        AutomaticSmsImport.reconcile(context)
+    }
     var setupStage by remember { mutableIntStateOf(setupPrefs.getInt("stage", if (initialCsvSetupComplete) 4 else 0)) }
     if (initialCsvSetupComplete && setupStage == 0) {
         setupStage = 4
@@ -1072,7 +1081,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text("Auto-import recognized bank SMS")
-                        Text("Requires RECEIVE_SMS permission. Supported MIB and BML transaction formats import automatically after enabling.", style=MaterialTheme.typography.bodySmall)
+                        Text("New supported MIB and BML messages import on arrival. Inbox access also enables automatic recovery of missed messages in the background and when you open the app.", style=MaterialTheme.typography.bodySmall)
                     }
                     Switch(checked=monitoring, onCheckedChange={ enabled ->
                         if (!enabled) {
@@ -1086,6 +1095,23 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             prefs.edit().putBoolean("enabled", true).apply()
                         } else permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                     })
+                }
+                if (monitoring) {
+                    val inboxGranted = remember(permissionRefresh) { AutomaticSmsImport.hasInboxAccess(context) }
+                    val receiveGranted = remember(permissionRefresh) {
+                        context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+                    }
+                    Text(when {
+                        !receiveGranted -> "Incoming SMS permission missing. Enable it for live import."
+                        !inboxGranted -> "Live import enabled. Allow inbox access to recover missed messages automatically."
+                        else -> "Live import and automatic inbox recovery enabled."
+                    }, style=MaterialTheme.typography.bodySmall)
+                    if (!receiveGranted) OutlinedButton(onClick={permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)}) {
+                        Text("Allow incoming SMS")
+                    }
+                    if (!inboxGranted) OutlinedButton(onClick={historyLauncher.launch(Manifest.permission.READ_SMS)}) {
+                        Text("Enable automatic inbox recovery")
+                    }
                 }
                 Text("Import a CSV once during initial setup; afterward built-in SMS templates work without pasting samples or uploading CSV again. Review entries; bank sender names can be spoofed.", style=MaterialTheme.typography.bodySmall)
 

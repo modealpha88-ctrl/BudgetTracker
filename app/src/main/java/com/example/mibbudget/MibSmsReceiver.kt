@@ -6,35 +6,39 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Telephony
+import java.util.concurrent.Executors
 
-/** Opt-in RECEIVE_SMS only; never reads inbox history, stores raw SMS, or sends SMS. */
+/** Live SMS delivery; background inbox recovery is separately gated by READ_SMS. */
 class MibSmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
-        if (!context.getSharedPreferences("sms_settings", Context.MODE_PRIVATE).getBoolean("enabled", false)) return
+        if (!AutomaticSmsImport.enabled(context)) return
         if (context.checkSelfPermission(Manifest.permission.RECEIVE_SMS) != PackageManager.PERMISSION_GRANTED) return
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages.isEmpty()) return
-        // Multipart SMS: group parts by originating address, preserving received order.
         val grouped = messages.groupBy { it.originatingAddress.orEmpty() }
-        TransactionStore(context).use { store ->
-            // A statement baseline must be imported before SMS can add gap transactions.
-            if (store.all().none { it.fingerprint.startsWith("csv-") }) return
-            for ((_, parts) in grouped) {
-                val body = parts.joinToString("") { it.messageBody.orEmpty() }
-                val declined = BankSmsParser.parseDeclined(body)
-                if (declined != null) {
-                    store.addDeclined(declined)
-                    continue
+        val pending = goAsync()
+        val appContext = context.applicationContext
+        executor.execute {
+            try {
+                if (!AutomaticSmsImport.enabled(appContext)) return@execute
+                TransactionStore(appContext).use { store ->
+                    if (!AutomaticSmsImport.setupComplete(appContext, store)) return@use
+                    for (parts in grouped.values) {
+                        if (!AutomaticSmsImport.enabled(appContext)) break
+                        BankSmsImporter.importBody(store, parts.joinToString("") { it.messageBody.orEmpty() })
+                    }
                 }
-                val bmlCard = BankSmsParser.parseBmlCard(body)
-                if (bmlCard != null) { store.addForeign(bmlCard); continue }
-                // Salary credits are parsed separately from the other MIB SMS templates.
-                val candidate = SalarySmsParser.parse(body) ?: BankSmsParser.parse(body) ?: continue
-                // Sender names/numbers can be spoofed: the parser is not bank authentication.
-                store.add(candidate.amountLaari, candidate.category, candidate.description,
-                    candidate.fingerprint, candidate.transactionTime, sourceAccount = "MIB")
+            } catch (_: Exception) {
+                // The next automatic inbox pass can recover a failed live write.
+                runCatching { AutomaticSmsImport.reconcile(appContext) }
+            } finally {
+                pending.finish()
             }
         }
+    }
+
+    companion object {
+        private val executor = Executors.newSingleThreadExecutor()
     }
 }
