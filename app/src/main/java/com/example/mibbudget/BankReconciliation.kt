@@ -28,19 +28,16 @@ object BankReconciliation {
         val actualMinor: Long,
         val appliedMovements: Int,
         val unassignedMovements: Int,
-        val createdAt: String,
-        val amountOnHoldMinor: Long = 0L
+        val createdAt: String
     ) {
         val differenceMinor: Long get() = actualMinor - expectedMinor
-        val availableMinor: Long? get() = runCatching { Math.subtractExact(actualMinor, amountOnHoldMinor) }.getOrNull()
     }
 
     fun compare(
         context: Context, account: String, dateText: String, amountMinor: Long,
-        transactions: List<Tx>, labels: Map<String, String>, amountOnHoldMinor: Long = 0L
+        transactions: List<Tx>, labels: Map<String, String>
     ): Report {
         require(account in listOf("MIB","BML","Cash")) { "Choose a supported account" }
-        require(amountOnHoldMinor >= 0L) { "Amount on hold cannot be negative" }
         val statementDate = LocalDate.parse(dateText)
         require(!statementDate.isAfter(LocalDate.now())) { "Statement date cannot be in the future" }
         val prefs=context.getSharedPreferences("balance_anchor",Context.MODE_PRIVATE)
@@ -63,7 +60,7 @@ object BankReconciliation {
             account,statementDate.toString(),anchorDate,opening,expected,amountMinor,
             range.count { FinanceCalculations.assignedAccount(it,labels)==account },
             range.count { FinanceCalculations.assignedAccount(it,labels)=="Unassigned" },
-            LocalDateTime.now().toString(),amountOnHoldMinor
+            LocalDateTime.now().toString()
         )
     }
 
@@ -75,7 +72,7 @@ object BankReconciliation {
             .put("anchorDate",report.anchorDate).put("opening",report.openingMinor)
             .put("expected",report.expectedMinor).put("actual",report.actualMinor)
             .put("movements",report.appliedMovements).put("unassigned",report.unassignedMovements)
-            .put("createdAt",report.createdAt).put("amountOnHold",report.amountOnHoldMinor)
+            .put("createdAt",report.createdAt)
         val limited=JSONArray().put(entry)
         for(i in 0 until minOf(rows.length(),99)) limited.put(rows.getJSONObject(i))
         prefs.edit().putString("reports",limited.toString()).apply()
@@ -89,7 +86,7 @@ object BankReconciliation {
             Report(item.getString("account"),item.getString("statementDate"),
                 item.getString("anchorDate"),item.getLong("opening"),item.getLong("expected"),
                 item.getLong("actual"),item.getInt("movements"),item.getInt("unassigned"),
-                item.getString("createdAt"),item.optLong("amountOnHold",0L))
+                item.getString("createdAt"))
         }
     }.getOrDefault(emptyList())
 }
@@ -118,11 +115,10 @@ fun ReconciliationPanel(
                 modifier=Modifier.fillMaxWidth())
             OutlinedButton(onClick={
                 val amount=Money.parseLaari(amountInput.removePrefix("-"))
-                val held=FinanceCalculations.recentCardHold(account,transactions,labels)
                 if(amount==null) onNotice("Enter a valid statement balance.")
                 else try {
                     comparison=BankReconciliation.compare(context,account,dateInput,
-                        if(amountInput.startsWith("-")) -amount else amount,transactions,labels,held)
+                        if(amountInput.startsWith("-")) -amount else amount,transactions,labels)
                 } catch(e:Exception) { comparison=null;onNotice(e.message ?: "Comparison failed") }
             }) { Text("Compare statement") }
             comparison?.let { report ->
@@ -130,8 +126,6 @@ fun ReconciliationPanel(
                 Text("Saved opening: ${Money.format(report.openingMinor)} on ${report.anchorDate}")
                 Text("Calculated closing: ${Money.format(report.expectedMinor)}")
                 Text("Statement closing: ${Money.format(report.actualMinor)}")
-                Text("Amount on hold: −${Money.format(report.amountOnHoldMinor)}")
-                Text("Available balance after holds: ${report.availableMinor?.let(Money::format) ?: "Overflow"}",fontWeight=FontWeight.Bold)
                 Text("Difference (statement minus calculation): ${Money.format(report.differenceMinor)}",
                     color=if(report.differenceMinor==0L) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.error,
