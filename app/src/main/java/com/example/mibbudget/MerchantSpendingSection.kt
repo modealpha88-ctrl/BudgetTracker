@@ -19,25 +19,39 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Read-only ranking of merchant purchases already present in the transaction ledger. */
+/** Read-only ranking of merchant purchases and identified outgoing transfers. */
 internal object MerchantSpending {
     data class Summary(val name: String, val amountLaari: Long, val transactions: List<Tx>) {
         val count: Int get() = transactions.size
     }
 
-    fun merchantName(tx: Tx): String? {
-        if (tx.amountLaari >= 0 || VendorProfiles.isTransfer(tx.description, tx.category)) return null
-        val name = VendorProfiles.vendor(tx.description).replace(Regex("""\s+"""), " ")
-            .trim().uppercase(Locale.ROOT)
-        if (name.isEmpty() || name in setOf("TRANSACTION", "ATM WITHDRAWAL", "CARD PAYMENT", "PURCHASE")) return null
+    private val genericNames = setOf(
+        "TRANSACTION", "ATM WITHDRAWAL", "CARD PAYMENT", "PURCHASE",
+        "FAVARA TRANSFER", "FAVARA INCOMING TRANSFER", "TRANSFER",
+        "UNKNOWN", "UNASSIGNED", "N/A"
+    )
+
+    fun merchantName(tx: Tx, confirmedRecipient: String? = null): String? {
+        if (tx.amountLaari >= 0 || tx.category.equals("Internal Transfer", ignoreCase = true))
+            return null
+        val name = (if (VendorProfiles.isTransfer(tx.description, tx.category))
+            confirmedRecipient.orEmpty() else VendorProfiles.vendor(tx.description))
+            .replace(Regex("""\s+"""), " ").trim().uppercase(Locale.ROOT)
+        if (name.isEmpty() || name in genericNames) return null
         return name
     }
 
-    /** null month = all available history. Never mutates transactions or balance. */
-    fun summarize(transactions: List<Tx>, month: YearMonth?): List<Summary> =
+    /** null month = all available history. Never mutates transactions or balances. */
+    fun summarize(
+        transactions: List<Tx>,
+        month: YearMonth?,
+        confirmedRecipients: Map<String, String> = emptyMap()
+    ): List<Summary> =
         transactions.asSequence()
             .filter { month == null || it.timestamp.startsWith(month.toString()) }
-            .mapNotNull { tx -> merchantName(tx)?.let { it to tx } }
+            .mapNotNull { tx ->
+                merchantName(tx, confirmedRecipients[tx.fingerprint])?.let { it to tx }
+            }
             .groupBy({ it.first }, { it.second })
             .map { (name, entries) ->
                 Summary(name, entries.sumOf { -it.amountLaari }, entries.sortedByDescending { it.timestamp })
@@ -46,7 +60,11 @@ internal object MerchantSpending {
 }
 
 @Composable
-internal fun TopMerchantsSection(transactions: List<Tx>, onOpenTransaction: (Long) -> Unit) {
+internal fun TopMerchantsSection(
+    transactions: List<Tx>,
+    confirmedRecipients: Map<String, String> = emptyMap(),
+    onOpenTransaction: (Long) -> Unit
+) {
     val currentMonth = remember { YearMonth.now() }
     val months = remember(transactions) {
         (transactions.mapNotNull { runCatching { YearMonth.parse(it.timestamp.take(7)) }.getOrNull() }
@@ -58,16 +76,18 @@ internal fun TopMerchantsSection(transactions: List<Tx>, onOpenTransaction: (Lon
     var chosen by remember { mutableStateOf<String?>(null) }
     var shown by remember { mutableIntStateOf(6) }
     val month = if (period == "all") null else runCatching { YearMonth.parse(period) }.getOrNull()
-    val ranked = remember(transactions, period) { MerchantSpending.summarize(transactions, month) }
+    val ranked = remember(transactions, period, confirmedRecipients) {
+        MerchantSpending.summarize(transactions, month, confirmedRecipients)
+    }
     val total = ranked.sumOf { it.amountLaari }.coerceAtLeast(1L)
     val formatter = remember { DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH) }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Most spent merchants", style = MaterialTheme.typography.titleMedium,
+                Text("Most spent recipients & merchants", style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold)
-                Text("Purchases only · transfers excluded",
+                Text("Purchases + named outgoing transfers · internal transfers excluded",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -93,7 +113,7 @@ internal fun TopMerchantsSection(transactions: List<Tx>, onOpenTransaction: (Lon
             Card(Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 shape = RoundedCornerShape(18.dp)) {
-                Text("No merchant purchases for this period. Choose another month or All time.",
+                Text("No purchases or identified outgoing transfers for this period. Choose another month or All time.",
                     modifier = Modifier.padding(16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -121,7 +141,7 @@ internal fun TopMerchantsSection(transactions: List<Tx>, onOpenTransaction: (Lon
                             Column(Modifier.weight(1f)) {
                                 Text(merchant.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                Text("${merchant.count} transactions · ${(percent * 100).toInt()}% of merchant spend",
+                                Text("${merchant.count} transactions · ${(percent * 100).toInt()}% of ranked outflows",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
@@ -133,7 +153,7 @@ internal fun TopMerchantsSection(transactions: List<Tx>, onOpenTransaction: (Lon
                             modifier = Modifier.fillMaxWidth())
                         if (selected) {
                             HorizontalDivider()
-                            Text("Transactions at ${merchant.name}",
+                            Text("Transactions with ${merchant.name}",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold)
                             merchant.transactions.take(shown).forEach { tx ->

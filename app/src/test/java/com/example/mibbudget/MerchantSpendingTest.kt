@@ -36,6 +36,49 @@ class MerchantSpendingTest {
         assertEquals(10000L, ranked.first().amountLaari)
     }
 
+    @Test fun verifiedTransfersAppearBesideMerchantsAndGroupByRecipient() {
+        val rows = listOf(
+            tx(1, -50600, "Favara transfer", "Transfers"),
+            tx(2, -50000, "Favara transfer", "Transfers"),
+            tx(3, -350000, "Favara transfer", "Transfers"),
+            tx(4, -98650, "E-commerce purchase: OOREDOO", "Bills"),
+            tx(5, -9000, "Favara transfer", "Transfers"),
+            tx(6, 150000, "Favara incoming transfer", "Transfers"),
+            tx(7, -55000, "Favara transfer", "Internal Transfer")
+        )
+        val recipients = mapOf(
+            "fingerprint-1" to "HAYYAAN HASSAN",
+            "fingerprint-2" to "HAYYAAN HASSAN",
+            "fingerprint-3" to "SIYAMA HASSAN",
+            "fingerprint-6" to "OTHER",
+            "fingerprint-7" to "HAYYAAN HASSAN"
+        )
+        val ranked = MerchantSpending.summarize(rows, YearMonth.of(2026,11), recipients)
+        assertEquals(listOf("SIYAMA HASSAN", "HAYYAAN HASSAN", "OOREDOO"),
+            ranked.map { it.name })
+        assertEquals(listOf(350000L, 100600L, 98650L), ranked.map { it.amountLaari })
+        assertEquals(listOf(1,2,1), ranked.map { it.count })
+        assertEquals(setOf(1L,2L), ranked[1].transactions.map { it.id }.toSet())
+    }
+
+    @Test fun genericTransfersAndInternalTransfersStayExcludedEvenWithNames() {
+        val rows = listOf(
+            tx(1, -10000, "Favara transfer", "Transfers"),
+            tx(2, -15000, "Favara transfer", "Transfers"),
+            tx(3, -20000, "Favara transfer", "Internal Transfer"),
+            tx(4, -30000, "Favara transfer", "Transfers")
+        )
+        val names = mapOf(
+            "fingerprint-2" to "Favara transfer",
+            "fingerprint-3" to "KNOWN PERSON",
+            "fingerprint-4" to " MANUALLY CONFIRMED "
+        )
+        val ranked = MerchantSpending.summarize(rows, null, names)
+        assertEquals(1, ranked.size)
+        assertEquals("MANUALLY CONFIRMED", ranked.single().name)
+        assertEquals(30000L, ranked.single().amountLaari)
+    }
+
     @Test fun monthSelectionUsesRealTransactionDate() {
         val rows = listOf(
             tx(1, -5000, "POS purchase: SHOP", date = "2026-10-31T23:00:00"),
