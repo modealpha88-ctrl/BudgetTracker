@@ -3035,6 +3035,50 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     OutlinedButton(onClick={confirmNamingReset=true},modifier=Modifier.fillMaxWidth()) {
                         Text("Start over: clear manually saved recipient names")
                     }
+                    csvMergeLine?.let { line ->
+                        val data=csvText
+                        val selectedRow=csvReview?.matches?.firstOrNull { it.line==line }
+                        val candidates=remember(line,data,revision) {
+                            if(data==null) emptyList() else runCatching { store.csvMergeCandidates(data,line) }.getOrDefault(emptyList())
+                        }
+                        AlertDialog(
+                            onDismissRequest={csvMergeLine=null;csvMergeTargetId=null},
+                            title={Text("Merge statement details")},
+                            text={
+                                Column(Modifier.heightIn(max=390.dp).verticalScroll(rememberScrollState()),
+                                    verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    Text("Choose an EXISTING transaction. Check the amount, date, time and account. Repeated same-amount transfers are never merged automatically.")
+                                    selectedRow?.let {
+                                        Text("${it.date} • ${Money.format(it.amountLaari)}",color=MaterialTheme.colorScheme.primary)
+                                        Text(it.description)
+                                    }
+                                    if(candidates.isEmpty()) Text("No eligible SMS transaction. The row may already be linked or the amount/date does not match.")
+                                    candidates.forEach { tx ->
+                                        FilterChip(
+                                            selected=csvMergeTargetId==tx.id,
+                                            onClick={csvMergeTargetId=tx.id},
+                                            label={Text("${tx.timestamp} • ${Money.format(tx.amountLaari)} • ${tx.description.take(65)}")}
+                                        )
+                                    }
+                                    Text("Only recipient and reference metadata is linked. The transaction, timestamp, amount and balances stay unchanged.",
+                                        style=MaterialTheme.typography.bodySmall)
+                                }
+                            },
+                            confirmButton={
+                                Button(enabled=data!=null && csvMergeTargetId!=null,onClick={
+                                    try {
+                                        store.mergeCsvDetails(data!!,line,csvMergeTargetId!!)
+                                        selectedPossibleCsvLines=selectedPossibleCsvLines-line
+                                        csvReview=store.reviewCsv(data)
+                                        revision++
+                                        notice="CSV recipient and reference linked. No new payment added."
+                                    } catch(e:Exception) { notice="Merge failed: ${e.message?.take(100)}" }
+                                    csvMergeLine=null;csvMergeTargetId=null
+                                }) { Text("Confirm merge") }
+                            },
+                            dismissButton={TextButton(onClick={csvMergeLine=null;csvMergeTargetId=null}) { Text("Cancel") }}
+                        )
+                    }
                     csvReview?.let { review ->
                         Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -3052,6 +3096,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         TextButton(onClick={if(csvReviewFilter=="MISSING") selectedMissingCsvLines=emptySet() else selectedPossibleCsvLines=emptySet()}) { Text("Clear selection") }
                                     }
                                     Text("${selectedMissingCsvLines.size} missing + ${selectedPossibleCsvLines.size} possible selected",style=MaterialTheme.typography.bodySmall)
+                                    if(csvReviewFilter=="POSSIBLE" && selectedPossibleCsvLines.size==1) {
+                                        Button(onClick={csvMergeLine=selectedPossibleCsvLines.first();csvMergeTargetId=null}) { Text("Merge selected CSV details") }
+                                    }
+                                    if(csvReviewFilter=="POSSIBLE" && selectedPossibleCsvLines.size>1) Text("Merge possible rows individually to choose the correct existing transaction.",style=MaterialTheme.typography.bodySmall)
                                     if(csvReviewFilter=="POSSIBLE") Text("Possible matches can duplicate an existing transaction. Select only after comparing the original bank statement.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                                 }
                                 review.matches.filter { it.status==csvReviewFilter }.take(100).forEach { item ->
@@ -3066,12 +3114,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                                 Text("${item.date}  •  ${Money.format(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
                                                 Text(item.description,color=MaterialTheme.colorScheme.onSurface)
                                                 Text(item.reason,style=MaterialTheme.typography.bodySmall)
+                                                if(item.status=="POSSIBLE") OutlinedButton(onClick={
+                                                    csvMergeLine=item.line;csvMergeTargetId=null
+                                                }) { Text("Review & merge CSV details") }
                                             }
                                         }
                                     } else {
                                         Text("${item.status}  •  ${item.date}  •  ${Money.format(item.amountLaari)}",color=MaterialTheme.colorScheme.primary)
                                         Text(item.description,color=MaterialTheme.colorScheme.onSurface)
                                         Text(item.reason,style=MaterialTheme.typography.bodySmall)
+                                        if(item.status=="MATCHED" && !item.reason.startsWith("CSV details linked")) {
+                                            TextButton(onClick={csvMergeLine=item.line;csvMergeTargetId=null}) { Text("Use CSV recipient & reference") }
+                                        }
                                     }
                                 }
                                 if(review.matches.count { it.status==csvReviewFilter }>100) Text("Showing first 100 records in this group",color=MaterialTheme.colorScheme.onSurfaceVariant)
