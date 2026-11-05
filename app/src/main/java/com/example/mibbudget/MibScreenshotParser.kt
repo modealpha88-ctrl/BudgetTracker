@@ -12,11 +12,11 @@ data class MibScreenshotSnapshot(
     val reconstructedCurrentMinor: Long get() = Math.addExact(availableMinor, holdMinor)
 }
 
-/** Parses MIB Account Details OCR while tolerating labels before or after their figures. */
+/** Parses MIB Account Details OCR using label-to-amount proximity, not line ordering. */
 object MibScreenshotParser {
     private data class AmountToken(val start: Int, val end: Int, val minor: Long)
 
-    // Supports MVR -858.02, -MVR 858.02, MVR 858.02 and comma grouping.
+    // Accepts MVR -858.02, -MVR 858.02, MVR 858.02 and comma grouping.
     private val amountPattern = Regex(
         """(?i)(-\s*)?(?:MVR|MRF|RF)?\s*(-\s*)?([0-9][0-9,]*\.[0-9]{2})"""
     )
@@ -38,44 +38,52 @@ object MibScreenshotParser {
             }.getOrNull()
         }.toList()
 
+    private fun distance(token: AmountToken, label: MatchResult): Int = when {
+        token.end <= label.range.first -> label.range.first - token.end
+        token.start >= label.range.last + 1 -> token.start - label.range.last - 1
+        else -> 0
+    }
+
     fun parse(ocrText: String): MibScreenshotSnapshot? {
         val text = ocrText
-            .replace(' ', ' ')
+            .replace('\u00A0', ' ')
             .replace(Regex("""[\r\n\t]+"""), " ")
             .replace(Regex("""\s+"""), " ")
             .trim()
-        if (!accountDetailsLabel.containsMatchIn(text)) return null
 
-        // Ignore transaction rows: only the account summary above this heading
-        // is eligible to supply the three balance figures.
+        // The screen heading is useful confirmation, but OCR sometimes misses it.
+        if (!accountDetailsLabel.containsMatchIn(text) &&
+            !holdLabel.containsMatchIn(text)
+        ) return null
+
+        // Do not let transaction amounts below the summary contaminate the balance.
         val summaryEnd = transactionsLabel.find(text)?.range?.first ?: text.length
         val summary = text.substring(0, summaryEnd)
         val hold = holdLabel.find(summary) ?: return null
         val current = currentLabel.find(summary) ?: return null
-        if (current.range.first <= hold.range.first) return null
-
         val tokens = amounts(summary)
         if (tokens.size < 3) return null
 
-        // MIB OCR can emit either labels before their values or values before
-        // their labels. In both cases the first three figures are available,
-        // hold, and current balance, in that order.
-        val availableToken = tokens[0]
-        val holdToken = tokens[1]
-        val currentToken = tokens[2]
+        // OCR engines do not guarantee that a label and its value are emitted
+        // in the same order as the screen. Associate each label with its nearest
+        // amount, whether the value appears before or after the label.
+        val holdToken = tokens.minByOrNull { distance(it, hold) } ?: return null
+        val currentToken = tokens.minByOrNull { distance(it, current) } ?: return null
+        if (holdToken == currentToken) return null
 
-        // Anchor the labels to the ordered figures and reject unrelated text.
-        if (hold.range.first <= availableToken.end ||
-            hold.range.first >= currentToken.end ||
-            current.range.first <= hold.range.first ||
-            current.range.first < holdToken.start
-        ) return null
+        // The available/card figure is the remaining earliest summary amount.
+        val availableToken = tokens
+            .filter { it != holdToken && it != currentToken }
+            .minByOrNull { it.start } ?: return null
 
         val available = kotlin.math.abs(availableToken.minor)
         val holdAmount = kotlin.math.abs(holdToken.minor)
         val displayedCurrent = kotlin.math.abs(currentToken.minor)
         val reconstructed = runCatching { Math.addExact(available, holdAmount) }.getOrNull()
             ?: return null
+
+        // A screenshot is only accepted when its displayed current balance
+        // independently confirms available + bank-reported hold.
         if (displayedCurrent != reconstructed) return null
 
         return MibScreenshotSnapshot(available, holdAmount, displayedCurrent)
