@@ -60,9 +60,9 @@ object MibScreenshotParser {
         val summaryEnd = transactionsLabel.find(text)?.range?.first ?: text.length
         val summary = text.substring(0, summaryEnd)
         val current = currentLabel.find(summary) ?: return null
-        val hold = holdLabel.find(summary)
+        val hold = holdLabel.find(summary) ?: return null
         val tokens = amounts(summary)
-        if (tokens.isEmpty()) return null
+        if (tokens.size < 3) return null
 
         // OCR engines do not guarantee that a label and its value are emitted
         // in the same order as the screen. Associate each label with its nearest
@@ -87,10 +87,19 @@ object MibScreenshotParser {
         // Other screenshot figures are retained for review only; the displayed current balance is authoritative.
         val availableToken = tokens
             .filter { it != holdToken && it != currentToken }
-            .minByOrNull { it.start }
-        val available = availableToken?.minor?.let { kotlin.math.abs(it) } ?: 0L
-        val holdAmount = holdToken?.minor?.let { kotlin.math.abs(it) } ?: 0L
-        val displayedCurrent = kotlin.math.abs(currentToken.minor)
+            .minByOrNull { it.start } ?: return null
+        val available = runCatching { kotlin.math.abs(availableToken.minor) }
+            .getOrNull()?.takeIf { it >= 0L } ?: return null
+        val holdAmount = runCatching { kotlin.math.abs(holdToken?.minor ?: return null) }
+            .getOrNull()?.takeIf { it >= 0L } ?: return null
+        val displayedCurrent = runCatching { kotlin.math.abs(currentToken.minor) }
+            .getOrNull()?.takeIf { it >= 0L } ?: return null
+
+        // Reject a confidently labelled but internally inconsistent screenshot.
+        // The MIB account-details screen shows available + amount on hold = current balance.
+        val reconstructed = runCatching { Math.addExact(available, holdAmount) }.getOrNull()
+            ?: return null
+        if (reconstructed != displayedCurrent) return null
 
         return MibScreenshotSnapshot(available, holdAmount, displayedCurrent)
     }
