@@ -95,11 +95,10 @@ object MibScreenshotParser {
         val displayedCurrent = runCatching { kotlin.math.abs(currentToken.minor) }
             .getOrNull()?.takeIf { it >= 0L } ?: return null
 
-        // Reject a confidently labelled but internally inconsistent screenshot.
-        // The MIB account-details screen shows available + amount on hold = current balance.
-        val reconstructed = runCatching { Math.addExact(available, holdAmount) }.getOrNull()
-            ?: return null
-        if (reconstructed != displayedCurrent) return null
+        // Bank-displayed Current Balance is authoritative. Holds may be pending
+        // or the screenshot may capture figures at slightly different moments.
+        // Do not reject an otherwise labelled screenshot because they differ.
+        if (runCatching { Math.addExact(available, holdAmount) }.isFailure) return null
 
         return MibScreenshotSnapshot(available, holdAmount, displayedCurrent)
     }
