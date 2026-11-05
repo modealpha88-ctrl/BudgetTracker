@@ -9,7 +9,7 @@ on:
       - 'gradle.properties'
       - '.github/workflows/android.yml'
   push:
-    branches: [main, fix/csv-favara-details-merge]
+    branches: [main]
     paths:
       - 'app/**'
       - '*.gradle.kts'
