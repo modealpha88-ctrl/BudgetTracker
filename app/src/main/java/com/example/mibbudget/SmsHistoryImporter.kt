@@ -32,7 +32,7 @@ object SmsHistoryImporter {
                     if (store.addForeign(foreign)) imported++ else duplicates++
                     continue
                 }
-                val candidate=BankSmsParser.parse(body)
+                val candidate=SalarySmsParser.parse(body) ?: BankSmsParser.parse(body)
                 if(candidate==null) { ignored++; continue }
                 if(store.add(candidate.amountLaari,candidate.category,candidate.description,candidate.fingerprint,candidate.transactionTime,sourceAccount="MIB")) imported++ else duplicates++
             }
