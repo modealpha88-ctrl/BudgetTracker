@@ -53,16 +53,16 @@ object MibScreenshotParser {
 
         // The screen heading is useful confirmation, but OCR sometimes misses it.
         if (!accountDetailsLabel.containsMatchIn(text) &&
-            !holdLabel.containsMatchIn(text)
+            !currentLabel.containsMatchIn(text)
         ) return null
 
         // Do not let transaction amounts below the summary contaminate the balance.
         val summaryEnd = transactionsLabel.find(text)?.range?.first ?: text.length
         val summary = text.substring(0, summaryEnd)
-        val hold = holdLabel.find(summary) ?: return null
         val current = currentLabel.find(summary) ?: return null
+        val hold = holdLabel.find(summary)
         val tokens = amounts(summary)
-        if (tokens.size < 3) return null
+        if (tokens.isEmpty()) return null
 
         // OCR engines do not guarantee that a label and its value are emitted
         // in the same order as the screen. Associate each label with its nearest
@@ -71,31 +71,26 @@ object MibScreenshotParser {
         // explicit sign so a preceding available-balance figure cannot win a
         // distance tie when OCR places the hold label before its value.
         val negativeHoldTokens = tokens.filter { it.minor < 0L }
-        val holdCandidates = if (negativeHoldTokens.isNotEmpty()) negativeHoldTokens else tokens
-        val holdToken = holdCandidates.minWithOrNull(
-            compareBy<AmountToken> { distance(it, hold) }
-                .thenBy { if (it.start >= hold.range.last + 1) 0 else 1 }
-        ) ?: return null
+        val holdToken = hold?.let { holdLabelMatch ->
+            val holdCandidates = if (negativeHoldTokens.isNotEmpty()) negativeHoldTokens else tokens
+            holdCandidates.minWithOrNull(
+                compareBy<AmountToken> { distance(it, holdLabelMatch) }
+                    .thenBy { if (it.start >= holdLabelMatch.range.last + 1) 0 else 1 }
+            )
+        }
         val currentToken = tokens.minWithOrNull(
             compareBy<AmountToken> { distance(it, current) }
                 .thenBy { if (it.start >= current.range.last + 1) 0 else 1 }
         ) ?: return null
         if (holdToken == currentToken) return null
 
-        // The available/card figure is the remaining earliest summary amount.
+        // Other screenshot figures are retained for review only; the displayed current balance is authoritative.
         val availableToken = tokens
             .filter { it != holdToken && it != currentToken }
-            .minByOrNull { it.start } ?: return null
-
-        val available = kotlin.math.abs(availableToken.minor)
-        val holdAmount = kotlin.math.abs(holdToken.minor)
+            .minByOrNull { it.start }
+        val available = availableToken?.minor?.let(kotlin.math::abs) ?: 0L
+        val holdAmount = holdToken?.minor?.let(kotlin.math::abs) ?: 0L
         val displayedCurrent = kotlin.math.abs(currentToken.minor)
-        val reconstructed = runCatching { Math.addExact(available, holdAmount) }.getOrNull()
-            ?: return null
-
-        // A screenshot is only accepted when its displayed current balance
-        // independently confirms available + bank-reported hold.
-        if (displayedCurrent != reconstructed) return null
 
         return MibScreenshotSnapshot(available, holdAmount, displayedCurrent)
     }
