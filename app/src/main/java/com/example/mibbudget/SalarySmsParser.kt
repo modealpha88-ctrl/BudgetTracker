@@ -13,9 +13,9 @@ import java.util.Locale
  */
 object SalarySmsParser {
     private val pattern = Regex(
-        """(?is)^Salary\\s+Transfer\\s+to\\s+your\\s+account\\s+[0-9*]+\\s+for\\s+MVR\\s+([\\d,]+\\.\\d{2})\\s+was\\s+processed\\s+on\\s+(\\d{2}/\\d{2}/\\d{4}\\s+\\d{2}:\\d{2}:\\d{2})\\.\\s+Ref\\.\\s*no\\.\\s*([\\w-]+)\\s*$"""
+        """(?is)^Salary\s+Transfer\s+to\s+your\s+account\s+[0-9*]+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$"""
     )
-    private val sensitive = Regex("""(?i)\\b(otp|one.time.password|verification code|login code|password|pin|authentication code)\\b""")
+    private val sensitive = Regex("""(?i)\b(otp|one.time.password|verification code|login code|password|pin|authentication code)\b""")
 
     fun parse(raw: String): BankSmsParser.Candidate? {
         val text = raw.trim()
