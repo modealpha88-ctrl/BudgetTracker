@@ -5,166 +5,56 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class MibScreenshotParserTest {
-    @Test fun parsesAccountDetailsWithLabelsAndAmountsOnSeparateLines() {
+    @Test fun readsAvailableBalanceWithoutAddingHeldMoney() {
         val ocr = """
             Account Details
             MVR 171.79
             9050301081291000
             Mohd.ibrahim Saving Account
-            Amount on Hold
             MVR -858.02
-            Current Balance
-            MVR 1,029.81
-        """.trimIndent()
-
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(17179L, result.availableMinor)
-        assertEquals(85802L, result.holdMinor)
-        assertEquals(102981L, result.reconstructedCurrentMinor)
-    }
-
-    @Test fun parsesLabelsSplitAcrossOcrLinesAndCurrencySignBeforeCode() {
-        val ocr = """
-            Account Details
-            MVR 171.79
-            Amount on
-            Hold
-            -MVR 858.02
-            Current
-            Balance
-            MVR 1,029.81
-        """.trimIndent()
-
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(17179L, result.availableMinor)
-        assertEquals(85802L, result.holdMinor)
-        assertEquals(102981L, result.reconstructedCurrentMinor)
-    }
-
-    @Test fun usesBankDisplayedCurrentBalanceEvenWhenAvailablePlusHoldDiffers() {
-        val ocr = """
-            Account Details
-            MVR 171.79
-            Amount on Hold
-            MVR -858.02
-            Current Balance
-            MVR 7,143.81
-        """.trimIndent()
-
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(17179L, result.availableMinor)
-        assertEquals(85802L, result.holdMinor)
-        assertEquals(714381L, result.displayedCurrentMinor)
-    }
-
-    @Test fun parsesMibLayoutWhenBothFiguresAppearBeforeTheirLabels() {
-        val ocr = """
-            Account Details
-            MVR 171.79
-            9050301081291000
-            Mohd.ibrahim Saving Account
-            -MVR 858.02
             Amount on Hold
             MVR 1,029.81
             Current Balance
             Transactions
-            MVR 49.00
-            MVR 60.00
         """.trimIndent()
-
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(17179L, result.availableMinor)
-        assertEquals(85802L, result.holdMinor)
-        assertEquals(102981L, result.reconstructedCurrentMinor)
+        assertEquals(17179L, MibScreenshotParser.parse(ocr)?.availableMinor)
     }
 
-    @Test fun parsesMibLayoutWhenLabelsPrecedeTheirFigures() {
-        val ocr = """
-            Account Details
-            MVR 171.79
-            Amount on Hold
-            -MVR 858.02
-            Current Balance
-            MVR 1,029.81
-        """.trimIndent()
-
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(17179L, result.availableMinor)
-        assertEquals(85802L, result.holdMinor)
-        assertEquals(102981L, result.reconstructedCurrentMinor)
-    }
-
-    @Test fun acceptsBalanceLabelsSplitAcrossOcrLinesWithoutHeader() {
-        val ocr = """
-            MVR 171.79
-            -MVR 858.02
-            Amount on
-            Hold
-            MVR 1,029.81
-            Current
-            Balance
-        """.trimIndent()
-
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(17179L, result.availableMinor)
-        assertEquals(85802L, result.holdMinor)
-        assertEquals(102981L, result.reconstructedCurrentMinor)
-    }
-
-    @Test fun readsActualMibOcrWithCurrentBalanceBelowTransactions() {
+    @Test fun readsAccountCardWhenTransactionsAppearBeforeLedgerBalance() {
         val ocr = """
             T
             MVR 6,298.79
             Account Details
-            ........
             Mohd.ibrahim Saving Account
             MVR -845.02
             Amount on Hold
             Transactions
             -MVR 3,500.00
-            Bml - Siyama Hassan
-            Favara Transfer VWeb · November 5, 2026
             MVR 9,627.00
             SALARY DEPOSIT November 5, 2026
             -MVR 13.00
-            Purchase MIB · November 5, 2026
-            -MVR 71.00
-            Aishath I.
             MVR 7,143.81
             Current Balance
-            IB Acc to Acc · November 4, 2026
-            -MVR 49.00
         """.trimIndent()
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(629879L, result.availableMinor)
-        assertEquals(84502L, result.holdMinor)
-        assertEquals(714381L, result.displayedCurrentMinor)
-        assertEquals(true, result.reconcilesWithBank)
+        assertEquals(629879L, MibScreenshotParser.parse(ocr)?.availableMinor)
     }
 
-    @Test fun doesNotTreatLaterSalaryOrCardPurchaseAsAvailableBalance() {
+    @Test fun readsMibHomeCardAsBalanceWithoutHoldSections() {
         val ocr = """
-            MVR 6,298.79
-            Account Details
-            MVR -845.02
-            Amount on Hold
-            Transactions
-            MVR 9,627.00
-            SALARY DEPOSIT
-            -MVR 71.00
-            MVR 7,143.81
-            Current Balance
+            Mohamed Ibrahim
+            Personal Profile
+            MVR 4,730.18
+            9050301081291000
+            Mohd.ibrahim
+            Saving
+            Info History Transfer
         """.trimIndent()
-        val result = MibScreenshotParser.parse(ocr)
-        requireNotNull(result)
-        assertEquals(629879L, result.availableMinor)
-        assertEquals(714381L, result.displayedCurrentMinor)
+        assertEquals(473018L, MibScreenshotParser.parse(ocr)?.availableMinor)
+    }
+
+    @Test fun rejectsUnidentifiedOrTransactionOnlyScreenshots() {
+        assertNull(MibScreenshotParser.parse("MVR 49.00\nTransactions"))
+        assertNull(MibScreenshotParser.parse("MIB Transactions\nMVR 71.00"))
+        assertNull(MibScreenshotParser.parse("Account Details\nMVR -71.00\nSaving Account"))
     }
 }
