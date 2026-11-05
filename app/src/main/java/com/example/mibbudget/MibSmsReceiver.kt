@@ -29,7 +29,8 @@ class MibSmsReceiver : BroadcastReceiver() {
                 }
                 val bmlCard = BankSmsParser.parseBmlCard(body)
                 if (bmlCard != null) { store.addForeign(bmlCard); continue }
-                val candidate = BankSmsParser.parse(body) ?: continue
+                // Salary credits are parsed separately from the other MIB SMS templates.
+                val candidate = SalarySmsParser.parse(body) ?: BankSmsParser.parse(body) ?: continue
                 // Sender names/numbers can be spoofed: the parser is not bank authentication.
                 store.add(candidate.amountLaari, candidate.category, candidate.description,
                     candidate.fingerprint, candidate.transactionTime, sourceAccount = "MIB")
