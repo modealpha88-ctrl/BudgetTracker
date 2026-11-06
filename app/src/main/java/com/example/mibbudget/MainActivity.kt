@@ -738,14 +738,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         Column(Modifier.fillMaxSize().background(Color(0xFF0A1510))
             .verticalScroll(rememberScrollState()).padding(horizontal=24.dp,vertical=40.dp),
             verticalArrangement=Arrangement.spacedBy(18.dp)) {
-            Text("Welcome to RufiTrack",style=MaterialTheme.typography.headlineMedium,color=Color.White,fontWeight=FontWeight.Bold)
-            Text("STEP ${setupStage+1} OF 4  ·  INITIAL SETUP",style=MaterialTheme.typography.titleMedium,color=Color(0xFF9BE8C5))
-            LinearProgressIndicator(progress={ (setupStage+1)/4f },modifier=Modifier.fillMaxWidth())
+            RufiTrackSetupHeader(setupStage)
             when(setupStage) {
                 0 -> {
                     Text("Connect your transaction history",style=MaterialTheme.typography.headlineSmall,color=Color.White)
                     Text("Import a CSV statement once to establish your starting balance and transaction history.",color=Color(0xFFE3F4EA))
-                    Button(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))},modifier=Modifier.fillMaxWidth()) { Text("Choose CSV statement") }
+                    RufiTrackSetupTip("Start with your bank statement", "Choose a CSV from MIB or BML. We'll match existing transactions and only add missing entries after you review them.")
+                    Button(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))},
+                        modifier=Modifier.fillMaxWidth().heightIn(min=54.dp),
+                        shape=RoundedCornerShape(18.dp)) { Text("Choose CSV statement",fontWeight=FontWeight.Bold) }
                     csvReview?.let { review ->
                         Text("Statement ready to import",style=MaterialTheme.typography.titleLarge,color=Color.White)
                         Text("${review.missing} new transactions  ·  ${review.confirmed} matched  ·  ${review.possible} to review later",color=Color(0xFFE3F4EA))
@@ -811,7 +812,16 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 2 -> {
                     Text("Review imported transactions and duplicates. The transaction review inbox remains available after setup.",color=Color.White)
-                    Text("Transactions imported: ${transactions.size}",color=Color.White)
+                    RufiTrackSetupTip("Your records stay editable", "Review possible duplicates and recipient details from the Activity and Import screens after setup.")
+                    Surface(shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.primaryContainer) {
+                        Row(Modifier.fillMaxWidth().padding(18.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement=Arrangement.SpaceBetween) {
+                            Text("Transactions imported",color=MaterialTheme.colorScheme.onSurface,
+                                style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+                            Text("${transactions.size}",color=MaterialTheme.colorScheme.primary,
+                                style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold)
+                        }
+                    }
                     Button(onClick={setupStage=3;setupPrefs.edit().putInt("stage",3).apply()},modifier=Modifier.fillMaxWidth()) { Text("Continue to account balances") }
                 }
                 3 -> {
@@ -857,6 +867,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         account=setupBalanceAccount,
                         onSaved={setupBalanceRevision++}
                     )
+                    RufiTrackSetupTip("Your balance is an estimate", "A bank-verified snapshot establishes the starting point. Later recorded transactions update the projected balance.")
                     Text("A snapshot includes activity already reflected in that bank balance. Transactions after the verified capture time are added (or only later dates if no time is known). No hold estimates are used.",
                         color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
                     Button(
