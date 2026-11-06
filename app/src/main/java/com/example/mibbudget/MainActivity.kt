@@ -138,7 +138,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             if (keyguard.isDeviceSecure) {
                 lockError = "Opening device screen lock…"
                 val intent = keyguard.createConfirmDeviceCredentialIntent(
-                    "Unlock MIB Budget Tracker", "Confirm your device screen lock")
+                    "Unlock RufiTrack", "Confirm your device screen lock")
                 if (intent != null) credentialLauncher.launch(intent)
                 else lockError = "Screen lock confirmation is unavailable on this device."
             } else lockError = "Set up a device PIN, pattern or password in Android Settings."
@@ -153,7 +153,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             if (biometricStatus == BiometricManager.BIOMETRIC_SUCCESS) {
                 lockError = "Opening biometric prompt…"
                 prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Unlock MIB Budget Tracker")
+                    .setTitle("Unlock RufiTrack")
                     .setSubtitle("Confirm your fingerprint")
                     .setAllowedAuthenticators(biometricAllowed)
                     .setNegativeButtonText("Cancel")
@@ -674,7 +674,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Spacer(Modifier.height(24.dp))
                 Text("MIB", style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold, color = Color.White)
-                Text("BUDGET TRACKER", style = MaterialTheme.typography.labelLarge,
+                Text("RUFITRACK", style = MaterialTheme.typography.labelLarge,
                     color = landingAccent)
                 Spacer(Modifier.height(28.dp))
                 Text("Your money. In focus.",
@@ -738,7 +738,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         Column(Modifier.fillMaxSize().background(Color(0xFF0A1510))
             .verticalScroll(rememberScrollState()).padding(horizontal=24.dp,vertical=40.dp),
             verticalArrangement=Arrangement.spacedBy(18.dp)) {
-            Text("Welcome to Budget Tracker",style=MaterialTheme.typography.headlineMedium,color=Color.White,fontWeight=FontWeight.Bold)
+            Text("Welcome to RufiTrack",style=MaterialTheme.typography.headlineMedium,color=Color.White,fontWeight=FontWeight.Bold)
             Text("STEP ${setupStage+1} OF 4  ·  INITIAL SETUP",style=MaterialTheme.typography.titleMedium,color=Color(0xFF9BE8C5))
             LinearProgressIndicator(progress={ (setupStage+1)/4f },modifier=Modifier.fillMaxWidth())
             when(setupStage) {
@@ -773,7 +773,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF243A30)),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                             Text("1  ·  Allow incoming bank SMS",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
-                            Text("Grant SMS permission when Android asks. This lets Budget Tracker detect new transactions.",color=Color.White)
+                            Text("Grant SMS permission when Android asks. This lets RufiTrack detect new transactions.",color=Color.White)
                             Button(onClick={
                                 if(context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED) {
                                     monitoring=true;prefs.edit().putBoolean("enabled",true).apply();permissionRefresh++
@@ -782,7 +782,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             val receiveSmsGranted = context.checkSelfPermission(Manifest.permission.RECEIVE_SMS)==PackageManager.PERMISSION_GRANTED
                             val readSmsGranted = context.checkSelfPermission(Manifest.permission.READ_SMS)==PackageManager.PERMISSION_GRANTED
                             Text("Permission status: incoming SMS ${if(receiveSmsGranted) "allowed" else "not allowed"} · SMS history ${if(readSmsGranted) "allowed" else "not allowed"}",color=Color(0xFFE3F4EA),style=MaterialTheme.typography.bodySmall)
-                            OutlinedButton(onClick=openSmsPermissionSettings,modifier=Modifier.fillMaxWidth()) { Text("Open Budget Tracker app permissions") }
+                            OutlinedButton(onClick=openSmsPermissionSettings,modifier=Modifier.fillMaxWidth()) { Text("Open RufiTrack app permissions") }
                             Text("If Android blocks or no longer shows a permission prompt, use the app settings above and return here.",color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
                             Text("2  ·  Choose how far back to scan",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
                             Text("Select the history period before scanning. Existing transactions are checked for duplicates.",color=Color.White)
@@ -799,7 +799,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             },modifier=Modifier.fillMaxWidth()) { Text(if(importingHistory) "Scanning SMS…" else "Scan previous SMS") }
                             if(importingHistory) LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
                             OutlinedButton(onClick=openNotificationAccessSettings,modifier=Modifier.fillMaxWidth()) { Text("Open notification access settings (BML)") }
-                            Text("Notification access is separate from SMS permission. Enable Budget Tracker if your bank sends transaction notifications.",color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
+                            Text("Notification access is separate from SMS permission. Enable RufiTrack if your bank sends transaction notifications.",color=Color(0xFFA7BDB1),style=MaterialTheme.typography.bodySmall)
                             Text("4  ·  Continue to transaction review",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
                             Text("After importing, continue to check your transactions and balances.",color=Color.White)
                         }
@@ -926,7 +926,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.background).then(Modifier.verticalScroll(mainScrollState)).padding(horizontal = 18.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (onboardingRequired) {
-                Text("Welcome to Budget Tracker", style=MaterialTheme.typography.headlineMedium)
+                Text("Welcome to RufiTrack", style=MaterialTheme.typography.headlineMedium)
                 Text("Required first-time setup · Step ${setupStage+1} of 4", style=MaterialTheme.typography.titleMedium)
                 LinearProgressIndicator(progress = { (setupStage+1)/4f },modifier=Modifier.fillMaxWidth())
                 when(setupStage) {
@@ -975,7 +975,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
             }
             if(releaseToolsExpanded) {
-            Text("Budget Tracker",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            Text("RufiTrack",style=MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Text("Your money, clearly organized  •  MVR",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             val improvementPrefs = remember { context.getSharedPreferences("improvement_preferences", android.content.Context.MODE_PRIVATE) }
             var showReleaseTools by remember { mutableStateOf(improvementPrefs.getBoolean("show_release_link", true)) }
@@ -1007,7 +1007,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
                 val rules = if (includeMerchantRules) store.shareableMerchantPreferences() else emptyList()
                 val report = buildString {
-                    appendLine("Budget Tracker improvement feedback")
+                    appendLine("RufiTrack improvement feedback")
                     appendLine("App version: ${context.packageManager.getPackageInfo(context.packageName, 0).versionName}")
                     appendLine("Transaction count: ${transactions.size}")
                     appendLine("Merchant preference rules: ${store.shareableMerchantPreferences().size}")
@@ -1020,7 +1020,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Text(report.take(5000),style=MaterialTheme.typography.bodySmall)
                 Button(onClick={
                     val intent = Intent(Intent.ACTION_SEND).apply {
-                        type="text/plain"; putExtra(Intent.EXTRA_SUBJECT,"Budget Tracker improvement feedback")
+                        type="text/plain"; putExtra(Intent.EXTRA_SUBJECT,"RufiTrack improvement feedback")
                         putExtra(Intent.EXTRA_TEXT,report)
                     }
                     context.startActivity(Intent.createChooser(intent,"Share improvement feedback"))

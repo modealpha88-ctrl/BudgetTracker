@@ -2,6 +2,9 @@ package com.example.mibbudget
 
 import android.content.Context
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,8 +39,14 @@ internal fun MidnightHomeScreen(
 ) {
     Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
                     // A focused financial home. The legacy dashboard is preserved under More.
-                    Text("BUDGET TRACKER",style=MaterialTheme.typography.labelLarge,
-                        color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
+                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                        Image(painter=painterResource(R.drawable.rufiyaa_mark),
+                            contentDescription="RufiTrack rufiyaa symbol",
+                            modifier=Modifier.size(width=20.dp,height=30.dp),
+                            colorFilter=ColorFilter.tint(MaterialTheme.colorScheme.primary))
+                        Text("RufiTrack",style=MaterialTheme.typography.titleMedium,
+                            color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
+                    }
                     Text("Your money, in focus",style=MaterialTheme.typography.headlineMedium,
                         fontWeight=FontWeight.ExtraBold)
                     Text("Accounts, spending and activity at a glance",
