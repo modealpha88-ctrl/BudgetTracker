@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK and Play Bundle
 on:
   workflow_dispatch:
   pull_request:
@@ -30,10 +30,10 @@ jobs:
       - name: Check Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          test -d "$ANDROID_HOME/platforms/android-35" || echo "Android 35 platform will be downloaded by Gradle if required"
+          test -d "$ANDROID_HOME/platforms/android-36" || echo "Android 36 platform will be downloaded by Gradle if required"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.11.1'
       - name: Restore release signing key
         env:
           MIB_RELEASE_KEY_BASE64: ${{ secrets.MIB_RELEASE_KEY_BASE64 }}
@@ -92,6 +92,32 @@ jobs:
           "$BUILD_TOOLS/aapt" dump badging "$APK" | grep '^package:'
           sha256sum "$APK" | tee apk.sha256
 
+      - name: Build signed Google Play App Bundle
+        env:
+          MIB_RELEASE_STORE_PASSWORD: ${{ secrets.MIB_RELEASE_STORE_PASSWORD }}
+          MIB_RELEASE_KEY_ALIAS: ${{ secrets.MIB_RELEASE_KEY_ALIAS }}
+          MIB_RELEASE_KEY_PASSWORD: ${{ secrets.MIB_RELEASE_KEY_PASSWORD }}
+        run: gradle :app:bundleRelease --stacktrace
+
+      - name: Verify signed bundle for Play Console
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$AAB"
+          unzip -t "$AAB"
+          unzip -Z1 "$AAB" > "$RUNNER_TEMP/aab-entries.txt"
+          grep -Fx 'base/manifest/AndroidManifest.xml' "$RUNNER_TEMP/aab-entries.txt"
+          jarsigner -verify "$AAB"
+          sha256sum "$AAB" | tee app-bundle.sha256
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: RufiTrack-play-aab
+          path: |
+            app/build/outputs/bundle/release/*.aab
+            app-bundle.sha256
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -110,6 +136,6 @@ jobs:
           sha256sum BudgetTracker.apk | tee BudgetTracker.apk.sha256
           unzip -t BudgetTracker.apk >/dev/null
           gh release create "build-${GITHUB_RUN_NUMBER}" BudgetTracker.apk BudgetTracker.apk.sha256 \
-            --title "Budget Tracker build ${GITHUB_RUN_NUMBER}" \
+            --title "RufiTrack build ${GITHUB_RUN_NUMBER}" \
             --notes "Install this APK over the previous version. Keep the existing app installed to preserve local data." \
             --latest

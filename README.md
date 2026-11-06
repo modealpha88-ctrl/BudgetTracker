@@ -29,7 +29,7 @@
 - **Limits:** This is an offline personal ledger, not a real-time bank connection. A successful Android build and unit tests do not verify bank balances, notifications, SMS parsing, or device behavior; independently reconcile financial figures.
 
 ## Build and run
-1. Open this folder in Android Studio with JDK 17 and Android SDK 35; allow Gradle sync.
+1. Open this folder in Android Studio with JDK 17 and Android SDK 36; allow Gradle sync.
 2. Connect Android 8+ device with USB debugging or use an SMS-capable emulator. Click Run.
 3. On Dashboard tap **Import previous 1 month of SMS**, grant `READ_SMS`, and wait for the summary. Enable automatic new SMS detection separately if desired.
 4. Inspect the results against the official MIB app or statement. Set category budgets and browse months.
@@ -40,3 +40,8 @@
 - Inbox import uses device-local dates for its cutoff. Transaction date is parsed from SMS text. No raw SMS bodies or full account/card numbers are persisted by the parser, but descriptions and timestamps are sensitive financial data. **SQLite is not encrypted at rest.** No INTERNET permission or remote transfer is configured.
 - History import is one-time per tap; it does not silently read the inbox. Revoking SMS permissions in Android settings disables future access.
 - Build not compiled or device-tested here. Test parser, permissions, and monthly totals before relying on the results.
+
+## Google Play preparation
+- Play-ready signed Android App Bundle is built in GitHub Actions alongside the existing APK; see [Play submission checklist](docs/PLAY_SUBMISSION.md).
+- App targets Android 16 (API 36). Demo mode is accessible from initial setup without importing sensitive real financial data; it does not alter the ledger.
+- [Privacy policy draft](docs/privacy.html) must be reviewed and hosted publicly before Play publication. SMS permissions remain subject to Google approval.

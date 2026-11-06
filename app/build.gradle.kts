@@ -5,8 +5,8 @@ plugins {
 }
 android {
     namespace = "com.example.mibbudget"
-    compileSdk = 35
-    defaultConfig { applicationId = "com.example.mibbudget"; minSdk = 26; targetSdk = 35; versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1000); versionName = "0.2" }
+    compileSdk = 36
+    defaultConfig { applicationId = "com.example.mibbudget"; minSdk = 26; targetSdk = 36; versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(1000) ?: 1000); versionName = "0.2" }
     signingConfigs {
         create("mibRelease") {
             storeFile = file(System.getenv("MIB_RELEASE_KEYSTORE_PATH") ?: "missing-release-keystore.jks")
