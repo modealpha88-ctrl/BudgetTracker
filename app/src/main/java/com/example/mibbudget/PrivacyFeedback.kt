@@ -28,6 +28,7 @@ fun PrivacyFeedbackScreen(context: Context, transactionCount: Int, merchantRuleC
     var reliability by remember { mutableStateOf(prefs.getBoolean("reliability", true)) }
     var device by remember { mutableStateOf(prefs.getBoolean("device", false)) }
     var preview by remember { mutableStateOf(false) }
+    var showPrivacyPolicy by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf("") }
     val payload = remember(transactionCount, merchantRuleCount, merchant, imports, balances, reliability, device, note) {
         JSONObject().apply {
@@ -47,6 +48,19 @@ fun PrivacyFeedbackScreen(context: Context, transactionCount: Int, merchantRuleC
         }.toString(2)
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedButton(onClick = { showPrivacyPolicy = !showPrivacyPolicy },
+            modifier = Modifier.fillMaxWidth()) {
+            Text(if (showPrivacyPolicy) "Hide privacy policy" else "Read RufiTrack privacy policy")
+        }
+        if (showPrivacyPolicy) {
+            Surface(shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer) {
+                Text(RufiTrackPrivacyPolicy.text,
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
         Text("PRIVACY • CONTROL CENTER",style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
         Text("Privacy & Improvement", style = MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold)
         Text("Improvement level selected. No information is transmitted without your explicit action. Raw SMS, transaction amounts, balances, account/card numbers and timestamps are never included.")

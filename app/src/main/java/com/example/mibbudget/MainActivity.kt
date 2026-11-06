@@ -734,8 +734,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
         }
         return
     }
+    var showPlayReviewerPreview by remember { mutableStateOf(false) }
+    if (showPlayReviewerPreview && onboardingRequired) {
+        RufiTrackReviewerPreview(onExit = { showPlayReviewerPreview = false })
+        return
+    }
     if (onboardingRequired) {
-        Column(Modifier.fillMaxSize().background(Color(0xFF0A1510))
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).background(Color(0xFF0A1510))
             .verticalScroll(rememberScrollState()).padding(horizontal=24.dp,vertical=40.dp),
             verticalArrangement=Arrangement.spacedBy(18.dp)) {
             RufiTrackSetupHeader(setupStage)
@@ -744,6 +749,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text("Connect your transaction history",style=MaterialTheme.typography.headlineSmall,color=Color.White)
                     Text("Import a CSV statement once to establish your starting balance and transaction history.",color=Color(0xFFE3F4EA))
                     RufiTrackSetupTip("Start with your bank statement", "Choose a CSV from MIB or BML. We'll match existing transactions and only add missing entries after you review them.")
+                    OutlinedButton(
+                        onClick = { showPlayReviewerPreview = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp)
+                    ) { Text("Explore a read-only demo (no bank data needed)") }
+                    Text("Demo mode uses fictional examples and never writes to your financial records.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick={csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))},
                         modifier=Modifier.fillMaxWidth().heightIn(min=54.dp),
                         shape=RoundedCornerShape(18.dp)) { Text("Choose CSV statement",fontWeight=FontWeight.Bold) }
@@ -773,6 +786,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text("Follow these steps to import MIB and BML messages. Built-in templates recognize supported transaction types automatically.",color=Color(0xFFE3F4EA))
                     Card(colors=CardDefaults.cardColors(containerColor=Color(0xFF243A30)),shape=RoundedCornerShape(20.dp)) {
                         Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                            Text("Optional SMS access: RufiTrack reads bank transaction messages to create your private spending ledger. Unrelated messages are ignored and full SMS content is not saved. You can deny or revoke permission; CSV and manual entry remain available.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("1  ·  Allow incoming bank SMS",color=Color(0xFF9BE8C5),fontWeight=FontWeight.Bold)
                             Text("Grant SMS permission when Android asks. This lets RufiTrack detect new transactions.",color=Color.White)
                             Button(onClick={
