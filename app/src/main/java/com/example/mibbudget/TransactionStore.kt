@@ -22,7 +22,7 @@ data class Tx(val id: Long, val amountLaari: Long, val category: String, val des
 
 // SQLiteOpenHelper only implements AutoCloseable on API 29+. Declare Closeable
 // ourselves so receiver/worker use blocks also work on supported Android 8 and 9.
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 9), java.io.Closeable {
+class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 10), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
@@ -35,6 +35,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         db.execSQL("CREATE TABLE IF NOT EXISTS foreign_transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_minor INTEGER NOT NULL, currency TEXT NOT NULL, merchant TEXT NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         TransactionAudit.install(db)
         installCsvDetails(db)
+        LedgerRecovery.install(db)
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 7) db.execSQL("CREATE TABLE IF NOT EXISTS merchant_category_rules(merchant_key TEXT PRIMARY KEY, category TEXT NOT NULL)")
@@ -48,6 +49,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         if (oldVersion < 4) db.execSQL("CREATE TABLE IF NOT EXISTS bml_pending(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, occurred_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         if (oldVersion < 8) TransactionAudit.install(db)
         if (oldVersion < 9) installCsvDetails(db)
+        if (oldVersion < 10) LedgerRecovery.install(db)
     }
 
 
@@ -148,6 +150,12 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
      * No new financial transactions are inserted and no ledger fields are updated.
      */
     fun mergeCsvDetails(text: String, line: Int, transactionId: Long): CsvDetails {
+        val tx = all().first { it.id == transactionId }
+        return LedgerRecovery.record(writableDatabase, "Link CSV details", listOf(tx.fingerprint)) {
+            mergeCsvDetailsInternal(text, line, transactionId)
+        }
+    }
+    private fun mergeCsvDetailsInternal(text: String, line: Int, transactionId: Long): CsvDetails {
         require(line>=2 && transactionId>0) { "Select a valid statement row and transaction" }
         val row=reviewCsv(text).matches.firstOrNull { it.line==line }
             ?: throw IllegalArgumentException("Statement row not found")
@@ -187,6 +195,21 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
         return detail
+    }
+
+    fun csvMergePreview(text: String, line: Int): CsvDetails {
+        val records = parseCsvRecords(text.removePrefix("\uFEFF"))
+        val cols = records[line - 1]
+        val mib = records.first()[0].trim().equals("POSTED DATE", true)
+        val row = reviewCsv(text).matches.first { it.line == line }
+        val recipient = TransactionPresentation.label(row.description).substringAfter(" · ", "").trim()
+        return CsvDetails(recipient, if(mib) cols[3].trim() else "", row.description, row.date, csvRowHash(cols, mib))
+    }
+    fun csvImportImpact(text: String, lines: Set<Int>): Map<String, List<CsvMatch>> {
+        val records = parseCsvRecords(text.removePrefix("\uFEFF"))
+        val mib = records.first()[0].trim().equals("POSTED DATE", true)
+        return reviewCsv(text).matches.filter { it.line in lines && it.status in listOf("MISSING", "POSSIBLE") }
+            .groupBy { if(mib) "MIB" else records[it.line - 1][4].trim().ifBlank { "Unassigned" } }
     }
 
     data class StatementBalance(val amountLaari: Long, val date: String, val reference: String, val time: String? = null, val confidence: String = "Date only; end-of-day assumed")
@@ -237,6 +260,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         require(mib || simple) { "Unsupported CSV statement" }
         val existing=all()
         val linkedByHash=csvDetails().entries.associate { it.value.csvRowHash to it.key }
+        val labels = accounts()
         val assigned=mutableSetOf<Long>()
         val results=mutableListOf<CsvMatch>()
         var ignored=0
@@ -254,7 +278,9 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val verified=linkedByHash[csvRowHash(cols,mib)]?.let { key ->
                 existing.firstOrNull { it.fingerprint==key && it.amountLaari==signed }
             }
+            val rowAccount = if(mib) "MIB" else cols[4].trim()
             val nearby=existing.filter { t ->
+                (rowAccount.isBlank() || FinanceCalculations.assignedAccount(t, labels) in listOf(rowAccount, "Unassigned")) &&
                 t.amountLaari==signed &&
                 (dayDistance(date,t.timestamp)?.let { it<=2 }==true)
             }
@@ -262,7 +288,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val exact=candidates.filter { t ->
                 t.timestamp.take(10)==date &&
                 (reference.length>=6 && t.description.contains(reference,true) ||
-                 normalizedWords(desc).intersect(normalizedWords(t.description)).isNotEmpty() ||
+
                  (t.fingerprint.startsWith("csv-") && t.description.equals(desc,true)))
             }
             val status: String
@@ -400,6 +426,8 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     }
     fun updateTransaction(id: Long, amount: Long, category: String, description: String): Boolean {
         if (amount == 0L || amount == Long.MIN_VALUE || description.isBlank()) return false
+        val original = all().firstOrNull { it.id == id } ?: return false
+        if (allocations().containsKey(original.fingerprint) && (amount != original.amountLaari || category != original.category)) return false
         val v = ContentValues().apply {
             put("amount_laari", amount); put("category", category.take(40)); put("description", description.trim().take(120))
         }
@@ -427,7 +455,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         readableDatabase.rawQuery("SELECT id,amount_laari,category,description,created_at,fingerprint FROM transactions",null).use { cursor ->
             while(cursor.moveToNext()) rows.add(Tx(cursor.getLong(0),cursor.getLong(1),cursor.getString(2),cursor.getString(3),cursor.getString(4),cursor.getString(5)))
         }
-        return rows.filter { Regex("""\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}""").containsMatchIn(it.timestamp) }
+        return rows.filter { Regex("""\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}""").containsMatchIn(it.timestamp) }
             .groupBy { it.timestamp.take(19).replace(' ','T') to it.amountLaari }
             .values.filter { it.size>1 }.sortedByDescending { it.size }
     }
@@ -446,11 +474,16 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 }
             }
             require(entries.map { it.amountLaari }.distinct().size==1 && entries.map { it.timestamp.take(19).replace(' ','T') }.distinct().size==1) { "Exact time and amount must match" }
-            require(entries.all { Regex("""\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}""").containsMatchIn(it.timestamp) })
+            require(entries.all { Regex("""\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}""").containsMatchIn(it.timestamp) })
             val labels=entries.map { tx ->
                 db.rawQuery("SELECT label FROM account_labels WHERE fingerprint=?",arrayOf(tx.fingerprint)).use { cur -> if(cur.moveToFirst()) cur.getString(0) else "" }
             }.filter { it.isNotBlank() }.distinct()
             require(labels.size<=1) { "Different accounts: review manually" }
+            val details = csvDetails()
+            val references = entries.mapNotNull { details[it.fingerprint]?.reference?.takeIf { r -> r.isNotBlank() } }.distinct()
+            require(references.size <= 1) { "Conflicting bank references: keep these payments separate" }
+            require(entries.none { allocations().containsKey(it.fingerprint) }) { "Remove split allocations before merging duplicates" }
+            require(entries.drop(1).none { details.containsKey(it.fingerprint) }) { "Unlink CSV details on the records to archive before merging" }
             db.execSQL("CREATE TABLE IF NOT EXISTS duplicate_merge_archive (id INTEGER PRIMARY KEY, amount_laari INTEGER, category TEXT, description TEXT, created_at TEXT, fingerprint TEXT, kept_id INTEGER)")
             val keep=entries.first()
             entries.drop(1).forEach { tx ->
@@ -484,8 +517,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     }
 
     fun setAccount(fingerprint: String, label: String) {
-        val v=ContentValues().apply { put("fingerprint", fingerprint);put("label", label.take(40)) }
-        writableDatabase.insertWithOnConflict("account_labels",null,v,SQLiteDatabase.CONFLICT_REPLACE)
+        setAccounts(listOf(fingerprint), label)
     }
     fun accounts(): Map<String,String> {
         val out=mutableMapOf<String,String>()
@@ -550,8 +582,8 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "account_labels" to listOf("fingerprint","label"),
             "merchant_category_rules" to listOf("merchant_key","category"),
             "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
-            "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
-            "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
+            "spending_allocations" to listOf("fingerprint","parts"),
+            "ledger_recovery" to LedgerRecovery.backupColumns,
             "transaction_audit_history" to TransactionAudit.backupColumns
         )
         specs.forEach { (table,cols) ->
@@ -592,13 +624,16 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "recurring_expenses" to listOf("name","amount_laari","category"),
             "account_labels" to listOf("fingerprint","label"),
             "merchant_category_rules" to listOf("merchant_key","category"),
+            "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
+            "spending_allocations" to listOf("fingerprint","parts"),
+            "ledger_recovery" to LedgerRecovery.backupColumns,
             "transaction_audit_history" to TransactionAudit.backupColumns
         )
         val counts=linkedMapOf<String,Int>()
         val incomingFingerprints=mutableSetOf<String>()
         specs.forEach { (table,cols) ->
             val rows=root.optJSONArray(table) ?: if(table in
-                setOf("merchant_category_rules","transaction_audit_history","csv_transaction_details")) JSONArray()
+                setOf("merchant_category_rules","transaction_audit_history","csv_transaction_details","spending_allocations","ledger_recovery")) JSONArray()
                 else throw IllegalArgumentException("Missing $table")
             require(rows.length()<=100000) { "Too many $table records" }
             counts[table]=rows.length()
@@ -609,6 +644,11 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                     require(item.get(key) is String || item.get(key) is Number) {
                         "Unsupported $table value"
                     }
+                }
+                require(item.toString().length <= 5_000_000) { "Backup record too large" }
+                if (table == "spending_allocations") SplitSpending.decode(item.getString("parts"))
+                if (table == "ledger_recovery") {
+                    JSONObject(item.getString("before_state")); JSONObject(item.getString("after_state"))
                 }
                 if(table=="transactions") {
                     val fingerprint=item.getString("fingerprint")
@@ -640,13 +680,16 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             "recurring_expenses" to listOf("name","amount_laari","category"),
             "account_labels" to listOf("fingerprint","label"),
             "merchant_category_rules" to listOf("merchant_key","category"),
+            "csv_transaction_details" to listOf("fingerprint","csv_row_hash","recipient","reference","bank_description","statement_date"),
+            "spending_allocations" to listOf("fingerprint","parts"),
+            "ledger_recovery" to LedgerRecovery.backupColumns,
             "transaction_audit_history" to TransactionAudit.backupColumns
         )
         // Validate every row before any database write.
         var total=0
         specs.forEach { (table,cols) ->
             val rows=root.optJSONArray(table) ?: if(table=="merchant_category_rules" ||
-                table=="transaction_audit_history" || table=="csv_transaction_details") JSONArray() else throw IllegalArgumentException("Missing $table")
+                table=="transaction_audit_history" || table=="csv_transaction_details" || table=="spending_allocations" || table=="ledger_recovery") JSONArray() else throw IllegalArgumentException("Missing $table")
             require(rows.length()<=100000) { "Too many records" }
             for(i in 0 until rows.length()) {
                 val item=rows.getJSONObject(i)
@@ -666,7 +709,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                         val value=item.get(key)
                         when(value) {
                             is Number -> v.put(key,value.toLong())
-                            is String -> v.put(key,value.take(500))
+                            is String -> v.put(key,value)
                             else -> throw IllegalArgumentException("Invalid value")
                         }
                     }
@@ -792,9 +835,11 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         // Never discard a genuine payment just because its amount matches another.
         // CSV is authoritative only when description/reference or exact timestamp corroborates.
         if(!fingerprint.startsWith("manual-") && !fingerprint.startsWith("csv-") && transactionTime!=null) {
-            val sameAmount=all().filter { it.fingerprint.startsWith("csv-") && it.amountLaari==amountLaari }
-            if(sameAmount.any { CsvSmsMatcher.isConfirmedDuplicate(
-                    amountLaari,description,transactionTime,it.amountLaari,it.description,it.timestamp) }) return false
+            val labels = accounts()
+            val sameAmount=all().filter { it.fingerprint.startsWith("csv-") && it.amountLaari==amountLaari &&
+                sourceAccount != null && FinanceCalculations.assignedAccount(it, labels).equals(sourceAccount, true) }
+            if(sameAmount.count { CsvSmsMatcher.isConfirmedDuplicate(
+                    amountLaari,description,transactionTime,it.amountLaari,it.description,it.timestamp) } == 1) return false
         }
         val values = android.content.ContentValues().apply {
             put("amount_laari", amountLaari); put("category", (if(amountLaari < 0L && category != "Internal Transfer") (merchantCategoryRule(description) ?: category) else category).take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
@@ -857,10 +902,9 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             db.rawQuery("SELECT id,description FROM transactions WHERE amount_laari<0 AND category!='Internal Transfer'", null).use { cursor ->
                 while(cursor.moveToNext()) candidates.add(cursor.getLong(0) to cursor.getString(1))
             }
-            candidates.filter { VendorProfiles.key(it.second) == key }.forEach { (id, _) ->
-                val values = ContentValues().apply { put("category", category) }
-                changed += db.update("transactions", values, "id=?", arrayOf(id.toString()))
-            }
+            val matching=candidates.filter { VendorProfiles.key(it.second) == key }.map { it.first }
+            setCategories(matching,category)
+            changed=matching.size
             db.setTransactionSuccessful()
             return changed
         } finally { db.endTransaction() }
@@ -875,11 +919,58 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     fun undoTransactionChange(historyId: Long): Boolean =
         TransactionAudit.undo(writableDatabase,historyId)
 
-    fun setTransactionCategory(id: Long, category: String) {
-        require(category.isNotBlank())
-        writableDatabase.execSQL("UPDATE transactions SET category=? WHERE id=?",arrayOf(category,id))
+    fun setTransactionCategory(id: Long, category: String) { setCategories(listOf(id), category) }
+    fun markInternal(id: Long) { setCategories(listOf(id), "Internal Transfer") }
+    fun setCategories(ids: List<Long>, category: String) {
+        require(category.isNotBlank() && category.length <= 40)
+        val rows = all().filter { it.id in ids }
+        LedgerRecovery.record(writableDatabase, "Change category for ${rows.size} transactions", rows.map { it.fingerprint }) {
+            rows.forEach { tx ->
+                writableDatabase.execSQL("UPDATE transactions SET category=? WHERE id=?", arrayOf(category, tx.id))
+                writableDatabase.delete("spending_allocations", "fingerprint=?", arrayOf(tx.fingerprint))
+            }
+        }
     }
-    fun markInternal(id: Long) { writableDatabase.execSQL("UPDATE transactions SET category=? WHERE id=?", arrayOf("Internal Transfer", id)) }
+    fun setAccounts(keys: List<String>, account: String) {
+        require(account in listOf("MIB", "BML", "Cash", "Unassigned"))
+        LedgerRecovery.record(writableDatabase, "Assign ${keys.size} transactions to $account", keys) {
+            keys.forEach { key ->
+                writableDatabase.insertWithOnConflict("account_labels", null, ContentValues().apply {
+                    put("fingerprint", key); put("label", account)
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+        }
+    }
+    fun unlinkCsv(fingerprint: String) {
+        LedgerRecovery.record(writableDatabase, "Unlink CSV details", listOf(fingerprint)) {
+            writableDatabase.delete("csv_transaction_details", "fingerprint=?", arrayOf(fingerprint))
+        }
+    }
+    fun allocations(): Map<String, List<SpendingAllocation>> = buildMap {
+        readableDatabase.rawQuery("SELECT fingerprint,parts FROM spending_allocations", null).use { c ->
+            while (c.moveToNext()) put(c.getString(0), SplitSpending.decode(c.getString(1)))
+        }
+    }
+    fun spendingEntries(entries: List<Tx> = all()): List<Tx> {
+        val splits = allocations()
+        return entries.flatMap { tx -> splits[tx.fingerprint]?.let { SplitSpending.expand(tx, it) } ?: listOf(tx) }
+    }
+    fun saveAllocations(id: Long, parts: List<SpendingAllocation>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val tx = all().first { it.id == id }
+            if (parts.isNotEmpty()) SplitSpending.validate(tx, parts)
+            LedgerRecovery.record(db, if(parts.isEmpty()) "Remove split" else "Split spending", listOf(tx.fingerprint)) {
+                db.delete("spending_allocations", "fingerprint=?", arrayOf(tx.fingerprint))
+                if (parts.isNotEmpty()) db.insertOrThrow("spending_allocations", null, ContentValues().apply {
+                    put("fingerprint", tx.fingerprint); put("parts", SplitSpending.encode(parts))
+                })
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     fun setBudget(category: String, limit: Long) {
         require(limit > 0)
         val v = android.content.ContentValues().apply { put("category",category);put("limit_laari",limit) }
@@ -1018,3 +1109,4 @@ object MerchantCategories {
         }
     }
 }
+

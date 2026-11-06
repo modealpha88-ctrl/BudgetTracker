@@ -136,7 +136,7 @@ fun HomePlanningHighlights(
     order.filterNot { it in hidden }.forEach { title ->
         when (title) {
             "Safe to spend" -> {
-                val available = balances.values.sumOf { it.coerceAtLeast(0L) }
+                val available = balances.values.sum().coerceAtLeast(0L)
                 val safe = (available - reserved - bills).coerceIn(0L, available)
                 PremiumSafeToSpendCard(
                     safe = if (balances.isEmpty()) null else safe,
@@ -147,6 +147,7 @@ fun HomePlanningHighlights(
                     expanded = showSafeBreakdown,
                     onToggle = { showSafeBreakdown = !showSafeBreakdown }
                 )
+                if(showSafeBreakdown) SnapshotQuality(context, entries, labels)
             }
             "Forecast" -> PremiumForecastCard(predicted)
             "Cash" -> if (balances.containsKey("Cash")) PlanningCard("Cash wallet") {
@@ -187,10 +188,12 @@ fun FinancialPlanningScreen(
     val currentPots = remember(localRevision, entries) { pots(context) }
     val totalReserved = currentPots.values.sum()
     val unpaidBills = upcomingBills(context, store, entries)
-    val knownTotal = balances.values.sumOf { it.coerceAtLeast(0L) }
+    val knownTotal = balances.values.sum().coerceAtLeast(0L)
     val safeToSpend = (knownTotal - totalReserved - unpaidBills).coerceIn(0L, knownTotal)
     val missing = planningAccountNames.filterNot { it in balances }
     val unassigned = entries.count { FinanceCalculations.assignedAccount(it, labels) == "Unassigned" }
+    val spendingEntries = store.spendingEntries(entries)
+    val monthSpending = spendingEntries.filter { it.timestamp.startsWith(selectedMonth.toString()) }
     val monthEntries = entries.filter { it.timestamp.startsWith(selectedMonth.toString()) }
     val spent = FinanceCalculations.expenseTotal(monthEntries)
     val income = FinanceCalculations.monthIncome(entries, selectedMonth)
@@ -235,7 +238,8 @@ fun FinancialPlanningScreen(
             style = MaterialTheme.typography.bodySmall)
         if (unassigned > 0) Text("$unassigned transactions are unassigned and cannot be attributed to an account.",
             style = MaterialTheme.typography.bodySmall)
-        Text("Same-day bank movements may be excluded. This is not proof that funds are spendable.",
+        SnapshotQuality(context, entries, labels)
+        Text("Calculation: combined known balances minus reserved savings and unmatched recurring bills. Negative balances reduce the total. This is an estimate.",
             style = MaterialTheme.typography.bodySmall)
     }
 
@@ -389,8 +393,8 @@ fun FinancialPlanningScreen(
         }
         if (budgets.isEmpty()) Text("Set category budget limits in the Budgets screen to enable rollover.")
         budgets.toSortedMap().forEach { (category, limit) ->
-            val carry = if (rolloverEnabled) FinanceCalculations.rollover(category,selectedMonth,limit,entries) else 0L
-            val actual = monthEntries.filter { it.category == category && FinanceCalculations.isExpense(it) }
+            val carry = if (rolloverEnabled) FinanceCalculations.rollover(category,selectedMonth,limit,spendingEntries) else 0L
+            val actual = monthSpending.filter { it.category == category && FinanceCalculations.isExpense(it) }
                 .sumOf { -it.amountLaari }
             val effective = limit + carry
             Text("$category: ${Money.format(actual)} / ${Money.format(effective)}" +
@@ -407,8 +411,8 @@ fun FinancialPlanningScreen(
         val delta = spent - previousSpent
         Text("Previous month: ${Money.format(previousSpent)}")
         Text("Change: ${if(delta >= 0L) "+" else ""}${Money.format(delta)}")
-        val byCategory = expensesByCategory(monthEntries)
-        val previousCategories = expensesByCategory(entries.filter {
+        val byCategory = expensesByCategory(monthSpending)
+        val previousCategories = expensesByCategory(spendingEntries.filter {
             it.timestamp.startsWith(selectedMonth.minusMonths(1).toString())
         })
         val weekend = monthEntries.filter { tx ->
@@ -462,7 +466,7 @@ fun FinancialPlanningScreen(
         challenges.forEach { (key, value) ->
             val name = key.removePrefix("challenge:")
             val limit = value as Long
-            val actual = monthEntries.filter { it.category == name && FinanceCalculations.isExpense(it) }
+            val actual = monthSpending.filter { it.category == name && FinanceCalculations.isExpense(it) }
                 .sumOf { -it.amountLaari }
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("$name: ${Money.format(actual)} / ${Money.format(limit)}",
@@ -517,3 +521,4 @@ fun FinancialPlanningScreen(
             style = MaterialTheme.typography.bodySmall)
     }
 }
+

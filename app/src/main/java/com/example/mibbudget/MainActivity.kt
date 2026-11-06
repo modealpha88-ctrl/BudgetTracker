@@ -356,6 +356,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     }
     val csvDetailsByFingerprint=remember(revision) { store.csvDetails() }
     val transactions = store.all()
+    val spendingTransactions = remember(revision) { store.spendingEntries(transactions) }
+    val splitAllocations = remember(revision) { store.allocations() }
     // Once the first CSV has established a baseline, subsequent imports never require another CSV.
     // Existing installations with CSV records are migrated automatically without altering transactions.
     val setupPrefs = remember { context.getSharedPreferences("initial_csv_setup", android.content.Context.MODE_PRIVATE) }
@@ -396,6 +398,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val foreignTransactions = remember(revision) { store.foreign() }
     val pendingBml = remember(revision) { store.pendingBml() }
     val monthlyTransactions = remember(revision, selectedMonth) { store.forMonth(selectedMonth) }
+    val monthlySpending = spendingTransactions.filter { it.timestamp.startsWith(selectedMonth.toString()) }
     val budgets = remember(revision) { store.budgets() }
     val rolloverEnabled = context.getSharedPreferences("financial_planning",android.content.Context.MODE_PRIVATE)
         .getBoolean("rollover",false)
@@ -428,9 +431,9 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
     val pdfLauncher=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if(uri!=null) try {
             val reportBudgets=budgets.mapValues { (category,limit) ->
-                FinanceCalculations.effectiveLimit(category,selectedMonth,limit,transactions,rolloverEnabled)
+                FinanceCalculations.effectiveLimit(category,selectedMonth,limit,spendingTransactions,rolloverEnabled)
             }
-            context.contentResolver.openOutputStream(uri)?.use { BudgetPdfReport.write(it,selectedMonth,transactions,reportBudgets) }
+            context.contentResolver.openOutputStream(uri)?.use { BudgetPdfReport.write(it,selectedMonth,transactions,reportBudgets,spendingTransactions) }
                 ?: error("Could not open PDF destination")
             lastPdfUri = uri
             notice="Monthly PDF report saved. Use Plan → Share last exported PDF to send it."
@@ -552,6 +555,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
             notice=if(useEncryptedBackup) "Encrypted backup saved. Keep your password safe: it cannot be recovered." else "Unencrypted backup saved. Keep it private."
         } catch(e:Exception) { notice="Backup failed: ${e.message?.take(90)}" }
     }
+    var restorePreferences by remember { mutableStateOf(false) }
     var pendingRestoreJson by remember { mutableStateOf<String?>(null) }
     var pendingRestorePreview by remember { mutableStateOf<FullBackup.Preview?>(null) }
     val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -560,6 +564,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 ?: error("Cannot read file")
             val json=if(data.startsWith("MIB-ENC-V1:")) SecureBackup.decrypt(data,restoreBackupPassword) else data
             val preview=FullBackup.preview(context,store,json)
+            restorePreferences=false
             pendingRestoreJson=json
             pendingRestorePreview=preview
             notice="Backup validated. Review the preview before confirming."
@@ -585,8 +590,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         Text("${table.replace('_',' ')}: $count records",
                             style=MaterialTheme.typography.bodySmall)
                     }
-                    Text("Preference values available: ${preview.settingsToRestore}")
-                    Text("Confirming will merge missing records and may replace non-security preferences. Existing biometric settings will stay on this device.",
+                    Text("Preference values available: ${preview.settingsToRestore}; ${preview.overwrittenSettings} existing values would be replaced.")
+                    Text("Settings groups: "+preview.changedPreferenceFiles.joinToString { it.replace('_',' ') },style=MaterialTheme.typography.bodySmall)
+                    Row {
+                        Checkbox(checked=restorePreferences,onCheckedChange={restorePreferences=it})
+                        Text("Also restore preferences and balance snapshots")
+                    }
+                    Text(if(restorePreferences) "Listed settings will be merged and conflicting values replaced." else "Current preferences and balance snapshots will be kept.")
+                    Text("Confirming merges missing database records. Existing transactions are kept; biometric settings stay on this device.",
                         color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                 }
             },
@@ -596,7 +607,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     pendingRestorePreview=null
                     pendingRestoreJson=null
                     if(text!=null) try {
-                        val count=FullBackup.restore(context,store,text)
+                        val count=FullBackup.restore(context,store,text,restorePreferences)
                         revision++
                         notice="Restored $count additional records. Existing transaction records kept."
                     } catch(e:Exception) {
@@ -619,7 +630,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 notice = "Scanned ${result.scanned} inbox messages; imported ${result.imported}, duplicates ${result.duplicates}, ignored ${result.ignored}."
                 revision++
             } catch (e: CancellationException) { throw e
-            } catch (e: Exception) { notice = "History import failed: ${e.javaClass.simpleName}" }
+            } catch (e: Exception) { ImportHealth.failure(context, "History scan failed. Check SMS permission and try again."); notice = "History import failed: ${e.javaClass.simpleName}" }
             finally { importingHistory = false }
         }
     }
@@ -1072,11 +1083,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceContainer)) {
                     Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text("Recommended setup: CSV first, SMS second",style=MaterialTheme.typography.titleMedium)
-                        Text("1. Upload your bank CSV and review the matches. 2. Import missing statement rows. 3. Enable SMS or import previous SMS to fill gaps. Same-amount transactions within one day of a CSV entry are skipped to avoid duplicates.",style=MaterialTheme.typography.bodySmall)
+                        Text("1. Upload your bank CSV and review the matches. 2. Import missing statement rows. 3. Enable SMS or import previous SMS to fill gaps. Only strongly corroborated duplicates are skipped; repeated payments remain available for review.",style=MaterialTheme.typography.bodySmall)
                         Text(if(initialCsvSetupComplete) "Initial CSV setup: complete" else "Initial CSV setup: required",color=if(csvBaselineReady) Color(0xFF15966C) else MaterialTheme.colorScheme.error)
                         OutlinedButton(onClick={tab=2;csvLauncher.launch(arrayOf("text/*","application/csv","application/octet-stream"))}) { Text("Step 1 · Upload CSV statement") }
                     }
                 }
+                ImportHealthCard(context, onRecover={
+                    if(!importingHistory) {
+                        historyMonths=1L
+                        if(AutomaticSmsImport.hasInboxAccess(context)) historyRequested=true
+                        else historyLauncher.launch(Manifest.permission.READ_SMS)
+                    }
+                })
                 Text("Automatic bank SMS import", style=MaterialTheme.typography.titleMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
@@ -1190,10 +1208,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 }
             }
             }
-            if(tab in listOf(2,3,4,8)) {
+            if(tab in listOf(2,3,4,8,9)) {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                     TextButton(onClick={tab=7}) { Text("‹  More") }
-                    Text(when(tab) { 2 -> "Import & access"; 3 -> "Budgets"; 4 -> "Financial planning"; else -> "Advanced dashboard" },style=MaterialTheme.typography.titleSmall)
+                    Text(when(tab) { 2 -> "Import & access"; 3 -> "Budgets"; 4 -> "Financial planning"; 9 -> "Reconciliation"; else -> "Advanced dashboard" },style=MaterialTheme.typography.titleSmall)
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -1201,7 +1219,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                 0 -> NeoProHomeScreen(
                     context=context,
                     transactions=transactions,
-                    monthlyTransactions=monthlyTransactions,
+                    monthlyTransactions=monthlySpending,
                     accountLabels=accountLabels,
                     savedRecipients=remember(recipientRevision,revision,transactions) {
                         transactions.mapNotNull { tx ->
@@ -1216,10 +1234,10 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     onAccounts={tab=5},
                     onPlanning={tab=4},
                     onInsights={tab=6},
-                    onReview={tab=2},
+                    onReview={tab=9},
                     onActivity={tab=1},
                     onTransaction={selectedTransactionId=it},
-                    onAdvanced={tab=8},
+                    onAdvanced={tab=9},
                     onAdd={showTransactionForm=true;tab=1},
                     onImport={tab=2}
                 )
@@ -1237,11 +1255,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         showAdvancedFilters=true
                         tab=1
                     },
-                    onAdvanced={tab=8},
+                    onAdvanced={tab=9},
                     onPlanning={tab=4}
                 )
                 6 -> NeoProInsightsScreen(
-                    monthlyTransactions=monthlyTransactions,
+                    monthlyTransactions=monthlySpending,
                     selectedMonth=selectedMonth,
                     onMonthChange={selectedMonth=it},
                     onCategory={selected ->
@@ -1264,6 +1282,11 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     },
                     onPlanning={tab=4}
                 )
+                9 -> ReconciliationChecklist(context, store, transactions, accountLabels,
+                    csvReview?.missing, csvReview?.possible, revision,
+                    onImport={tab=2}, onActivity={tab=1;accountFilter="Unassigned";showAdvancedFilters=true},
+                    onAccount={bank -> selectedAccountCard=bank;dedicatedAccountOpen=true},
+                    onChanged={revision++}, onNotice={notice=it})
                 7 -> NeoProMoreScreen(
                     darkTheme=darkTheme,
                     setDarkTheme=setDarkTheme,
@@ -1375,7 +1398,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                     if(showSpendingInsights) {
-                        val monthExpenses=monthlyTransactions.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
+                        val monthExpenses=monthlySpending.filter { it.amountLaari<0 && it.category!="Internal Transfer" }
                         val monthIncome=monthlyTransactions.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }
                         val monthOut=monthExpenses.sumOf { -it.amountLaari }
                         Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(26.dp),
@@ -1974,8 +1997,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     originalTransferPrefs.edit()
                                         .putString(pair.outgoing.id.toString(),pair.outgoing.category)
                                         .putString(pair.incoming.id.toString(),pair.incoming.category).apply()
-                                    store.markInternal(pair.outgoing.id)
-                                    store.markInternal(pair.incoming.id)
+                                    store.setCategories(listOf(pair.outgoing.id,pair.incoming.id),"Internal Transfer")
                                     revision++
                                     notice="Both sides marked internal"
                                 }) { Text("Confirm both as internal") }
@@ -2032,7 +2054,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         }
                     }
                     Text("Spending by category",style=MaterialTheme.typography.titleMedium)
-                    val grouped = monthlyTransactions.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
+                    val grouped = monthlySpending.filter { it.amountLaari<0 && it.category != "Internal Transfer" }.groupBy { it.category }
                     grouped.forEach { (cat,txs) ->
                         val spent=txs.sumOf{-it.amountLaari}
                         Card(onClick={
@@ -2224,7 +2246,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         onQueryChange={searchText=it; rankedRecipientFilter=null},
                         filter=transactionFilter,
                         onFilterChange={transactionFilter=it},
-                        onReview={tab=2}
+                        onReview={tab=9}
                     )
                     // Visible monthly merchant ranking; separate from collapsed advanced insights.
                     TopMerchantsSection(
@@ -2253,6 +2275,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text("Tools & analysis",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold)
                     var showChangeHistory by remember { mutableStateOf(false) }
                     var pendingUndo by remember { mutableStateOf<TransactionAudit.Entry?>(null) }
+                    RecoveryPanel(store, revision, onChanged={revision++}, onNotice={notice=it})
                     val recentChanges=remember(revision) { store.recentTransactionChanges(35) }
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -2331,7 +2354,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     val highestDay = dailySpend.maxByOrNull { it.value }
                     val rankingMonthPeriod=runCatching { YearMonth.parse(rankingMonth) }.getOrDefault(YearMonth.now())
                     val effectiveRankingBudgets=budgets.mapValues { (category,limit) ->
-                        FinanceCalculations.effectiveLimit(category,rankingMonthPeriod,limit,transactions,rolloverEnabled)
+                        FinanceCalculations.effectiveLimit(category,rankingMonthPeriod,limit,spendingTransactions,rolloverEnabled)
                     }
                     val monthBudget = effectiveRankingBudgets.values.sum()
                     val budgetedSpend = rankedExpenses.filter { budgets.containsKey(it.category) }
@@ -2412,7 +2435,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 duplicateCandidates.take(100).forEach { group ->
                                     val first=group.first()
                                     Text("${first.timestamp} · ${Money.format(first.amountLaari)} · ${group.size} records",style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold)
-                                    group.forEach { tx -> Text("ID ${tx.id} · ${tx.category} · ${tx.description}",style=MaterialTheme.typography.bodySmall) }
+                                    DuplicateComparison(context,store,group,accountLabels)
                                     OutlinedButton(onClick={confirmDuplicateIds=group.map { it.id }}) { Text("Review and merge ${group.size} records") }
                                     HorizontalDivider()
                                 }
@@ -2578,7 +2601,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     if(confirmBulkReview) {
                         androidx.compose.material3.AlertDialog(
                             onDismissRequest={confirmBulkReview=false},
-                            title={Text("Approve all pending reviews?")},
+                            title={Text("Mark all pending entries reviewed?")},
                             text={Text("Mark $pendingReviewCount pending review entries as approved. This does not import CSV rows, create transactions, or change account balances. Check missing transactions separately in Import & backup tools.")},
                             confirmButton={
                                 TextButton(onClick={
@@ -2586,7 +2609,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     reviewQueueRevision++
                                     confirmBulkReview=false
                                     notice="$changed review entries approved. No transactions or balances changed."
-                                }) { Text("Approve $pendingReviewCount") }
+                                }) { Text("Mark reviewed") }
                             },
                             dismissButton={TextButton(onClick={confirmBulkReview=false}) { Text("Cancel") }}
                         )
@@ -2602,7 +2625,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             }
                             if(pendingReviewCount>0) {
                                 OutlinedButton(onClick={confirmBulkReview=true},modifier=Modifier.fillMaxWidth()) {
-                                    Text("Approve all pending ($pendingReviewCount)")
+                                    Text("Mark all reviewed ($pendingReviewCount)")
                                 }
                             }
                             if(reviewInboxExpanded) {
@@ -2701,7 +2724,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         (minFilterLaari==null || kotlin.math.abs(t.amountLaari)>=minFilterLaari) &&
                         (maxFilterLaari==null || kotlin.math.abs(t.amountLaari)<=maxFilterLaari) &&
                         (accountFilter=="All accounts" || (accountLabels[t.fingerprint] ?: "Unassigned")==accountFilter) &&
-                        (categoryFilter=="All categories" || t.category==categoryFilter) &&
+                        (categoryFilter=="All categories" || spendingTransactions.any { it.id==t.id && it.category==categoryFilter }) &&
                         (categoryDrilldownMonth==null || t.timestamp.take(7)==categoryDrilldownMonth.toString()) &&
                         (counterpartyFilter=="All types" || (counterpartyPrefs.getString(t.fingerprint,"Unclassified") ?: "Unclassified")==counterpartyFilter) &&
                         when(transactionFilter) {
@@ -2711,6 +2734,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             else -> true
                         }
                     }
+                    BulkAccountEditor(store, filteredTransactions, onChanged={revision++}, onNotice={notice=it})
                     // Imports arrive out of order; group by transaction date, not insertion ID.
                     // Sorting is presentation-only and never changes stored records.
                     val orderedTransactions=filteredTransactions.sortedWith(
@@ -2900,8 +2924,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         }
                                     }
                                     Button(enabled=categorySelectedIds.isNotEmpty() && bulkDestination!=categoryFilter,onClick={
-                                        val matching=transactions.filter { it.id in categorySelectedIds && it.category==categoryFilter }
-                                        matching.forEach { store.setTransactionCategory(it.id,bulkDestination) }
+                                        val matching=transactions.filter { it.id in categorySelectedIds }
+                                        store.setCategories(matching.map { it.id },bulkDestination)
                                         val changed=matching.size
                                         categorySelectedIds=emptySet()
                                         categorySelectionMode=false
@@ -2945,6 +2969,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     val displayMerchant=TransactionPresentation.displayLabel(
                                         t.description, t.category, knownRecipient
                                     )
+                                    if(csvDetailsByFingerprint.containsKey(t.fingerprint)) Text("Details from CSV",style=MaterialTheme.typography.labelSmall)
+                                    splitAllocations[t.fingerprint]?.let { parts -> Text("Split: "+parts.joinToString { "${it.category} ${Money.format(it.amount)}" },style=MaterialTheme.typography.labelSmall) }
                                     Text(displayMerchant,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.SemiBold,maxLines=1)
                                     val displayTime=TransactionPresentation.time(t.description,t.timestamp)
                                     Text(displayTime ?: "Time not recorded",
@@ -2977,7 +3003,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             val original=transactions.firstOrNull { it.id==editingId }
                             val v=Money.parseLaari(editingAmount)
                             if(original!=null && v!=null && v>0 && store.updateTransaction(original.id,if(original.amountLaari>0) v else -v,editingCategory,editingDescription)) { revision++;notice="Transaction updated";editingId=null }
-                            else notice="Enter a valid amount and description"
+                            else notice="Enter valid details. Remove a split before changing the payment amount or category."
                         }) { Text("Save") }},dismissButton={TextButton(onClick={editingId=null}) { Text("Cancel") }})
                     }
                     if(deletingId!=null) {
@@ -3029,6 +3055,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     Text("IMPORT • CONNECT • RECONCILE", style=MaterialTheme.typography.labelLarge,
                         fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
                     Text("Import & access",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold)
+                    TextButton(onClick={showImportSettings=true}) { Text("Import health & recovery") }
+                    TextButton(onClick={tab=9}) { Text("Reconciliation checklist") }
                     Text("Manage statements, bank messages and transaction review in one place.",
                         style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp)) {
@@ -3063,7 +3091,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                         AlertDialog(
                             onDismissRequest={confirmMissingImport=false},
                             title={Text("Import missing transactions?")},
-                            text={Text("Import ${selectedMissingCsvLines.size} missing and ${selectedPossibleCsvLines.size} possible records? Possible matches may duplicate existing transactions. Review each selection and export a backup first.")},
+                            text={ Column(Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState())) {
+                                val impact=csvText?.let { store.csvImportImpact(it, selectedMissingCsvLines+selectedPossibleCsvLines) }.orEmpty()
+                                Text("Import ${impact.values.sumOf { it.size }} selected records?")
+                                impact.forEach { (account, rows) ->
+                                    Text("$account: ${rows.size} records · ledger movement ${Money.format(rows.sumOf { it.amountLaari })}")
+                                    Text("The account estimate changes only for rows after its saved snapshot cutoff.",style=MaterialTheme.typography.bodySmall)
+                                }
+                                if(selectedPossibleCsvLines.isNotEmpty()) Text("${selectedPossibleCsvLines.size} possible matches may duplicate existing payments. Check each before importing.",color=MaterialTheme.colorScheme.error)
+                            } },
                             confirmButton={TextButton(onClick={
                                 confirmMissingImport=false
                                 try {
@@ -3077,7 +3113,7 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     csvReview=store.reviewCsv(data)
                                     notice="Added ${result.first} missing transactions; excluded ${result.second} matched or uncertain records."
                                 } catch(e:Exception) { notice="Import failed: ${e.message?.take(100)}" }
-                            }) { Text("Import missing") }},
+                            }) { Text("Import selected") }},
                             dismissButton={TextButton(onClick={confirmMissingImport=false}) { Text("Cancel") }}
                         )
                     }
@@ -3116,8 +3152,18 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                         FilterChip(
                                             selected=csvMergeTargetId==tx.id,
                                             onClick={csvMergeTargetId=tx.id},
-                                            label={Text("${tx.timestamp} • ${Money.format(tx.amountLaari)} • ${tx.description.take(65)}")}
+                                            label={Text("${FinanceCalculations.assignedAccount(tx,accountLabels)} • ${tx.timestamp} • ${Money.format(tx.amountLaari)} • ${tx.description.take(65)}")}
                                         )
+                                    }
+                                    csvMergeTargetId?.let { target ->
+                                        val tx=candidates.firstOrNull { it.id==target }
+                                        if(tx!=null && data!=null) {
+                                            val preview=store.csvMergePreview(data,line)
+                                            val before=csvDetailsByFingerprint[tx.fingerprint]
+                                            Text("Recipient: ${before?.recipient?.ifBlank { null } ?: "Not linked"} → ${preview.recipient.ifBlank { "Not supplied" }}")
+                                            Text("Reference: ${before?.reference?.ifBlank { null } ?: "Not linked"} → ${preview.reference.ifBlank { "Not supplied" }}")
+                                            Text("Manual recipient names keep priority. You can unlink this later in transaction details.",style=MaterialTheme.typography.bodySmall)
+                                        }
                                     }
                                     Text("Only recipient and reference metadata is linked. The transaction, timestamp, amount and balances stay unchanged.",
                                         style=MaterialTheme.typography.bodySmall)
@@ -3281,8 +3327,8 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     categories=categories,
                     budgets=budgets,
                     selectedMonth=selectedMonth,
-                    transactions=transactions,
-                    monthlyTransactions=monthlyTransactions,
+                    transactions=spendingTransactions,
+                    monthlyTransactions=monthlySpending,
                     rolloverEnabled=rolloverEnabled,
                     onSaveBudget={ cat, value ->
                         store.setBudget(cat,value)
@@ -3330,13 +3376,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                     }
                                 }
                                 Text(Money.format(selectedTransaction.amountLaari),style=MaterialTheme.typography.headlineMedium)
+                                SplitEditor(store, selectedTransaction, onChanged={revision++}, onNotice={notice=it})
                                 Text("Original bank description",style=MaterialTheme.typography.labelMedium)
                                 Text(selectedTransaction.description,style=MaterialTheme.typography.bodySmall)
                                 csvLinked?.let { linked ->
-                                    Text("Linked CSV statement details",style=MaterialTheme.typography.titleSmall)
+                                    Text("Details from CSV",style=MaterialTheme.typography.titleSmall)
                                     Text(linked.bankDescription,style=MaterialTheme.typography.bodySmall)
                                     if(linked.reference.isNotBlank()) Text("Bank reference: ${linked.reference}",style=MaterialTheme.typography.bodySmall)
                                     Text("Statement date: ${linked.statementDate} • Original bank SMS preserved",style=MaterialTheme.typography.bodySmall)
+                                    TextButton(onClick={store.unlinkCsv(selectedTransaction.fingerprint);revision++;notice="CSV details unlinked. Undo is available in Recovery history."}) { Text("Unlink CSV details") }
                                 }
                                 if(recipientEdit && isTransfer) {
                                     OutlinedTextField(value=recipientText,onValueChange={recipientText=it.take(100)},
@@ -3399,10 +3447,15 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                 }
 
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                    OutlinedButton(onClick={
-                                        store.setAccount(selectedTransaction.fingerprint,if((accountLabels[selectedTransaction.fingerprint]?:"Unassigned")=="MIB") "BML" else "MIB")
-                                        revision++
-                                    }) { Text("Change account") }
+                                    var accountMenu by remember { mutableStateOf(false) }
+                                    Box {
+                                        OutlinedButton(onClick={accountMenu=true}) { Text("Change account") }
+                                        DropdownMenu(expanded=accountMenu,onDismissRequest={accountMenu=false}) {
+                                            listOf("MIB","BML","Cash","Unassigned").forEach { bank ->
+                                                DropdownMenuItem(text={Text(bank)},onClick={store.setAccount(selectedTransaction.fingerprint,bank);revision++;accountMenu=false})
+                                            }
+                                        }
+                                    }
                                     OutlinedButton(onClick={
                                         editingId=selectedTransaction.id
                                         editingAmount=Money.format(kotlin.math.abs(selectedTransaction.amountLaari)).removePrefix("MVR ").replace(",","")
@@ -3424,13 +3477,13 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                                                 DropdownMenuItem(text={Text(destination)},onClick={
                                                     showCategoryChoices=false
                                                     val recipient = TransactionPresentation.label(selectedTransaction.description).trim()
-                                                     val savedRecipient=recipientPrefs.getString(selectedTransaction.fingerprint,null)?.trim().orEmpty()
+                                                     val savedRecipient=TransactionPresentation.preferredRecipient(recipientPrefs.getString(selectedTransaction.fingerprint,null),csvDetailsByFingerprint[selectedTransaction.fingerprint]?.recipient).orEmpty()
                                                      val matching = transactions.filter { tx ->
-                                                         val candidate=recipientPrefs.getString(tx.fingerprint,null)?.trim().orEmpty()
+                                                         val candidate=TransactionPresentation.preferredRecipient(recipientPrefs.getString(tx.fingerprint,null),csvDetailsByFingerprint[tx.fingerprint]?.recipient).orEmpty()
                                                              .ifBlank { TransactionPresentation.label(tx.description).trim() }
                                                          tx.amountLaari < 0 && candidate.equals(savedRecipient.ifBlank { recipient }, ignoreCase=true)
                                                      }
-                                                     matching.forEach { tx -> store.setTransactionCategory(tx.id,destination) }
+                                                     store.setCategories(matching.map { it.id },destination)
                                                     revision++
                                                     selectedTransactionId=null
                                                     notice="Reclassified ${matching.size} transactions from $recipient to $destination"
@@ -3447,3 +3500,4 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                     }
     }
 }
+

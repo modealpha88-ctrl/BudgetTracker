@@ -145,7 +145,10 @@ internal fun NeoProMoreScreen(
             NeoToolsCard("◎", "Budgets", "Category limits, rollover and progress", { onNavigate(3) })
             NeoToolsCard("◷", "Plan & reports", "Safe-to-spend, savings, calendar and forecasts", { onNavigate(4) })
             NeoToolsCard("⇣", "Import & access", "CSV, bank messages and reconciliation", { onNavigate(2) })
-            NeoToolsCard("▤", "Advanced dashboard", "Balances, transfers and detailed tools", { onNavigate(8) })
+            NeoToolsCard("✓", "Reconciliation & recovery", "Missing entries, duplicates, balances and undo", { onNavigate(9) })
+            var legacyTools by remember { mutableStateOf(false) }
+            TextButton(onClick={legacyTools=!legacyTools}) { Text(if(legacyTools) "Hide additional tools" else "Additional dashboard tools") }
+            if(legacyTools) NeoToolsCard("▤", "Advanced dashboard", "Detailed historical views and transfer tools", { onNavigate(8) })
             Text("SECURITY & PREFERENCES", style = MaterialTheme.typography.labelMedium,
                 color = colors.onSurfaceVariant, fontWeight = FontWeight.Bold)
             Card(onClick = { appearanceOpen = true }, shape = RoundedCornerShape(22.dp),
@@ -258,3 +261,4 @@ internal fun NeoProMoreScreen(
         }
     }
 }
+

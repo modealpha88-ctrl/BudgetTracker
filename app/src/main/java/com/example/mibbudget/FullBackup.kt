@@ -33,7 +33,9 @@ object FullBackup {
     }
     data class Preview(
         val database: TransactionStore.BackupPreview,
-        val settingsToRestore: Int
+        val settingsToRestore: Int,
+        val changedPreferenceFiles: List<String>,
+        val overwrittenSettings: Int
     )
 
     /** Checks the encrypted/decrypted payload with no database or preference writes. */
@@ -45,11 +47,14 @@ object FullBackup {
         }
         val prefs=root.optJSONObject("preferences")
         var settingCount=0
+        var overwritten=0
+        val changedFiles=mutableListOf<String>()
         if(prefs!=null) {
             require(prefs.toString().length<2_000_000) { "Settings backup too large" }
             for(name in preferenceFiles) {
                 if(name=="app_security" || name=="vendor_avatar_files") continue
                 val obj=prefs.optJSONObject(name) ?: continue
+                if(obj.length()>0) changedFiles.add(name)
                 for(key in obj.keys()) {
                     require(key.length<=200 && !key.contains("password",true) &&
                         !key.contains("token",true)) { "Unsafe preference name" }
@@ -63,17 +68,19 @@ object FullBackup {
                             "Invalid reconciliation history"
                         }
                     }
+                    val existing=context.getSharedPreferences(name,Context.MODE_PRIVATE).all[key]
+                    if(existing!=null && existing.toString()!=value.toString()) overwritten++
                     settingCount++
                 }
             }
         }
-        return Preview(database,settingCount)
+        return Preview(database,settingCount,changedFiles,overwritten)
     }
 
-    fun restore(context: Context, store: TransactionStore, text: String): Int {
+    fun restore(context: Context, store: TransactionStore, text: String, restorePreferences: Boolean = true): Int {
         preview(context,store,text)
         val root=JSONObject(text)
-        val prefs=root.optJSONObject("preferences")
+        val prefs=if(restorePreferences) root.optJSONObject("preferences") else null
         // Validate preference values before touching the database. Never erase existing settings.
         val validated=mutableListOf<Triple<String,String,Any>>()
         if(prefs!=null) {
@@ -98,7 +105,7 @@ object FullBackup {
                     is Int -> editor.putInt(key,value)
                     is Long -> editor.putLong(key,value)
                     is Number -> editor.putLong(key,value.toLong())
-                    is String -> editor.putString(key,if(name=="reconciliation_history" && key=="reports") value else value.take(5000))
+                    is String -> editor.putString(key,if(name=="reconciliation_history" && key=="reports") value else value)
                 }
             }
             editor.apply()
@@ -106,3 +113,4 @@ object FullBackup {
         return count
     }
 }
+

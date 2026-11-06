@@ -53,7 +53,7 @@ object AutomaticSmsImport {
     fun catchUp(context: Context): Boolean {
         if (!enabled(context) || !hasInboxAccess(context)) return false
         TransactionStore(context).use { store ->
-            if (!setupComplete(context, store)) return false
+            if (!setupComplete(context, store)) { ImportHealth.failure(context, "Complete the initial CSV setup to enable automatic recovery."); return false }
             // Device-local inbox IDs must never travel in a financial backup.
             val prefs = context.getSharedPreferences("sms_inbox_sync", Context.MODE_PRIVATE)
             val lastId = prefs.getLong("last_scanned_inbox_id", -1L)
@@ -70,12 +70,17 @@ object AutomaticSmsImport {
                 val idColumn = it.getColumnIndexOrThrow(Telephony.Sms._ID)
                 val bodyColumn = it.getColumnIndexOrThrow(Telephony.Sms.BODY)
                 var scanned = 0
+                var imported = 0; var duplicates = 0; var ignored = 0
                 var completedId = lastId
                 try {
                     while (scanned < 1000 && it.moveToNext()) {
                         // Recheck opt-out/revoked access while a batch is in progress.
                         if (!enabled(context) || !hasInboxAccess(context)) return false
-                        BankSmsImporter.importBody(store, it.getString(bodyColumn).orEmpty())
+                        when (BankSmsImporter.importBody(store, it.getString(bodyColumn).orEmpty())) {
+                            BankSmsImporter.Outcome.IMPORTED -> imported++
+                            BankSmsImporter.Outcome.DUPLICATE -> duplicates++
+                            BankSmsImporter.Outcome.IGNORED -> ignored++
+                        }
                         completedId = it.getLong(idColumn)
                         scanned++
                     }
@@ -85,6 +90,7 @@ object AutomaticSmsImport {
                     if (completedId != lastId) prefs.edit()
                         .putLong("last_scanned_inbox_id", completedId).apply()
                 }
+                ImportHealth.success(context, scanned, imported, duplicates, ignored)
                 return scanned == 1000 && !it.isLast
             }
         }
@@ -95,9 +101,11 @@ class SmsCatchUpWorker(context: Context, params: WorkerParameters) : Worker(cont
     override fun doWork(): Result = try {
         if (AutomaticSmsImport.catchUp(applicationContext)) Result.retry() else Result.success()
     } catch (_: SecurityException) {
-        // Permissions may be revoked between the check and provider query.
+        ImportHealth.failure(applicationContext, "SMS permission was revoked. Open app permissions to restore access.")
         Result.success()
     } catch (_: Exception) {
+        ImportHealth.failure(applicationContext, "Background scan failed. Android will retry; use Recover missed messages or check permissions.")
         Result.retry()
     }
 }
+
