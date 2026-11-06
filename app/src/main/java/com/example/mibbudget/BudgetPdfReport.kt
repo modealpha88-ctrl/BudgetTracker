@@ -25,7 +25,7 @@ object BudgetPdfReport {
             y+=19f
         }
         try {
-            line("Budget Tracker - Monthly Report: $month")
+            line("RufiTrack - Monthly Report: $month")
             line("Generated from locally saved transactions; not a bank statement.")
             val monthTx=transactions.filter { it.timestamp.startsWith(month.toString()) }
             val income=monthTx.filter { it.amountLaari>0 && it.category!="Internal Transfer" }.sumOf { it.amountLaari }

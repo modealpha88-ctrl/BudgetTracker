@@ -69,7 +69,7 @@ fun PrivacyFeedbackScreen(context: Context, transactionCount: Int, merchantRuleC
                     type="application/json"
                     putExtra(Intent.EXTRA_TEXT,payload)
                 }
-                context.startActivity(Intent.createChooser(send,"Share sanitized Budget Tracker diagnostics"))
+                context.startActivity(Intent.createChooser(send,"Share sanitized RufiTrack diagnostics"))
             }, modifier=Modifier.fillMaxWidth()) { Text("Share reviewed diagnostics") }
         }
         TextButton(onClick={

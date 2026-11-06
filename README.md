@@ -1,4 +1,4 @@
-# Budget Tracker — personal finance and spending management
+# RufiTrack — personal finance and spending management
 
 ## Features
 - Monthly dashboard and category budget progress, using the SMS transaction date, with previous/next month navigation.

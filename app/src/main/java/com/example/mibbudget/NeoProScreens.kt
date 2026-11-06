@@ -2,6 +2,7 @@ package com.example.mibbudget
 
 import android.content.Context
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -21,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -245,8 +248,14 @@ internal fun NeoProHomeScreen(
     Column(verticalArrangement = Arrangement.spacedBy(BankingAppearance.screenGap)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("BUDGET TRACKER", color = scheme.primary, style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Image(painter = painterResource(R.drawable.rufiyaa_mark),
+                        contentDescription = "RufiTrack rufiyaa symbol",
+                        modifier = Modifier.size(width = 23.dp, height = 34.dp),
+                        colorFilter = ColorFilter.tint(scheme.primary))
+                    Text("RufiTrack", color = scheme.primary,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
                 Text("Overview", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
             }
             Surface(onClick = onAdvanced, shape = CircleShape,
