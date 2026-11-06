@@ -37,11 +37,14 @@
 ## Important limitations
 - Android `READ_SMS` and `RECEIVE_SMS` are sensitive restricted permissions. Google Play generally restricts SMS permissions to approved use cases such as default SMS handlers or eligible exceptions; **do not assume this personal budget app is eligible for Play distribution**. Sideloaded builds may also face restricted-settings or other device limitations. Manual import remains an alternative.
 - No verified sender authentication: SMS can be spoofed. Sample-based parser is not guaranteed to recognize all MIB formats, credits, reversals, or fees. A one-month SMS scan is **not** an accurate or complete bank ledger; compare against official statements.
-- Inbox import uses device-local dates for its cutoff. Transaction date is parsed from SMS text. No raw SMS bodies or full account/card numbers are persisted by the parser, but descriptions and timestamps are sensitive financial data. **SQLite is not encrypted at rest.** No INTERNET permission or remote transfer is configured.
+- Inbox import uses device-local dates for its cutoff. Transaction date is parsed from SMS text. No raw SMS bodies or full account/card numbers are persisted by the parser, but descriptions and timestamps are sensitive financial data. **SQLite is not encrypted at rest.** The manifest declares INTERNET permission, but this release does not implement developer-controlled transaction uploads; verify dependency networking and privacy disclosures before publishing.
 - History import is one-time per tap; it does not silently read the inbox. Revoking SMS permissions in Android settings disables future access.
-- Build not compiled or device-tested here. Test parser, permissions, and monthly totals before relying on the results.
+- GitHub Actions builds and tests the app; device-level financial accuracy, permission behavior and upgrades still require hands-on verification.
 
 ## Google Play preparation
 - Play-ready signed Android App Bundle is built in GitHub Actions alongside the existing APK; see [Play submission checklist](docs/PLAY_SUBMISSION.md).
 - App targets Android 16 (API 36). Demo mode is accessible from initial setup without importing sensitive real financial data; it does not alter the ledger.
 - [Privacy policy draft](docs/privacy.html) must be reviewed and hosted publicly before Play publication. SMS permissions remain subject to Google approval.
+
+- [Play Store listing draft](play/listing/en-US.md), [SMS exception reviewer notes](play/review/sms-permission.md), and [privacy hosting instructions](play/privacy-hosting.md) are prepared for later submission.
+- CI runs `scripts/play_preflight.py` to detect accidental package/SDK/signing workflow regressions; this does not mean Google Play has approved the app.
