@@ -29,6 +29,13 @@ fun DedicatedAccountScreen(
     var account by remember(initialAccount) { mutableStateOf(initialAccount) }
     var refresh by remember { mutableIntStateOf(0) }
     var selectedDate by remember(account) { mutableStateOf(LocalDate.now().toString()) }
+    var breakdown by remember(account) { mutableStateOf(false) }
+    val displayNames=remember(transactions,refresh) { TransactionStore(context).use { store ->
+        val linked=store.csvDetails()
+        val manual=context.getSharedPreferences("transaction_recipients",Context.MODE_PRIVATE)
+        transactions.associate { tx -> tx.fingerprint to TransactionPresentation.preferredRecipient(manual.getString(tx.fingerprint,null),linked[tx.fingerprint]?.recipient) }
+    } }
+    var accountNotice by remember { mutableStateOf("") }
     var showMore by remember(account) { mutableStateOf(false) }
     val key = account.lowercase(Locale.ROOT)
     val anchorMinor = remember(key, refresh) { prefs.getLong("${key}_minor", Long.MIN_VALUE) }
@@ -85,6 +92,7 @@ fun DedicatedAccountScreen(
                     }
                 }
                 Card(
+                    onClick = { breakdown = !breakdown },
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
@@ -100,6 +108,16 @@ fun DedicatedAccountScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
+                        Text(if(breakdown) "Hide calculation ▴" else "Tap to see balance calculation ▾",style=MaterialTheme.typography.labelMedium)
+                        if(breakdown && anchorDay!=null) {
+                            Text("Saved snapshot: ${Money.format(anchorMinor)}")
+                            Text("+ Incoming: ${Money.format(afterAnchor.filter { it.amountLaari>0 }.sumOf { it.amountLaari })}")
+                            Text("− Outgoing: ${Money.format(afterAnchor.filter { it.amountLaari<0 }.sumOf { -it.amountLaari })}")
+                            Text("= Estimated balance: ${estimated?.let(Money::format) ?: "Unavailable"}")
+                            val unknown=accountTransactions.count { it.timestamp.take(10)==anchorDate && (anchorTime.isBlank() || FinanceCalculations.transactionDateTime(it)==null) }
+                            Text("Excluded: $unknown same-day records with unknown timing; $unassigned unassigned records after cutoff.",style=MaterialTheme.typography.bodySmall)
+                            Text("Internal transfers are included in account movements.",style=MaterialTheme.typography.bodySmall)
+                        }
                         HorizontalDivider()
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -123,6 +141,8 @@ fun DedicatedAccountScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                 VerifiedBalanceEditor(context = context, account = account, onSaved = { refresh++ })
+                ReconciliationPanel(context, account, transactions, labels, onNotice={accountNotice=it})
+                if(accountNotice.isNotBlank()) Text(accountNotice)
 
                 Card(
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
@@ -160,7 +180,7 @@ fun DedicatedAccountScreen(
                             HorizontalDivider()
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(tx.description.take(44), style = MaterialTheme.typography.bodyMedium)
+                                    Text(TransactionPresentation.displayLabel(tx.description,tx.category,displayNames[tx.fingerprint]), style = MaterialTheme.typography.bodyMedium)
                                     Text("${tx.timestamp.take(16)} · ${tx.category}",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall)
@@ -182,3 +202,4 @@ fun DedicatedAccountScreen(
         }
     }
 }
+

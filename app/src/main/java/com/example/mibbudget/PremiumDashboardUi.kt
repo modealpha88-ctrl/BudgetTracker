@@ -112,7 +112,7 @@ internal fun PremiumSafeToSpendCard(
                     AuroraBreakdownRow("Savings reserved", "−" + Money.format(reserved))
                     AuroraBreakdownRow("Unpaid recurring bills", "−" + Money.format(bills))
                     if (balances.values.any { it < 0L }) {
-                        Text("Negative account balances are excluded from spendable funds.",
+                        Text("Negative account balances reduce available funds.",
                             style = MaterialTheme.typography.bodySmall, color = Gold)
                     }
                     Text("Estimate only — not a live bank balance. Missing transactions may affect it.",
@@ -331,3 +331,4 @@ internal fun PremiumWeeklySpendBars(entries: List<Tx>, selectedMonth: java.time.
         }
     }
 }
+

@@ -7,7 +7,7 @@ import java.time.YearMonth
 
 /** Offline report. Never sends financial records to a server. */
 object BudgetPdfReport {
-    fun write(output:OutputStream, month:YearMonth, transactions:List<Tx>, budgets:Map<String,Long>) {
+    fun write(output:OutputStream, month:YearMonth, transactions:List<Tx>, budgets:Map<String,Long>, spendingEntries:List<Tx> = transactions) {
         val pdf=PdfDocument()
         val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize=12f }
         var pageNumber=0
@@ -44,7 +44,7 @@ object BudgetPdfReport {
             val forecast=FinanceCalculations.spendingForecast(transactions,month,java.time.LocalDate.now())
             line("Estimated month-end expense: ${Money.format(forecast)}")
             line("Spending by category")
-            monthTx.filter { it.amountLaari<0 && it.category!="Internal Transfer" }.groupBy { it.category }.toSortedMap().forEach { (cat,rows) ->
+            spendingEntries.filter { it.timestamp.startsWith(month.toString()) && it.amountLaari<0 && it.category!="Internal Transfer" }.groupBy { it.category }.toSortedMap().forEach { (cat,rows) ->
                 val spent=rows.sumOf { -it.amountLaari }
                 line("$cat: ${Money.format(spent)}" + (budgets[cat]?.let { " / limit ${Money.format(it)}" } ?: ""))
             }
@@ -57,3 +57,4 @@ object BudgetPdfReport {
         } finally { pdf.close() }
     }
 }
+

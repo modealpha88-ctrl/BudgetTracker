@@ -37,6 +37,14 @@ internal fun VerifiedBalanceEditor(
     var screenshotRecognized by remember(account) { mutableStateOf(false) }
     var status by remember(account) { mutableStateOf("") }
     val today = LocalDate.now()
+    var dateOnlyAccepted by remember(statementDate, statementTime, balanceInput) { mutableStateOf(false) }
+    val previewRows = remember(account, statementDate, statementTime, balanceInput) { TransactionStore(context).use { store ->
+        val labels=store.accounts()
+        store.all().filter { FinanceCalculations.assignedAccount(it,labels)==account }
+    } }
+    val previewDay=runCatching { LocalDate.parse(statementDate) }.getOrNull()
+    val applied=if(previewDay==null) emptyList() else previewRows.filter { FinanceCalculations.afterSnapshot(it,previewDay,statementTime) && it.timestamp.take(10)<=today.toString() }
+    val unknown=previewRows.count { it.timestamp.take(10)==statementDate && (statementTime.isBlank() || FinanceCalculations.transactionDateTime(it)==null) }
     val amount = Money.parseLaari(balanceInput)
     val date = runCatching { LocalDate.parse(statementDate) }.getOrNull()
     val validTime = statementTime.isBlank() || runCatching { java.time.LocalTime.parse(statementTime) }.isSuccess
@@ -163,6 +171,19 @@ internal fun VerifiedBalanceEditor(
                 else "Transactions after $statementDate $statementTime are applied, including later transactions on the same day.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            HorizontalDivider()
+            Text("Balance preview", style=MaterialTheme.typography.titleSmall)
+            Text("${applied.size} subsequent transactions: + ${Money.format(applied.filter { it.amountLaari>0 }.sumOf { it.amountLaari })} − ${Money.format(applied.filter { it.amountLaari<0 }.sumOf { -it.amountLaari })}")
+            if(unknown>0) Text("$unknown same-day transactions excluded: capture time or transaction time is missing.",color=MaterialTheme.colorScheme.error)
+            applied.filter { it.timestamp.take(10)==statementDate }.take(8).forEach { tx ->
+                Text("Included today: ${tx.timestamp} · ${Money.format(tx.amountLaari)} · ${TransactionPresentation.label(tx.description)}",style=MaterialTheme.typography.bodySmall)
+            }
+            if(applied.count { it.timestamp.take(10)==statementDate }>8) Text("Additional same-day records are included in the totals above.",style=MaterialTheme.typography.bodySmall)
+            amount?.let { opening -> runCatching { Math.addExact(opening,applied.sumOf { it.amountLaari }) }.getOrNull()?.let { Text("Projected now: ${Money.format(it)}") } }
+            if(statementTime.isBlank()) Row {
+                Checkbox(checked=dateOnlyAccepted,onCheckedChange={dateOnlyAccepted=it})
+                Text("Use a date-only snapshot; exclude every transaction on the snapshot day.",style=MaterialTheme.typography.bodySmall)
+            }
             Button(
                 onClick = {
                     val saving = amount
@@ -183,7 +204,7 @@ internal fun VerifiedBalanceEditor(
                         } else status = "Could not save the balance. Please try again."
                     }
                 },
-                enabled = canSave && !reading, modifier = Modifier.fillMaxWidth()
+                enabled = canSave && !reading && (statementTime.isNotBlank() || dateOnlyAccepted), modifier = Modifier.fillMaxWidth()
             ) { Text("Save verified balance") }
             if (status.isNotBlank()) Text(status,
                 style = MaterialTheme.typography.bodySmall,
@@ -191,3 +212,4 @@ internal fun VerifiedBalanceEditor(
         }
     }
 }
+

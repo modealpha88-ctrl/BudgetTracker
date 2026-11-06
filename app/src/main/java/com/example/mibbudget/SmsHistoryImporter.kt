@@ -27,7 +27,9 @@ object SmsHistoryImporter {
                     BankSmsImporter.Outcome.IGNORED -> ignored++
                 }
             }
-        }
+        } ?: error("SMS inbox unavailable")
+        ImportHealth.success(context, scanned, imported, duplicates, ignored)
         return Result(scanned,imported,duplicates,ignored)
     }
 }
+

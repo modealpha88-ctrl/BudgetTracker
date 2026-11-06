@@ -30,7 +30,7 @@ object TransactionPresentation {
         val transfer = description.contains("transfer", ignoreCase = true) ||
             category.equals("Transfer", ignoreCase = true) ||
             category.equals("Internal Transfer", ignoreCase = true)
-        return if (transfer && recipient.isNotEmpty()) "Transfer · $recipient" else label(description)
+        return if (recipient.isNotEmpty()) { if(transfer) "Transfer · $recipient" else recipient } else label(description)
     }
 
     fun label(description: String): String {
@@ -51,3 +51,4 @@ object TransactionPresentation {
         return value.substringBefore(" | ").take(48).ifBlank { "Transaction" }
     }
 }
+
