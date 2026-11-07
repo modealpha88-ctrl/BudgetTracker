@@ -275,6 +275,9 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val date=java.time.LocalDate.parse(cols[0].trim().take(10)).toString()
             val desc=if(mib) listOf(type,cols[4].trim()).filter { it.isNotBlank() }.joinToString(": ") else cols[2].trim()
             val reference=if(mib) cols[3].trim() else ""
+            val actualTime=if(mib) CsvSmsMatcher.actualCsvTime(desc) else null
+            val matchDate=actualTime?.take(10) ?: date
+            val matcherDesc=if(mib) "$desc (Ref: $reference)" else desc
             val verified=linkedByHash[csvRowHash(cols,mib)]?.let { key ->
                 existing.firstOrNull { it.fingerprint==key && it.amountLaari==signed }
             }
@@ -282,14 +285,13 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val nearby=existing.filter { t ->
                 (rowAccount.isBlank() || FinanceCalculations.assignedAccount(t, labels) in listOf(rowAccount, "Unassigned")) &&
                 t.amountLaari==signed &&
-                (dayDistance(date,t.timestamp)?.let { it<=2 }==true)
+                (dayDistance(matchDate,t.timestamp)?.let { it<=2 }==true)
             }
             val candidates=nearby.filter { it.id !in assigned }
             val exact=candidates.filter { t ->
-                t.timestamp.take(10)==date &&
-                (reference.length>=6 && t.description.contains(reference,true) ||
-
-                 (t.fingerprint.startsWith("csv-") && t.description.equals(desc,true)))
+                (CsvSmsMatcher.isConfirmedDuplicate(
+                    t.amountLaari,t.description,t.timestamp,signed,matcherDesc,actualTime ?: date+"T00:00:00") ||
+                 (t.fingerprint.startsWith("csv-") && t.description.equals(desc,true) && t.timestamp.take(10)==date))
             }
             val status: String
             val reason: String
@@ -405,11 +407,14 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 parsed.add(ImportRow(if(sign) -amount else amount,category,description,time,account,fingerprint))
             }
         }
+        val statuses=reviewCsv(text).matches.associateBy { it.line }
         val db=writableDatabase
         var imported=0
         db.beginTransaction()
         try {
-            parsed.forEach { row ->
+            parsed.forEachIndexed { index,row ->
+                // CSV is authoritative only for missing rows; never insert a suspected duplicate.
+                if(statuses[index+2]?.status != "MISSING") return@forEachIndexed
                 val v=ContentValues().apply {
                     put("amount_laari",row.amount);put("category",row.category)
                     put("description",row.description);put("created_at",row.time);put("fingerprint",row.fingerprint)
@@ -994,7 +999,7 @@ object Money {
 object BankSmsParser {
     data class Candidate(val amountLaari: Long, val category: String, val description: String, val fingerprint: String, val transactionTime: String? = null)
     private val sensitive = Regex("""(?i)\b(otp|one.time.password|verification code|login code|password|pin|authentication code)\b""")
-    private val favara = Regex("""(?is)^Favara\s+Transfer\s+from\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
+    private val favara = Regex("""(?is)^Favara\s+Transfer\s+from\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     data class Declined(val amountLaari: Long, val currency: String, val merchant: String, val transactionTime: String, val reason: String, val fingerprint: String)
     private val declinedPattern = Regex("""(?is)^Your\s+last\s+transaction\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+([A-Z]{3})\s+at\s+(.+?),\s*[A-Z]{2}\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+has\s+declined\s+due\s+to\s+([A-Z ]+)\.\s+Please\s+call\s+[\d ]+\s+to\s+update\s+limits\.\s+Decline\s+Code:\s*[\w-]+\s*$""")
     fun parseDeclined(raw: String): Declined? {
@@ -1022,10 +1027,10 @@ object BankSmsParser {
         return ForeignPurchase(amount, m.groupValues[2].uppercase(Locale.ROOT), merchant, whenAt, fingerprint)
     }
     private val fundIncoming = Regex("""(?is)^Fund\s+Transfer\s+to\s+your\s+account\s+(\d+[\d*]*\d+)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
-    private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*[\w-]+\s*$""")
+    private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     private val fundOutgoing = Regex("""(?is)^Fund\s+Transfer\s+from\s+your\s+account\s+(\d+[\d*]*\d+)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     private val ecommerce = Regex("""(?is)^Your\s+E-COMMERCE\s+TRX\s+from\s+(\*+\d{4})\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*([\w-]+)\s*$""")
-    private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*[\w-]+\s*$""")
+    private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*([\w-]+)\s*$""")
     /** Confirmed payments such as "Your payment to MWSC for MVR 111.58 ...". */
     private val billPayment = Regex(
         """(?is)^Your\s+payment\s+to\s+([A-Z0-9][A-Z0-9 .&'()/_-]{1,79}?)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+made\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\s+with\s+Order\s+ID\s+([A-Z0-9-]{4,60}),\s*and\s+reference\s+number\s+([A-Z0-9-]{3,60})\.\s*$"""
@@ -1057,13 +1062,13 @@ object BankSmsParser {
             val amount = Money.parseLaari(m.groupValues[1]) ?: return null
             val whenAt = date(m.groupValues[2], "dd/MM/uuuu HH:mm:ss") ?: return null
             if (amount <= 0) return null
-            return Candidate(amount, "Incoming Transfer", "Favara incoming transfer", fingerprint, whenAt)
+            return Candidate(amount, "Incoming Transfer", "Favara incoming transfer (Ref: ${m.groupValues[3]})", fingerprint, whenAt)
         }
         favara.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[1]) ?: return null
             val whenAt = date(m.groupValues[2], "dd/MM/uuuu HH:mm:ss") ?: return null
             if (amount <= 0) return null
-            return Candidate(-amount, "Transfers", "Favara transfer", fingerprint, whenAt)
+            return Candidate(-amount, "Transfers", "Favara transfer (Ref: ${m.groupValues[3]})", fingerprint, whenAt)
         }
         ecommerce.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[2]) ?: return null
@@ -1071,7 +1076,7 @@ object BankSmsParser {
             val whenAt = date(m.groupValues[4], "dd.MM.uu HH:mm") ?: return null
             if (amount <= 0 || merchant.length !in 2..70) return null
             return Candidate(-amount, MerchantCategories.classify(merchant),
-                "E-commerce purchase: $merchant", fingerprint, whenAt)
+                "E-commerce purchase: $merchant (Approval Code: ${m.groupValues[5]})", fingerprint, whenAt)
         }
         billPayment.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[2]) ?: return null
@@ -1089,7 +1094,7 @@ object BankSmsParser {
             val whenAt = date(m.groupValues[3], "dd.MM.uu HH:mm") ?: return null
             if (amount <= 0 || merchant.length !in 2..70) return null
             // Merchant category is unknown until the user confirms it.
-            return Candidate(-amount, MerchantCategories.classify(merchant), "POS purchase: $merchant", fingerprint, whenAt)
+            return Candidate(-amount, MerchantCategories.classify(merchant), "POS purchase: $merchant (Approval Code: ${m.groupValues[4]})", fingerprint, whenAt)
         }
         return null
     }
