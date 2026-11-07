@@ -367,7 +367,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val mib=header==listOf("POSTED DATE","VALUE DATE","TRANSACTION TYPE","REFERENCE","DESCRIPTION","AMOUNT","RUNNING BALANCE")
         val simple=header==listOf("DATE","AMOUNT","DESCRIPTION","CATEGORY","ACCOUNT")
         require(mib || simple) { "Unsupported CSV columns. Expected MIB statement or date,amount,description,category,account" }
-        data class ImportRow(val amount:Long,val category:String,val description:String,val time:String,val account:String,val fingerprint:String)
+        data class ImportRow(val line:Int,val amount:Long,val category:String,val description:String,val time:String,val account:String,val fingerprint:String)
         var skippedNonTransactions=0
         val parsed=mutableListOf<ImportRow>()
         records.drop(1).forEachIndexed { index,cols ->
@@ -404,7 +404,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                     else cols.joinToString("|") { it.trim() }
                 val digest=MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
                 val fingerprint="csv-"+digest.joinToString("") { "%02x".format(it) }
-                parsed.add(ImportRow(if(sign) -amount else amount,category,description,time,account,fingerprint))
+                parsed.add(ImportRow(index+2,if(sign) -amount else amount,category,description,time,account,fingerprint))
             }
         }
         val statuses=reviewCsv(text).matches.associateBy { it.line }
@@ -414,7 +414,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         try {
             parsed.forEachIndexed { index,row ->
                 // CSV is authoritative only for missing rows; never insert a suspected duplicate.
-                if(statuses[index+2]?.status != "MISSING") return@forEachIndexed
+                if(statuses[row.line]?.status != "MISSING") return@forEachIndexed
                 val v=ContentValues().apply {
                     put("amount_laari",row.amount);put("category",row.category)
                     put("description",row.description);put("created_at",row.time);put("fingerprint",row.fingerprint)
