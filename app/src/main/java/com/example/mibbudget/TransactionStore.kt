@@ -132,16 +132,17 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val mib=records[0][0].trim().equals("POSTED DATE",true)
         val hash=csvRowHash(records[line-1],mib)
         val statementAccount=if(mib) "MIB" else records[line-1][4].trim()
+        val actualDate=if(mib) CsvSmsMatcher.actualCsvTime(row.description)?.take(10) ?: row.date else row.date
         val accountAssignments=accounts()
         val linked=csvDetails()
         return all().filter { tx ->
             val assigned=accountAssignments[tx.fingerprint].orEmpty()
             !tx.fingerprint.startsWith("csv-") && tx.amountLaari==row.amountLaari &&
-                (dayDistance(row.date,tx.timestamp)?.let { it<=2 }==true) &&
+                (dayDistance(actualDate,tx.timestamp)?.let { it<=2 }==true) &&
                 (statementAccount.isBlank() || assigned.isBlank() || assigned.equals("Unassigned",true) || assigned.equals(statementAccount,true)) &&
                 (linked[tx.fingerprint]==null || linked[tx.fingerprint]?.csvRowHash==hash)
         }.sortedWith(compareBy<Tx> {
-            if(it.timestamp.take(10)==row.date) 0 else 1
+            if(it.timestamp.take(10)==actualDate) 0 else 1
         }.thenBy { it.timestamp })
     }
 
