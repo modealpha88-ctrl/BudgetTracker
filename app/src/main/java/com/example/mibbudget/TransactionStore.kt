@@ -346,7 +346,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 val timestamp=if(mib) cols[0].trim().replace(' ','T') else row.date+"T12:00:00"
                 val v=ContentValues().apply {
                     put("amount_laari",row.amountLaari);put("category",category)
-                    put("description",row.description);put("created_at",timestamp);put("fingerprint",fingerprint)
+                    put("description", (if(mib) "${cols[2].trim()}: (Ref: ${cols[3].trim()}) ${cols[4].trim()}".take(120) else row.description));put("created_at",timestamp);put("fingerprint",fingerprint)
                 }
                 if(db.insertWithOnConflict("transactions",null,v,SQLiteDatabase.CONFLICT_IGNORE)!=-1L) {
                     added++
@@ -383,7 +383,11 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 val date=try { java.time.LocalDate.parse(cols[0].trim().take(10)) }
                     catch(e:Exception) { throw IllegalArgumentException("Invalid date on row ${index+2}") }
                 val description=if(mib) {
-                    listOf(kind,cols[4].trim()).filter { it.isNotBlank() }.joinToString(": ").take(120)
+                    val reference=cols[3].trim()
+                    val bankDescription=cols[4].trim()
+                    // Put the bank reference before the long narration so it survives the 120-char ledger limit.
+                    listOf(kind,reference.takeIf { it.isNotBlank() }?.let { "(Ref: $it)" },bankDescription)
+                        .filterNotNull().filter { it.isNotBlank() }.joinToString(": ").take(120)
                 } else cols[2].trim().take(120)
                 require(description.isNotBlank()) { "Missing description on row ${index+2}" }
                 val category=if(mib) {
