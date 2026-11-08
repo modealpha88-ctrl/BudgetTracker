@@ -19,6 +19,11 @@ object BankSmsImporter {
             else -> {
                 val candidate = SalarySmsParser.parse(body) ?: BankSmsParser.parse(body)
                     ?: return Outcome.IGNORED
+                if (candidate.atm != null) {
+                    val outcome = store.importWithdrawal(candidate)
+                    if (outcome == Outcome.IMPORTED) changes.value++
+                    return outcome
+                }
                 store.add(candidate.amountLaari, candidate.category, candidate.description,
                     candidate.fingerprint, candidate.transactionTime, sourceAccount = "MIB")
             }

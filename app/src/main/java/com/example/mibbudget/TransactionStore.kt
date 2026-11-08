@@ -22,7 +22,7 @@ data class Tx(val id: Long, val amountLaari: Long, val category: String, val des
 
 // SQLiteOpenHelper only implements AutoCloseable on API 29+. Declare Closeable
 // ourselves so receiver/worker use blocks also work on supported Android 8 and 9.
-class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db", null, 10), java.io.Closeable {
+class TransactionStore(private val context: Context): SQLiteOpenHelper(context, "budget.db", null, 10), java.io.Closeable {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE transactions(id INTEGER PRIMARY KEY AUTOINCREMENT, amount_laari INTEGER NOT NULL, category TEXT NOT NULL, description TEXT NOT NULL, created_at TEXT NOT NULL, fingerprint TEXT UNIQUE NOT NULL)")
         db.execSQL("CREATE TABLE IF NOT EXISTS savings_goals(name TEXT PRIMARY KEY, target_laari INTEGER NOT NULL, saved_laari INTEGER NOT NULL DEFAULT 0)")
@@ -238,7 +238,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
     }
 
     data class CsvMatch(val line: Int, val amountLaari: Long, val date: String, val description: String,
-                        val status: String, val reason: String)
+                        val status: String, val reason: String, val atmFingerprint: String? = null)
     data class CsvReview(val matches: List<CsvMatch>, val confirmed: Int, val possible: Int, val missing: Int, val ignored: Int)
 
     private fun normalizedWords(value: String): Set<String> =
@@ -260,9 +260,11 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         val simple=header==listOf("DATE","AMOUNT","DESCRIPTION","CATEGORY","ACCOUNT")
         require(mib || simple) { "Unsupported CSV statement" }
         val existing=all()
-        val linkedByHash=csvDetails().entries.associate { it.value.csvRowHash to it.key }
+        val details = csvDetails()
+        val linkedByHash=details.entries.associate { it.value.csvRowHash to it.key }
         val labels = accounts()
         val assigned=mutableSetOf<Long>()
+        val competingAtmRows = mutableMapOf<String, MutableSet<String>>()
         val results=mutableListOf<CsvMatch>()
         var ignored=0
         records.drop(1).forEachIndexed { index,cols ->
@@ -279,7 +281,8 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val actualTime=if(mib) CsvSmsMatcher.actualCsvTime(desc) else null
             val matchDate=actualTime?.take(10) ?: date
             val matcherDesc=if(mib) "$desc (Ref: $reference)" else desc
-            val verified=linkedByHash[csvRowHash(cols,mib)]?.let { key ->
+            val rowHash = csvRowHash(cols, mib)
+            val verified=(linkedByHash[rowHash] ?: "csv-$rowHash").let { key ->
                 existing.firstOrNull { it.fingerprint==key && it.amountLaari==signed }
             }
             val rowAccount = if(mib) "MIB" else cols[4].trim()
@@ -289,11 +292,16 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 (dayDistance(matchDate,t.timestamp)?.let { it<=2 }==true)
             }
             val candidates=nearby.filter { it.id !in assigned }
-            val exact=candidates.filter { t ->
-                (CsvSmsMatcher.isConfirmedDuplicate(
+            val matches = nearby.filter { t ->
+                val boundHash = details[t.fingerprint]?.csvRowHash
+                (boundHash == null || boundHash == rowHash) && (CsvSmsMatcher.isConfirmedDuplicate(
                     t.amountLaari,t.description,t.timestamp,signed,matcherDesc,actualTime ?: date+"T00:00:00") ||
                  (t.fingerprint.startsWith("csv-") && t.description.equals(desc,true) && t.timestamp.take(10)==date))
             }
+            if (verified == null) matches.filter { it.fingerprint.startsWith("mib-atm-") }.forEach {
+                competingAtmRows.getOrPut(it.fingerprint) { mutableSetOf() }.add(rowHash)
+            }
+            val exact = matches.filter { it.id !in assigned }
             val status: String
             val reason: String
             val chosen: Tx?
@@ -306,12 +314,31 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 else -> { status="MISSING";reason="No matching saved transaction";chosen=null }
             }
             if(chosen!=null) assigned.add(chosen.id)
-            results.add(CsvMatch(index+2,signed,date,desc.take(120),status,reason))
+            results.add(CsvMatch(index+2,signed,date,desc.take(120),status,reason,
+                chosen?.fingerprint?.takeIf { verified == null && it.startsWith("mib-atm-") }))
         }
-        return CsvReview(results,results.count { it.status=="MATCHED" },
-            results.count { it.status=="POSSIBLE" },results.count { it.status=="MISSING" },ignored)
+        val reviewed = results.map { row ->
+            if (row.atmFingerprint != null && competingAtmRows[row.atmFingerprint].orEmpty().size > 1)
+                row.copy(status = "POSSIBLE", reason = "Multiple statement rows match the same withdrawal", atmFingerprint = null)
+            else row
+        }
+        return CsvReview(reviewed,reviewed.count { it.status=="MATCHED" },
+            reviewed.count { it.status=="POSSIBLE" },reviewed.count { it.status=="MISSING" },ignored)
     }
 
+
+    private fun linkConfirmedAtmRows(db: SQLiteDatabase, review: CsvReview, records: List<List<String>>, mib: Boolean) {
+        for (row in review.matches) {
+            val fingerprint = row.atmFingerprint ?: continue
+            val cols = records[row.line - 1]
+            db.insertOrThrow("csv_transaction_details", null, ContentValues().apply {
+                put("fingerprint", fingerprint); put("csv_row_hash", csvRowHash(cols, mib))
+                put("recipient", ""); put("reference", if (mib) cols[3].trim() else "")
+                put("bank_description", if (mib) cols[4].trim().take(450) else row.description)
+                put("statement_date", row.date)
+            })
+        }
+    }
 
     /** Only inserts records still classified MISSING at commit time. Never imports POSSIBLE. */
     fun importMissingCsv(text: String, selectedLines: Set<Int>? = null, includePossible: Boolean = false): Pair<Int,Int> {
@@ -327,6 +354,7 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
             val records=parseCsvRecords(text.removePrefix("\uFEFF"))
             val header=records.first().map { it.trim().uppercase(Locale.ROOT) }
             val mib=header.firstOrNull()=="POSTED DATE"
+            linkConfirmedAtmRows(db, review, records, mib)
             val already=mutableSetOf<String>()
             rows.forEach { row ->
                 val cols=records[row.line-1]
@@ -412,11 +440,13 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
                 parsed.add(ImportRow(index+2,if(sign) -amount else amount,category,description,time,account,fingerprint))
             }
         }
-        val statuses=reviewCsv(text).matches.associateBy { it.line }
         val db=writableDatabase
         var imported=0
         db.beginTransaction()
         try {
+            val review = reviewCsv(text)
+            linkConfirmedAtmRows(db, review, records, mib)
+            val statuses=review.matches.associateBy { it.line }
             parsed.forEachIndexed { index,row ->
                 // CSV is authoritative only for missing rows; never insert a suspected duplicate.
                 if(statuses[row.line]?.status != "MISSING") return@forEachIndexed
@@ -839,6 +869,77 @@ class TransactionStore(context: Context): SQLiteOpenHelper(context, "budget.db",
         }
         return out
     }
+    /** null selects an automatic match, 0 explicitly records a separate withdrawal. */
+    fun importWithdrawal(sms: BankSmsParser.Candidate, selectedId: Long? = null): BankSmsImporter.Outcome {
+        val db = writableDatabase
+        val time = requireNotNull(sms.transactionTime)
+        val atm = requireNotNull(sms.atm)
+        val cashKey = "cash-" + sms.fingerprint
+        db.beginTransaction()
+        try {
+            val rows = all()
+            if (rows.any { it.fingerprint == cashKey || it.fingerprint == sms.fingerprint })
+                return BankSmsImporter.Outcome.DUPLICATE
+            val candidates = withdrawalCandidates(sms, rows)
+            val confirmed = candidates.filter { CsvSmsMatcher.isConfirmedDuplicate(
+                sms.amountLaari, sms.description, time, it.amountLaari, it.description, it.timestamp) }
+            val match = when {
+                selectedId == 0L -> null
+                selectedId != null -> candidates.singleOrNull { it.id == selectedId }
+                    ?: return BankSmsImporter.Outcome.IGNORED
+                confirmed.size == 1 -> confirmed.single()
+                candidates.isEmpty() -> null
+                else -> {
+                    ReviewQueue(context).add(listOf(ReviewQueue.Entry(sms.fingerprint, "ATM", "Review ATM withdrawal",
+                        "$time · ${Money.format(-sms.amountLaari)} · $atm. Paste the withdrawal SMS in Import to choose the matching statement row.", "PENDING")))
+                    return BankSmsImporter.Outcome.IGNORED
+                }
+            }
+            fun insertLeg(key: String, amount: Long, description: String, account: String) {
+                db.insertOrThrow("transactions", null, ContentValues().apply {
+                    put("fingerprint", key); put("amount_laari", amount); put("category", "Internal Transfer")
+                    put("description", description); put("created_at", time)
+                })
+                db.insertWithOnConflict("account_labels", null, ContentValues().apply {
+                    put("fingerprint", key); put("label", account)
+                }, SQLiteDatabase.CONFLICT_REPLACE).also { check(it != -1L) }
+            }
+            if (match == null) {
+                insertLeg(sms.fingerprint, sms.amountLaari, sms.description, "MIB")
+            } else {
+                // Keep the original row ID, fingerprint and statement narration. The CSV hash
+                // binds repeat imports even after the bank timestamp is corrected from the SMS.
+                db.insertWithOnConflict("csv_transaction_details", null, ContentValues().apply {
+                    put("fingerprint", match.fingerprint); put("csv_row_hash", match.fingerprint.removePrefix("csv-"))
+                    put("recipient", ""); put("reference", CsvSmsMatcher.transferReference(match.description).orEmpty())
+                    put("bank_description", match.description); put("statement_date", match.timestamp.take(10))
+                }, SQLiteDatabase.CONFLICT_IGNORE)
+                db.update("transactions", ContentValues().apply {
+                    put("category", "Internal Transfer"); put("created_at", time)
+                    put("description", sms.description)
+                }, "id=?", arrayOf(match.id.toString())).also { check(it == 1) }
+                db.delete("spending_allocations", "fingerprint=?", arrayOf(match.fingerprint))
+            }
+            insertLeg(cashKey, -sms.amountLaari, "Cash from $atm", "Cash")
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        if (selectedId != null) ReviewQueue(context).status(sms.fingerprint, "RESOLVED")
+        return BankSmsImporter.Outcome.IMPORTED
+    }
+
+    fun withdrawalCandidates(sms: BankSmsParser.Candidate, rows: List<Tx> = all()): List<Tx> {
+        val labels = accounts()
+        val time = requireNotNull(sms.transactionTime)
+        return rows.filter { tx ->
+            tx.fingerprint.startsWith("csv-") && labels[tx.fingerprint] == "MIB" &&
+                tx.amountLaari == sms.amountLaari && CsvSmsMatcher.isAtmStatement(tx.description) &&
+                !(tx.category == "Internal Transfer" && tx.description.endsWith(")") &&
+                    tx.description.contains(" (Approval Code:", true)) &&
+                dayDistance(time, CsvSmsMatcher.actualCsvTime(tx.description) ?: tx.timestamp)?.let { it <= 2 } == true &&
+                CsvSmsMatcher.isPossibleAtmMatch(sms.description, time, tx.description)
+        }
+    }
+
     fun add(amountLaari: Long, category: String, description: String, fingerprint: String = "manual-${java.util.UUID.randomUUID()}", transactionTime: String? = null, sourceAccount: String? = null): Boolean {
         require(amountLaari != 0L && amountLaari != Long.MIN_VALUE)
         val db = writableDatabase
@@ -1002,7 +1103,7 @@ object Money {
 
 /** MIB sample-based parser. Fail closed on ambiguous SMS. Never persist raw SMS. */
 object BankSmsParser {
-    data class Candidate(val amountLaari: Long, val category: String, val description: String, val fingerprint: String, val transactionTime: String? = null)
+    data class Candidate(val amountLaari: Long, val category: String, val description: String, val fingerprint: String, val transactionTime: String? = null, val atm: String? = null)
     private val sensitive = Regex("""(?i)\b(otp|one.time.password|verification code|login code|password|pin|authentication code)\b""")
     private val favara = Regex("""(?is)^Favara\s+Transfer\s+from\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     data class Declined(val amountLaari: Long, val currency: String, val merchant: String, val transactionTime: String, val reason: String, val fingerprint: String)
@@ -1034,6 +1135,7 @@ object BankSmsParser {
     private val fundIncoming = Regex("""(?is)^Fund\s+Transfer\s+to\s+your\s+account\s+(\d+[\d*]*\d+)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     private val favaraIncoming = Regex("""(?is)^Favara\s+Transfer\s+to\s+your\s+account\s+\S+\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
     private val fundOutgoing = Regex("""(?is)^Fund\s+Transfer\s+from\s+your\s+account\s+(\d+[\d*]*\d+)\s+for\s+MVR\s+([\d,]+\.\d{2})\s+was\s+processed\s+on\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\.\s+Ref\.\s*no\.\s*([\w-]+)\s*$""")
+    private val withdrawal = Regex("""(?i)^Your\s+CASH\s+WITHDRAWAL\s+from\s+(\*+\d{4})\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+([^\r\n]{2,70}?),\s*(?:MDV|MV)\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*([A-Z0-9]{6,12})\s*$""")
     private val ecommerce = Regex("""(?is)^Your\s+E-COMMERCE\s+TRX\s+from\s+(\*+\d{4})\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*([\w-]+)\s*$""")
     private val pos = Regex("""(?is)^Your\s+POS\s+PURCHASE\s+from\s+\S+\s+for\s+([\d,]+\.\d{2})\s+MVR\s+at\s+(.+?),\s*MV\s+on\s+(\d{2}\.\d{2}\.\d{2}\s+\d{2}:\d{2})\s+was\s+processed\s+successfully\.\s+Approval\s+Code:\s*([\w-]+)\s*$""")
     /** Confirmed payments such as "Your payment to MWSC for MVR 111.58 ...". */
@@ -1074,6 +1176,18 @@ object BankSmsParser {
             val whenAt = date(m.groupValues[2], "dd/MM/uuuu HH:mm:ss") ?: return null
             if (amount <= 0) return null
             return Candidate(-amount, "Transfers", "Favara transfer (Ref: ${m.groupValues[3]})", fingerprint, whenAt)
+        }
+        withdrawal.matchEntire(text)?.let { m ->
+            val amount = Money.parseLaari(m.groupValues[2]) ?: return null
+            val atm = m.groupValues[3].trim().replace(Regex("""\s+"""), " ")
+            val time = date(m.groupValues[4], "dd.MM.uu HH:mm") ?: return null
+            if (amount <= 0 || atm.length !in 2..70) return null
+            val code = m.groupValues[5].uppercase(Locale.ROOT)
+            val key = listOf(m.groupValues[1], amount, atm.uppercase(Locale.ROOT), time, code).joinToString("|")
+            val hash = MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+            return Candidate(-amount, "Internal Transfer", "ATM withdrawal: $atm (Approval Code: $code)",
+                "mib-atm-$hash", time, atm)
         }
         ecommerce.matchEntire(text)?.let { m ->
             val amount = Money.parseLaari(m.groupValues[2]) ?: return null

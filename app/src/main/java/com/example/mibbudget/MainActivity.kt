@@ -1162,13 +1162,14 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
 
                 var showSmsFormats by remember { mutableStateOf(false) }
                 OutlinedButton(onClick={showSmsFormats=!showSmsFormats},modifier=Modifier.fillMaxWidth()) {
-                    Text(if(showSmsFormats) "Hide supported SMS types" else "View supported SMS types (7)")
+                    Text(if(showSmsFormats) "Hide supported SMS types" else "View supported SMS types")
                 }
                 if(showSmsFormats) {
                     Text("Built-in SMS templates — no example message or initial setup required.",
                         style=MaterialTheme.typography.bodySmall)
                     listOf(
                         "MIB POS purchase" to "Expense · Your POS PURCHASE ...",
+                        "MIB ATM cash withdrawal" to "Internal transfer · MIB to Cash",
                         "MIB e-commerce purchase" to "Expense · Your E-COMMERCE TRX ...",
                         "MIB outgoing Favara" to "Debit · Favara Transfer from your account ...",
                         "MIB incoming Favara" to "Credit · Favara Transfer to your account ...",
@@ -3330,6 +3331,17 @@ fun BudgetApp(store: TransactionStore, shared: String, darkTheme: Boolean, setDa
                             input="";clearShared()
                         }) { Text("Save BML purchase") }
                     } else if(candidate==null) Text("Unrecognized SMS. Only supported transaction formats can be imported.")
+                    else if (candidate.atm != null) {
+                        WithdrawalImport(candidate, store, revision) { outcome ->
+                            notice = when (outcome) {
+                                BankSmsImporter.Outcome.IMPORTED -> "Withdrawal recorded in MIB and Cash"
+                                BankSmsImporter.Outcome.DUPLICATE -> "Withdrawal already recorded"
+                                BankSmsImporter.Outcome.IGNORED -> "Review the matching statement rows"
+                            }
+                            revision++
+                            if (outcome != BankSmsImporter.Outcome.IGNORED) { input=""; clearShared() }
+                        }
+                    }
                     else {
                         Text("Detected: ${if(candidate.amountLaari>0) "Credit" else "Debit"} ${Money.format(candidate.amountLaari)}")
                         Text("Transaction date: ${candidate.transactionTime ?: "Unknown"}")

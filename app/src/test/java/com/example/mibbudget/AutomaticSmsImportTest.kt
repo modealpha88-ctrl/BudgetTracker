@@ -130,6 +130,22 @@ class AutomaticSmsImportTest {
         TransactionStore(context).use { assertTrue(it.all().isEmpty()) }
     }
 
+    @Test fun upgradeRecoversPreviouslySkippedWithdrawalsOnlyOnce() {
+        val withdrawal = "Your CASH WITHDRAWAL from ***1234 for 50.00 MVR at EXAMPLE ATM, MDV on 05.11.26 14:13 was processed successfully. Approval Code: 123987"
+        context.getSharedPreferences("sms_inbox_sync", Context.MODE_PRIVATE).edit()
+            .putLong("last_scanned_inbox_id", 4L).commit()
+        inbox.rows += Row(1, withdrawal, 0)
+        inbox.rows += Row(2, sms)
+        inbox.rows += Row(3, withdrawal.replace("50.00", "25.00"))
+        AutomaticSmsImport.catchUp(context)
+        AutomaticSmsImport.catchUp(context)
+        TransactionStore(context).use { store ->
+            assertEquals(listOf(-2500L, 2500L), store.all().map { it.amountLaari }.sorted())
+        }
+        assertEquals(3, inbox.queries)
+        assertEquals(4L, checkpoint())
+    }
+
     private fun checkpoint() = context.getSharedPreferences("sms_inbox_sync", Context.MODE_PRIVATE)
         .getLong("last_scanned_inbox_id", -1L)
 
@@ -145,7 +161,12 @@ class AutomaticSmsImportTest {
             if (unavailable) return null
             val bound = requireNotNull(selectionArgs).first().toLong()
             val filtered = rows.filter {
-                if (selection?.contains("${Telephony.Sms._ID} >") == true) it.id > bound else it.date >= bound
+                when {
+                    selection?.contains(" LIKE ?") == true -> it.date >= bound &&
+                        it.id <= requireNotNull(selectionArgs)[1].toLong() && it.body.contains("cash withdrawal", true)
+                    selection?.contains("${Telephony.Sms._ID} >") == true -> it.id > bound
+                    else -> it.date >= bound
+                }
             }.let { if (sortOrder?.endsWith("DESC") == true) it.sortedByDescending { row -> row.date } else it.sortedBy { row -> row.id } }
             val columns = requireNotNull(projection)
             return MatrixCursor(columns).apply {

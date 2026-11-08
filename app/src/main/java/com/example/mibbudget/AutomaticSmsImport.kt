@@ -61,6 +61,26 @@ object AutomaticSmsImport {
             // deliveries and messages sharing a timestamp cannot fall through a time watermark.
             val cutoff = LocalDate.now().minusMonths(1).atStartOfDay(ZoneId.systemDefault())
                 .toInstant().toEpochMilli()
+            // Older builds advanced past unrecognized withdrawals. Revisit only recent
+            // withdrawal messages at or below that checkpoint, once per installation.
+            if (!prefs.getBoolean("atm_format_scanned", false)) {
+                if (lastId >= 0) {
+                    val oldWithdrawals = context.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI,
+                        arrayOf(Telephony.Sms.BODY),
+                        "${Telephony.Sms.DATE} >= ? AND ${Telephony.Sms._ID} <= ? AND ${Telephony.Sms.BODY} LIKE ?",
+                        arrayOf(cutoff.toString(), lastId.toString(), "%CASH%WITHDRAWAL%"), null)
+                        ?: error("SMS inbox unavailable")
+                    oldWithdrawals.use { cursor ->
+                        val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                        while (cursor.moveToNext()) {
+                            if (!enabled(context) || !hasInboxAccess(context)) return false
+                            val body = cursor.getString(bodyIndex).orEmpty()
+                            if (BankSmsParser.parse(body)?.atm != null) BankSmsImporter.importBody(store, body)
+                        }
+                    }
+                }
+                prefs.edit().putBoolean("atm_format_scanned", true).apply()
+            }
             val selection = if (lastId < 0) "${Telephony.Sms.DATE} >= ?" else "${Telephony.Sms._ID} > ?"
             val args = arrayOf(if (lastId < 0) cutoff.toString() else lastId.toString())
             val cursor = context.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI,

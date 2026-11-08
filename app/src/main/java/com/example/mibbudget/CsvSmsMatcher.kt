@@ -40,6 +40,25 @@ object CsvSmsMatcher {
         return runCatching { LocalDateTime.parse(iso).toString() }.getOrNull()
     }
 
+    fun isAtmStatement(description: String): Boolean =
+        description.startsWith("ATM withdrawal:", true) || description.startsWith("Cash withdrawal:", true)
+
+    private fun atmSite(sms: String) =
+        sms.substringAfter(":").substringBefore(" (Approval Code:", "").trim()
+
+    // MIB ATM narratives contain the actual local clock, terminal name, then optional address.
+    private fun statementSite(description: String) =
+        description.substringAfter('|', "").substringBefore('|').substringBefore(" (Ref:").trim()
+
+    fun isPossibleAtmMatch(sms: String, smsTime: String, csv: String): Boolean {
+        val csvCode = approvalCode(csv)
+        if (csvCode != null) return csvCode == approvalCode(sms)
+        val time = actualCsvTime(csv)
+        val site = statementSite(csv)
+        return (time == null || time.take(16) == smsTime.take(16)) &&
+            (site.isBlank() || site.equals(atmSite(sms), true))
+    }
+
     fun isConfirmedDuplicate(smsAmount:Long,smsDescription:String,smsTime:String,
                              csvAmount:Long,csvDescription:String,csvTime:String):Boolean {
         if(smsAmount!=csvAmount || smsAmount==0L) return false
@@ -48,6 +67,14 @@ object CsvSmsMatcher {
             LocalDate.parse(smsTime.take(10)),LocalDate.parse(actual.take(10)))) }.getOrNull() ?: return false
         if(diff>2) return false
 
+        if (isAtmStatement(smsDescription) && approvalCode(smsDescription) != null) {
+            if (!isAtmStatement(csvDescription) || smsAmount >= 0) return false
+            val csvCode = approvalCode(csvDescription)
+            if (csvCode != null) return csvCode == approvalCode(smsDescription)
+            val clock = actualCsvTime(csvDescription) ?: return false
+            val site = statementSite(csvDescription)
+            return clock.take(16) == smsTime.take(16) && site.isNotBlank() && site.equals(atmSite(smsDescription), true)
+        }
         val smsApproval=approvalCode(smsDescription)
         val csvApproval=approvalCode(csvDescription)
         if(smsApproval!=null || csvApproval!=null) {
