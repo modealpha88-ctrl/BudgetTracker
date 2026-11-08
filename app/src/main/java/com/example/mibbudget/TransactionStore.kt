@@ -265,6 +265,7 @@ class TransactionStore(private val context: Context): SQLiteOpenHelper(context, 
         val labels = accounts()
         val assigned=mutableSetOf<Long>()
         val competingAtmRows = mutableMapOf<String, MutableSet<String>>()
+        val atmMatchByRowHash = mutableMapOf<String, Tx>()
         val results=mutableListOf<CsvMatch>()
         var ignored=0
         records.drop(1).forEachIndexed { index,cols ->
@@ -285,6 +286,7 @@ class TransactionStore(private val context: Context): SQLiteOpenHelper(context, 
             val verified=(linkedByHash[rowHash] ?: "csv-$rowHash").let { key ->
                 existing.firstOrNull { it.fingerprint==key && it.amountLaari==signed }
             }
+            val repeatedAtm = atmMatchByRowHash[rowHash]
             val rowAccount = if(mib) "MIB" else cols[4].trim()
             val nearby=existing.filter { t ->
                 (rowAccount.isBlank() || FinanceCalculations.assignedAccount(t, labels) in listOf(rowAccount, "Unassigned")) &&
@@ -307,13 +309,17 @@ class TransactionStore(private val context: Context): SQLiteOpenHelper(context, 
             val chosen: Tx?
             when {
                 verified!=null -> { status="MATCHED";reason="CSV details linked to saved transaction";chosen=verified }
+                repeatedAtm != null -> { status="MATCHED";reason="Repeated statement row";chosen=repeatedAtm }
                 exact.size==1 -> { status="MATCHED";reason="Same amount, date and reference/description";chosen=exact.first() }
                 exact.size>1 -> { status="POSSIBLE";reason="Multiple matching records";chosen=null }
                 candidates.isNotEmpty() -> { status="POSSIBLE";reason="Same amount and nearby date; verify merchant/reference";chosen=null }
                 nearby.isNotEmpty() -> { status="POSSIBLE";reason="Amount and date overlap a record already matched to another statement row";chosen=null }
                 else -> { status="MISSING";reason="No matching saved transaction";chosen=null }
             }
-            if(chosen!=null) assigned.add(chosen.id)
+            if(chosen!=null) {
+                assigned.add(chosen.id)
+                if (chosen.fingerprint.startsWith("mib-atm-")) atmMatchByRowHash[rowHash] = chosen
+            }
             results.add(CsvMatch(index+2,signed,date,desc.take(120),status,reason,
                 chosen?.fingerprint?.takeIf { verified == null && it.startsWith("mib-atm-") }))
         }
@@ -328,8 +334,10 @@ class TransactionStore(private val context: Context): SQLiteOpenHelper(context, 
 
 
     private fun linkConfirmedAtmRows(db: SQLiteDatabase, review: CsvReview, records: List<List<String>>, mib: Boolean) {
+        val linked = mutableSetOf<String>()
         for (row in review.matches) {
             val fingerprint = row.atmFingerprint ?: continue
+            if (!linked.add(fingerprint)) continue
             val cols = records[row.line - 1]
             db.insertOrThrow("csv_transaction_details", null, ContentValues().apply {
                 put("fingerprint", fingerprint); put("csv_row_hash", csvRowHash(cols, mib))

@@ -55,8 +55,10 @@ object CsvSmsMatcher {
         if (csvCode != null) return csvCode == approvalCode(sms)
         val time = actualCsvTime(csv)
         val site = statementSite(csv)
-        return (time == null || time.take(16) == smsTime.take(16)) &&
-            (site.isBlank() || site.equals(atmSite(sms), true))
+        // A matching minute with a different terminal label needs review. Bank and
+        // SMS descriptions may abbreviate the same ATM differently.
+        return if (time != null) time.take(16) == smsTime.take(16)
+            else site.isBlank() || site.equals(atmSite(sms), true)
     }
 
     fun isConfirmedDuplicate(smsAmount:Long,smsDescription:String,smsTime:String,

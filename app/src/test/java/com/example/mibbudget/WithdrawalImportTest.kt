@@ -52,7 +52,9 @@ class WithdrawalImportTest {
         assertEquals(BankSmsImporter.Outcome.IMPORTED, BankSmsImporter.importBody(store, sms))
         assertEquals(BankSmsImporter.Outcome.DUPLICATE, BankSmsImporter.importBody(store, sms.lowercase()))
         assertEquals("MATCHED", store.reviewCsv(csv).matches.single().status)
-        assertEquals(0, store.importMissingCsv(csv).first)
+        val repeatedRow = csv + "\n" + row
+        assertEquals(2, store.reviewCsv(repeatedRow).confirmed)
+        assertEquals(0, store.importMissingCsv(repeatedRow, includePossible = true).first)
         assertEquals(0, store.importCsv(csv).first)
         assertEquals(1, store.csvDetails().size)
         val otherReference = csv.replace("1-123456789", "1-987654321")
@@ -77,6 +79,13 @@ class WithdrawalImportTest {
         BankSmsImporter.importBody(store, sms.replace("123987", "123988"))
         assertEquals(4, store.all().size)
         assertEquals(-20000L, store.all().filter { store.accounts()[it.fingerprint] == "MIB" }.sumOf { it.amountLaari })
+    }
+
+    @Test fun differentTerminalLabelAtSameMinuteWaitsForReview() = TransactionStore(context).use { store ->
+        store.importMissingCsv(csv.replace("EXAMPLE ATM", "EXAMPLE TERMINAL 01"))
+        assertEquals(BankSmsImporter.Outcome.IGNORED, BankSmsImporter.importBody(store, sms))
+        assertEquals(1, store.all().size)
+        assertEquals("PENDING", ReviewQueue(context).all().single().status)
     }
 
     @Test fun ambiguousSameMinuteRequiresSelection() = TransactionStore(context).use { store ->
