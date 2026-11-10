@@ -508,6 +508,89 @@ class TransactionStore(private val context: Context): SQLiteOpenHelper(context, 
             .values.filter { it.size>1 }.sortedByDescending { it.size }
     }
 
+    private fun csvMatchEvidence(tx: Tx, details: Map<String, CsvDetails>): String =
+        buildList {
+            add(tx.description)
+            details[tx.fingerprint]?.let { detail ->
+                if (detail.bankDescription.isNotBlank()) add(detail.bankDescription)
+                if (detail.reference.isNotBlank()) add("(Ref: ${detail.reference})")
+            }
+        }.joinToString(" ")
+
+    /** Strong, one-to-one CSV/SMS matches that can amend already saved transactions. */
+    fun csvSmsDuplicateGroups(): List<List<Tx>> {
+        val rows = all()
+        val labels = accounts()
+        val details = csvDetails()
+        val csvRows = rows.filter { it.fingerprint.startsWith("csv-") }
+        val smsRows = rows.filterNot { it.fingerprint.startsWith("csv-") || it.fingerprint.startsWith("manual-") }
+        val matches = csvRows.associateWith { csv ->
+            val csvAccount = FinanceCalculations.assignedAccount(csv, labels)
+            smsRows.filter { sms ->
+                sms.amountLaari == csv.amountLaari &&
+                    FinanceCalculations.assignedAccount(sms, labels) == csvAccount &&
+                    CsvSmsMatcher.isConfirmedDuplicate(
+                        sms.amountLaari, sms.description, sms.timestamp,
+                        csv.amountLaari, csvMatchEvidence(csv, details), csv.timestamp
+                    )
+            }
+        }
+        val reverseCounts = matches.values.flatten().groupingBy { it.id }.eachCount()
+        return matches.entries
+            .filter { it.value.size == 1 && reverseCounts[it.value.single().id] == 1 }
+            .map { (csv, candidates) -> listOf(candidates.single(), csv) }
+            .sortedByDescending { it.maxOf(Tx::id) }
+    }
+
+    /**
+     * Keep the SMS record (its bank event time is authoritative), attach the CSV
+     * metadata to it, and remove the redundant CSV ledger row. LedgerRecovery
+     * snapshots both fingerprints so the complete merge can be undone.
+     */
+    fun mergeCsvSmsDuplicate(ids: List<Long>): Int {
+        require(ids.size == 2 && ids.distinct().size == 2) { "Choose one CSV and one SMS record" }
+        val rows = all().filter { it.id in ids }
+        require(rows.size == 2) { "Transaction no longer exists" }
+        val csv = rows.singleOrNull { it.fingerprint.startsWith("csv-") }
+            ?: throw IllegalArgumentException("One record must come from CSV")
+        val sms = rows.singleOrNull { !it.fingerprint.startsWith("csv-") && !it.fingerprint.startsWith("manual-") }
+            ?: throw IllegalArgumentException("One record must come from a bank message")
+        val labels = accounts()
+        require(FinanceCalculations.assignedAccount(csv, labels) ==
+            FinanceCalculations.assignedAccount(sms, labels)) { "Different accounts: review manually" }
+        require(csv.amountLaari == sms.amountLaari) { "Amounts do not match" }
+        val details = csvDetails()
+        require(CsvSmsMatcher.isConfirmedDuplicate(
+            sms.amountLaari, sms.description, sms.timestamp,
+            csv.amountLaari, csvMatchEvidence(csv, details), csv.timestamp
+        )) { "Bank reference, approval code, merchant or time does not confirm this match" }
+        require(allocations()[csv.fingerprint].isNullOrEmpty()) {
+            "Remove the CSV record's split allocation before merging"
+        }
+        val csvDetail = details[csv.fingerprint]
+        val smsDetail = details[sms.fingerprint]
+        require(csvDetail == null || smsDetail == null || csvDetail.csvRowHash == smsDetail.csvRowHash) {
+            "Both records contain different CSV statement rows"
+        }
+        return LedgerRecovery.record(writableDatabase, "Merge CSV and SMS duplicate", listOf(sms.fingerprint, csv.fingerprint)) {
+            val db = writableDatabase
+            if (csvDetail != null && smsDetail == null) {
+                db.delete("csv_transaction_details", "fingerprint=?", arrayOf(csv.fingerprint))
+                db.insertOrThrow("csv_transaction_details", null, ContentValues().apply {
+                    put("fingerprint", sms.fingerprint); put("csv_row_hash", csvDetail.csvRowHash)
+                    put("recipient", csvDetail.recipient); put("reference", csvDetail.reference)
+                    put("bank_description", csvDetail.bankDescription); put("statement_date", csvDetail.statementDate)
+                })
+            } else {
+                db.delete("csv_transaction_details", "fingerprint=?", arrayOf(csv.fingerprint))
+            }
+            db.delete("account_labels", "fingerprint=?", arrayOf(csv.fingerprint))
+            db.delete("spending_allocations", "fingerprint=?", arrayOf(csv.fingerprint))
+            check(db.delete("transactions", "id=?", arrayOf(csv.id.toString())) == 1)
+            1
+        }
+    }
+
     /** Archive removed records in the same SQLite transaction, allowing a later undo. */
     fun mergeExactDuplicates(ids: List<Long>): Int {
         require(ids.size>=2 && ids.distinct().size==ids.size)
@@ -957,8 +1040,23 @@ class TransactionStore(private val context: Context): SQLiteOpenHelper(context, 
             val labels = accounts()
             val sameAmount=all().filter { it.fingerprint.startsWith("csv-") && it.amountLaari==amountLaari &&
                 sourceAccount != null && FinanceCalculations.assignedAccount(it, labels).equals(sourceAccount, true) }
-            if(sameAmount.count { CsvSmsMatcher.isConfirmedDuplicate(
-                    amountLaari,description,transactionTime,it.amountLaari,it.description,it.timestamp) } == 1) return false
+            val confirmed = sameAmount.filter { CsvSmsMatcher.isConfirmedDuplicate(
+                amountLaari, description, transactionTime, it.amountLaari,
+                csvMatchEvidence(it, csvDetails()), it.timestamp
+            ) }
+            if (confirmed.size == 1) {
+                // Amend the existing CSV row with the more precise SMS time and label.
+                // The ledger amount and CSV fingerprint stay unchanged, so repeat CSV
+                // imports remain idempotent and no second financial record is created.
+                val match = confirmed.single()
+                db.update("transactions", ContentValues().apply {
+                    put("category", (if(amountLaari < 0L && category != "Internal Transfer")
+                        (merchantCategoryRule(description) ?: category) else category).take(40))
+                    put("description", description.take(120))
+                    put("created_at", transactionTime)
+                }, "id=?", arrayOf(match.id.toString()))
+                return false
+            }
         }
         val values = android.content.ContentValues().apply {
             put("amount_laari", amountLaari); put("category", (if(amountLaari < 0L && category != "Internal Transfer") (merchantCategoryRule(description) ?: category) else category).take(40)); put("description", description.take(120)); put("created_at", (transactionTime ?: LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))); put("fingerprint", fingerprint)
