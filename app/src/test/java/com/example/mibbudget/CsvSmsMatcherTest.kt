@@ -34,6 +34,14 @@ class CsvSmsMatcherTest {
             "POS Payment: 02-11-2026 02-28-57 | 73601335-519478@IHSAAN FIHAARA 3",
             "2026-11-02T00:00:00"))
     }
+    @Test fun posApprovalStoredAsReferenceSuffixStillMatches() {
+        assertTrue(CsvSmsMatcher.isConfirmedDuplicate(-4814,
+            "POS purchase: AVAS POINT (Approval Code: 519478)",
+            "2026-10-29T18:23:00", -4814,
+            "POS Payment: (Ref: 73601335-519478) AVAS POINT",
+            "2026-10-30T00:00:00"))
+    }
+
     @Test fun differingApprovalCodesDoNotCollapseRepeatedPurchases() {
         assertFalse(CsvSmsMatcher.isConfirmedDuplicate(-2600,
             "POS purchase: IHSAAN FIHAARA 3 (Approval Code: 519479)",

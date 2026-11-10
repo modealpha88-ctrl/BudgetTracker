@@ -21,7 +21,13 @@ object CsvSmsMatcher {
             .find(value)?.groupValues?.get(1)
         val csv=Regex("""(?i)\b[A-Z0-9]+-([A-Z0-9]{6,12})@""")
             .find(value)?.groupValues?.get(1)
-        return (sms ?: csv)?.uppercase(Locale.ROOT)
+        // Imported statement rows may store the POS approval as the final
+        // component of a reference instead of the original "...-CODE@MERCHANT".
+        val statementRef = if (listOf("POS", "PURCHASE", "E-COMMERCE").any { value.contains(it, true) })
+            Regex("""(?i)\b(?:ref(?:erence)?(?:\.?\s*no\.?)?)\s*[:.#-]?\s*[A-Z0-9]+-([A-Z0-9]{6,12})\b""")
+                .find(value)?.groupValues?.get(1)
+        else null
+        return (sms ?: csv ?: statementRef)?.uppercase(Locale.ROOT)
     }
 
     /** SMS long reference and CSV shorter reference may share a stable final numeric component. */

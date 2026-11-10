@@ -96,7 +96,13 @@ object LedgerRecovery {
                         val values = ContentValues().apply { cols.filter { it != "id" }.forEach { col ->
                             val v = item.get(col); if (v is Number) put(col, v.toLong()) else put(col, v.toString())
                         } }
-                        check(db.update(table, values, "fingerprint=?", arrayOf(fingerprint)) == 1)
+                        val updated = db.update(table, values, "fingerprint=?", arrayOf(fingerprint))
+                        if (updated == 0) {
+                            // Merge actions may have removed one transaction entirely.
+                            // Restore its original row ID as part of the same atomic undo.
+                            values.put("id", item.getLong("id"))
+                            db.insertOrThrow(table, null, values)
+                        } else check(updated == 1)
                     } else {
                         db.delete(table, "fingerprint=?", arrayOf(fingerprint))
                         for (i in 0 until rows.length()) db.insertOrThrow(table, null, ContentValues().apply {
