@@ -574,12 +574,20 @@ class TransactionStore(private val context: Context): SQLiteOpenHelper(context, 
         }
         return LedgerRecovery.record(writableDatabase, "Merge CSV and SMS duplicate", listOf(sms.fingerprint, csv.fingerprint)) {
             val db = writableDatabase
-            if (csvDetail != null && smsDetail == null) {
+            if (smsDetail == null) {
+                val preserved = csvDetail ?: CsvDetails(
+                    recipient = TransactionPresentation.label(csv.description).substringAfter(" · ", "").trim()
+                        .takeIf { it.isNotBlank() && it != csv.description }?.take(100).orEmpty(),
+                    reference = CsvSmsMatcher.transferReference(csv.description).orEmpty(),
+                    bankDescription = csv.description.take(450),
+                    statementDate = csv.timestamp.take(10),
+                    csvRowHash = csv.fingerprint.removePrefix("csv-")
+                )
                 db.delete("csv_transaction_details", "fingerprint=?", arrayOf(csv.fingerprint))
                 db.insertOrThrow("csv_transaction_details", null, ContentValues().apply {
-                    put("fingerprint", sms.fingerprint); put("csv_row_hash", csvDetail.csvRowHash)
-                    put("recipient", csvDetail.recipient); put("reference", csvDetail.reference)
-                    put("bank_description", csvDetail.bankDescription); put("statement_date", csvDetail.statementDate)
+                    put("fingerprint", sms.fingerprint); put("csv_row_hash", preserved.csvRowHash)
+                    put("recipient", preserved.recipient); put("reference", preserved.reference)
+                    put("bank_description", preserved.bankDescription); put("statement_date", preserved.statementDate)
                 })
             } else {
                 db.delete("csv_transaction_details", "fingerprint=?", arrayOf(csv.fingerprint))
