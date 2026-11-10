@@ -133,6 +133,44 @@ class LedgerToolsTest {
             assertEquals(2,store.all().size)
         }
     }
+    @Test fun existingCsvSmsDuplicateCanBeAmendedAndUndone() {
+        TransactionStore(context).use { store ->
+            val smsKey = "b".repeat(64)
+            val csvKey = "csv-" + "a".repeat(64)
+            assertTrue(store.add(-4814, "Shopping",
+                "POS purchase: AVAS POINT (Approval Code: 519478)", smsKey,
+                "2026-10-29T18:23:00", sourceAccount = "MIB"))
+            assertTrue(store.add(-4814, "Shopping",
+                "POS Payment: (Ref: 73601335-519478) AVAS POINT", csvKey,
+                "2026-10-30T00:00:00", sourceAccount = "MIB"))
+            val group = store.csvSmsDuplicateGroups().single()
+            assertEquals(1, store.mergeCsvSmsDuplicate(group.map { it.id }))
+            assertEquals(1, store.all().size)
+            assertEquals("POS Payment: (Ref: 73601335-519478) AVAS POINT",
+                store.csvDetails()[smsKey]?.bankDescription)
+            val action = LedgerRecovery.recent(store.readableDatabase).first()
+            assertTrue(LedgerRecovery.undo(store.writableDatabase, action.key))
+            assertEquals(2, store.all().size)
+            assertTrue(store.csvDetails().isEmpty())
+        }
+    }
+
+    @Test fun futureSmsAmendsMatchingCsvWithoutSecondLedgerRow() {
+        TransactionStore(context).use { store ->
+            val csvKey = "csv-" + "c".repeat(64)
+            assertTrue(store.add(-10000, "Transport",
+                "E-commerce Payment: (Ref: 73601335-174430) THE HAWKS FUEL",
+                csvKey, "2026-10-30T00:00:00", sourceAccount = "MIB"))
+            assertFalse(store.add(-10000, "Transport",
+                "E-commerce purchase: THE HAWKS FUEL (Approval Code: 174430)",
+                "d".repeat(64), "2026-10-29T22:36:00", sourceAccount = "MIB"))
+            val saved = store.all().single()
+            assertEquals(csvKey, saved.fingerprint)
+            assertEquals("2026-10-29T22:36:00", saved.timestamp)
+            assertTrue(saved.description.startsWith("E-commerce purchase: THE HAWKS FUEL"))
+        }
+    }
+
     @Test fun migrationFromNinePreservesExistingPayment() {
         TransactionStore(context).use { store -> payment(store) }
         SQLiteDatabase.openDatabase(context.getDatabasePath("budget.db").path,null,SQLiteDatabase.OPEN_READWRITE).use { db ->
