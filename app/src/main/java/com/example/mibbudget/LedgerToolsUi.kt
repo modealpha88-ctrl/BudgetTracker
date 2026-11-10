@@ -117,8 +117,11 @@ internal fun SnapshotQuality(context: Context, entries: List<Tx>, labels: Map<St
 @Composable
 internal fun ReconciliationChecklist(context: Context, store: TransactionStore, entries: List<Tx>, labels: Map<String,String>, missing: Int?, possible: Int?, revision: Int, onImport: () -> Unit, onActivity: () -> Unit, onAccount: (String) -> Unit, onChanged: () -> Unit, onNotice: (String) -> Unit) {
     val duplicates = remember(revision) { store.exactDuplicateGroups() }
+    val csvSmsDuplicates = remember(revision) { store.csvSmsDuplicateGroups() }
     var merge by remember { mutableStateOf<List<Tx>?>(null) }
+    var mergeCsvSms by remember { mutableStateOf<List<Tx>?>(null) }
     var showDuplicates by remember { mutableStateOf(false) }
+    var showCsvSmsDuplicates by remember { mutableStateOf(false) }
     Text("Reconciliation checklist", style = MaterialTheme.typography.headlineSmall)
     Text("Resolve uncertain records before treating an estimated balance as reconciled.")
     SnapshotQuality(context, entries, labels)
@@ -131,6 +134,15 @@ internal fun ReconciliationChecklist(context: Context, store: TransactionStore, 
         OutlinedButton(onClick = { merge = group }) { Text("Review merge") }
     }
     if(duplicates.size > 40 && showDuplicates) Text("First 40 groups shown. Resolve these to see the rest.")
+    TextButton(onClick = { showCsvSmsDuplicates = !showCsvSmsDuplicates }) {
+        Text("${csvSmsDuplicates.size} confirmed CSV + SMS duplicate groups · amend existing")
+    }
+    if(showCsvSmsDuplicates) csvSmsDuplicates.take(40).forEach { group ->
+        DuplicateComparison(context, store, group, labels)
+        OutlinedButton(onClick = { mergeCsvSms = group }) { Text("Review CSV + SMS merge") }
+    }
+    if(csvSmsDuplicates.size > 40 && showCsvSmsDuplicates)
+        Text("First 40 groups shown. Resolve these to see the rest.")
     BankReconciliation.history(context).distinctBy { it.account }.forEach { report ->
         Text("${report.account} last comparison (${report.statementDate}): ${Money.format(report.differenceMinor)} difference")
     }
@@ -144,6 +156,20 @@ internal fun ReconciliationChecklist(context: Context, store: TransactionStore, 
     }, confirmButton = { TextButton(onClick = {
         runCatching { store.mergeExactDuplicates(rows.map { it.id }) }.onSuccess { onChanged(); onNotice("Archived $it records. Transaction edit history can restore them.") }.onFailure { onNotice("Merge blocked: ${it.message}") }; merge = null
     }) { Text("Merge and archive") } }, dismissButton = { TextButton(onClick = { merge = null }) { Text("Cancel") } }) }
+    mergeCsvSms?.let { rows -> AlertDialog(onDismissRequest = { mergeCsvSms = null },
+        title = { Text("Amend duplicated CSV and SMS records?") },
+        text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+            Text("Keep the SMS transaction time and merchant, attach the verified CSV details, and remove the extra CSV ledger row. The full change is available in Recovery history.")
+            DuplicateComparison(context, store, rows, labels)
+        } },
+        confirmButton = { TextButton(onClick = {
+            runCatching { store.mergeCsvSmsDuplicate(rows.map { it.id }) }
+                .onSuccess { onChanged(); onNotice("Merged CSV and SMS duplicate. Balance and reports recalculated; Recovery history can undo it.") }
+                .onFailure { onNotice("Merge blocked: ${it.message}") }
+            mergeCsvSms = null
+        }) { Text("Amend and merge") } },
+        dismissButton = { TextButton(onClick = { mergeCsvSms = null }) { Text("Cancel") } })
+    }
 }
 
 @Composable
